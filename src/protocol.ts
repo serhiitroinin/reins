@@ -46,7 +46,7 @@ export type HarnessInput =
   | { type: "image"; mediaType: string; data: Uint8Array; name?: string }
   | { type: "resource"; uri: string; mediaType?: string; name?: string };
 
-export type HarnessToolStatus = "completed" | "failed" | "cancelled";
+export type HarnessToolStatus = "completed" | "failed" | "declined" | "cancelled";
 export type HarnessTurnStatus = "completed" | "error" | "interrupted";
 
 export interface HarnessUsage {
@@ -88,14 +88,30 @@ export type HarnessEventPayload =
   | { kind: "assistant-text"; text: string }
   | { kind: "thinking"; text: string }
   | { kind: "plan-updated"; steps: readonly { text: string; status: string }[] }
-  | { kind: "tool-started"; toolId: string; toolKind: string; title: string; detail?: string }
+  | {
+      kind: "tool-started";
+      toolId: string;
+      toolKind: string;
+      title: string;
+      detail?: string;
+      command?: string;
+      paths?: readonly string[];
+      extensions?: Readonly<Record<string, unknown>>;
+    }
   | { kind: "tool-updated"; toolId: string; outputAppend?: string; detail?: string }
   | {
       kind: "tool-completed";
       toolId: string;
       status: HarnessToolStatus;
+      /** Present when a provider reported completion without a start event. */
+      toolKind?: string;
+      /** Present when a provider reported completion without a start event. */
+      title?: string;
       outputAppend?: string;
       error?: string;
+      exitCode?: number;
+      truncated?: boolean;
+      extensions?: Readonly<Record<string, unknown>>;
     }
   | { kind: "interaction-requested"; interaction: HarnessInteraction }
   | { kind: "interaction-resolved"; interactionId: string; response: HarnessInteractionResponse }
