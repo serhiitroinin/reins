@@ -98,15 +98,26 @@ export type HarnessEventPayload =
       paths?: readonly string[];
       extensions?: Readonly<Record<string, unknown>>;
     }
-  | { kind: "tool-updated"; toolId: string; outputAppend?: string; detail?: string }
+  | {
+      kind: "tool-updated";
+      toolId: string;
+      /** Repeated so a bounded replay can begin after `tool-started`. */
+      toolKind: string;
+      /** Repeated so a bounded replay can begin after `tool-started`. */
+      title: string;
+      outputAppend?: string;
+      detail?: string;
+      truncated?: boolean;
+      extensions?: Readonly<Record<string, unknown>>;
+    }
   | {
       kind: "tool-completed";
       toolId: string;
       status: HarnessToolStatus;
-      /** Present when a provider reported completion without a start event. */
-      toolKind?: string;
-      /** Present when a provider reported completion without a start event. */
-      title?: string;
+      /** Repeated so a bounded replay can begin after `tool-started`. */
+      toolKind: string;
+      /** Repeated so a bounded replay can begin after `tool-started`. */
+      title: string;
       outputAppend?: string;
       error?: string;
       exitCode?: number;

@@ -125,10 +125,18 @@ describe("Codex App Server event consumer", () => {
       command: "printf hello",
     });
     expect(fx.events.slice(1, 3)).toEqual([
-      { kind: "tool-updated", toolId: "command-1", outputAppend: "01234567" },
+      {
+        kind: "tool-updated",
+        toolId: "command-1",
+        toolKind: "command",
+        title: "printf hello",
+        outputAppend: "01234567",
+      },
       {
         kind: "tool-completed",
         toolId: "command-1",
+        toolKind: "command",
+        title: "printf hello",
         status: "failed",
         outputAppend: "89",
         exitCode: 7,
@@ -192,11 +200,16 @@ describe("Codex App Server event consumer", () => {
       {
         kind: "tool-updated",
         toolId: "tool-1",
+        toolKind: "workspace-operation",
+        title: "Update note",
         outputAppend: "saved [r",
+        extensions: { "example:review": "required" },
       },
       {
         kind: "tool-completed",
         toolId: "tool-1",
+        toolKind: "workspace-operation",
+        title: "Update note",
         status: "completed",
         outputAppend: "edacted]",
         extensions: { "example:review": "required" },
@@ -225,7 +238,13 @@ describe("Codex App Server event consumer", () => {
         title: "private",
         detail: "private",
       },
-      { kind: "tool-completed", toolId: "search-1", status: "failed" },
+      {
+        kind: "tool-completed",
+        toolId: "search-1",
+        toolKind: "web-search",
+        title: "private",
+        status: "failed",
+      },
       {
         kind: "error",
         code: "CODEX_PROVIDER_ERROR",
@@ -396,7 +415,13 @@ describe("Codex App Server event consumer", () => {
       { kind: "assistant-text", text: "partial" },
       { kind: "tool-started", toolId: "tool-1", toolKind: "mcp", title: "work/read" },
       { kind: "assistant-text", text: "tail" },
-      { kind: "tool-completed", toolId: "tool-1", status: "cancelled" },
+      {
+        kind: "tool-completed",
+        toolId: "tool-1",
+        toolKind: "mcp",
+        title: "work/read",
+        status: "cancelled",
+      },
     ]);
     expect(fx.outcomes).toEqual([]);
   });
