@@ -6,6 +6,7 @@
   },
   "changesets": [
     "bright-codex-events",
+    "calm-codex-checkpoints",
     "calm-contexts-prepare",
     "fresh-codex-adapter",
     "fuzzy-hounds-discover",
