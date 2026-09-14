@@ -6,6 +6,7 @@
   },
   "changesets": [
     "bright-codex-events",
+    "brisk-claude-sessions",
     "calm-codex-checkpoints",
     "calm-contexts-prepare",
     "fair-tools-negotiate",
