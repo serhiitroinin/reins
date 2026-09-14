@@ -218,6 +218,50 @@ describe("Codex App Server event consumer", () => {
     ]);
   });
 
+  test("normalizes client-owned dynamic tools without leaking their arguments by default", () => {
+    const fx = fixture();
+    fx.consumer.notification("item/started", {
+      item: {
+        type: "dynamicToolCall",
+        id: "call-1",
+        namespace: null,
+        tool: "lookup_order",
+        arguments: { id: "private-order" },
+        status: "inProgress",
+      },
+    });
+    fx.consumer.notification("item/completed", {
+      item: {
+        type: "dynamicToolCall",
+        id: "call-1",
+        namespace: null,
+        tool: "lookup_order",
+        arguments: { id: "private-order" },
+        status: "completed",
+        success: true,
+        contentItems: [{ type: "inputText", text: "ready" }],
+      },
+    });
+
+    expect(fx.events).toEqual([
+      {
+        kind: "tool-started",
+        toolId: "call-1",
+        toolKind: "tool",
+        title: "lookup_order",
+      },
+      {
+        kind: "tool-completed",
+        toolId: "call-1",
+        toolKind: "tool",
+        title: "lookup_order",
+        status: "completed",
+        outputAppend: "ready",
+      },
+    ]);
+    expect(JSON.stringify(fx.events)).not.toContain("private-order");
+  });
+
   test("redacts provider failures by default and seals on the first terminal fact", () => {
     const fx = fixture();
     fx.consumer.notification("item/started", {

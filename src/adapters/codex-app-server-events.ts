@@ -17,6 +17,7 @@ export const CODEX_TOOL_OUTPUT_MAX_CHARS = 32_000;
 export type CodexToolInput =
   | { id: string; kind: "command"; command: string }
   | { id: string; kind: "mcp"; server: string; name: string; input: unknown }
+  | { id: string; kind: "dynamic"; namespace?: string; name: string; input: unknown }
   | { id: string; kind: "file-change"; paths: readonly string[] }
   | { id: string; kind: "web-search"; query: string };
 
@@ -246,6 +247,16 @@ function toolInput(value: unknown): CodexToolInput | null {
       input: item.arguments,
     };
   }
+  if (item.type === "dynamicToolCall") {
+    const namespace = text(item.namespace);
+    return {
+      id,
+      kind: "dynamic",
+      ...(namespace ? { namespace } : {}),
+      name: text(item.tool),
+      input: item.arguments,
+    };
+  }
   if (item.type === "fileChange") {
     const paths = (Array.isArray(item.changes) ? item.changes : []).flatMap((entry) => {
       const path = text(record(entry)?.path);
@@ -271,6 +282,10 @@ function defaultToolPresentation(tool: CodexToolInput): CodexToolPresentation {
     const name = [tool.server, tool.name].filter(Boolean).join("/");
     return { toolKind: "mcp", title: name || "MCP tool" };
   }
+  if (tool.kind === "dynamic") {
+    const name = [tool.namespace, tool.name].filter(Boolean).join("/");
+    return { toolKind: "tool", title: name || "Tool" };
+  }
   if (tool.kind === "file-change") {
     return {
       toolKind: "file-change",
@@ -293,13 +308,16 @@ function resultText(value: unknown): string {
   const parts: string[] = [];
   for (const entry of content) {
     const block = record(entry);
-    if (block?.type === "text" && typeof block.text === "string") parts.push(block.text);
+    if ((block?.type === "text" || block?.type === "inputText") && typeof block.text === "string") {
+      parts.push(block.text);
+    }
   }
   return parts.join("\n");
 }
 
 function toolOutput(item: Record<string, unknown>, tool: CodexToolInput): string {
   if (tool.kind === "command") return text(item.aggregatedOutput);
+  if (tool.kind === "dynamic") return resultText(item.contentItems);
   if (tool.kind !== "mcp") return "";
   const failure = record(item.error);
   if (failure !== null) return text(failure.message) || "The tool call failed.";
@@ -311,7 +329,7 @@ function toolOutcome(item: Record<string, unknown>): { status: HarnessToolStatus
   const exitCode = typeof item.exitCode === "number" && Number.isInteger(item.exitCode)
     ? item.exitCode
     : undefined;
-  const failed = status === "failed" || status === "error"
+  const failed = status === "failed" || status === "error" || item.success === false
     || (exitCode !== undefined && exitCode !== 0);
   const normalized: HarnessToolStatus = status === "declined"
     ? "declined"
