@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.10
+
+### Patch Changes
+
+- 21981dd: Preserve Claude hidden-subagent metadata and add an opt-in compaction error redactor.
+
 ## 0.1.0-next.9
 
 ### Patch Changes
