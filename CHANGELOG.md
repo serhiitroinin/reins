@@ -1,5 +1,15 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.9
+
+### Patch Changes
+
+- 094e7da: Add a conformant, provider-injected Claude Agent SDK adapter with normalized
+  events, deferred interactions, application tools, cancellation boundaries,
+  subagent extensions, separate account limits, connection-identity pinning, and
+  awaited resume checkpoints. Tool data, subagent failures, and provider errors
+  remain private unless the host explicitly maps a safe representation.
+
 ## 0.1.0-next.8
 
 ### Patch Changes
