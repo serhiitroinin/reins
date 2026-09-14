@@ -140,9 +140,11 @@ can implement the same versioned protocol from generated bindings once the JSON
 Schema milestone lands; they do not need to embed Fold's UI or daemon.
 
 The current Codex App Server schema accepts dynamic tools on thread creation,
-not thread resume. A resumed thread therefore keeps its original catalog. A
-host must discard a stale checkpoint when its application tool catalog is no
-longer compatible.
+not thread resume. The adapter enables the experimental API capability when a
+run exposes a non-empty catalog, and omits an empty catalog so ordinary turns
+stay on the stable protocol. A resumed thread therefore keeps its original
+catalog. A host must discard a stale checkpoint when its application tool
+catalog is no longer compatible.
 
 ## Security boundary
 

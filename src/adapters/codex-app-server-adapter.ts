@@ -444,9 +444,15 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
             })();
 
             try {
+              const dynamicTools = codexDynamicTools(request.tools.list());
               await client.initialize(codexInitializeParams({
                 clientInfo: options.clientInfo,
                 ...options.initialize,
+                // Dynamic tools are an experimental App Server surface. A
+                // host opts into it by exposing tools for this run; keep the
+                // capability off when the catalog is empty.
+                experimentalApi: dynamicTools.length > 0
+                  || options.initialize?.experimentalApi === true,
               }));
               client.initialized();
 
@@ -454,7 +460,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               const opened = checkpoint === null
                 ? await client.startThread(codexThreadStartParams({
                     ...policy,
-                    dynamicTools: codexDynamicTools(request.tools.list()),
+                    dynamicTools,
                   }))
                 : await client.resumeThread(codexThreadResumeParams({
                     ...policy,

@@ -178,7 +178,9 @@ interactions, shell, filesystem, and network as unsupported. A host may report
 a more exact capability profile only when its injected policy and connection
 actually provide those surfaces.
 
-Dynamic tools are attached when a Codex thread is created. The current App
-Server resume request does not accept a replacement catalog, so a resumed
+Non-empty dynamic tool catalogs are attached when a Codex thread is created,
+and the adapter enables App Server's experimental capability for those turns.
+An empty catalog is omitted and keeps that capability disabled. The current
+App Server resume request does not accept a replacement catalog, so a resumed
 thread retains its original catalog; the host should invalidate its resume
 token when that catalog is no longer compatible.

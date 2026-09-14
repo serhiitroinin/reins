@@ -126,6 +126,17 @@ describe("Codex App Server adapter", () => {
     await collect(run.events);
     expect(await run.done).toBe("completed");
     expect(fixture.state.requests).toContainEqual({
+      method: "initialize",
+      params: {
+        clientInfo: { name: "fold-harness-conformance", version: "1" },
+        capabilities: {
+          experimentalApi: true,
+          requestAttestation: false,
+          optOutNotificationMethods: null,
+        },
+      },
+    });
+    expect(fixture.state.requests).toContainEqual({
       method: "thread/start",
       params: {
         cwd: "/conformance",
@@ -259,6 +270,25 @@ describe("Codex App Server adapter", () => {
     await collect(second.events);
     expect(await second.done).toBe("completed");
     expect(checkpoints).toEqual(["durable-thread", "durable-thread"]);
+    expect(requests).toContainEqual({
+      method: "initialize",
+      params: {
+        clientInfo: { name: "checkpoint-test", version: "1" },
+        capabilities: {
+          experimentalApi: false,
+          requestAttestation: false,
+          optOutNotificationMethods: null,
+        },
+      },
+    });
+    expect(requests).toContainEqual({
+      method: "thread/start",
+      params: {
+        cwd: "/work",
+        sandbox: "read-only",
+        approvalPolicy: "never",
+      },
+    });
     expect(requests).toContainEqual({
       method: "thread/resume",
       params: {
