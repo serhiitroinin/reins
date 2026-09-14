@@ -33,4 +33,25 @@ describe("adapter conformance", () => {
       message: "basic adapter events changed",
     });
   });
+
+  test("a timed out case cancels its run and closes its session", async () => {
+    let cancellations = 0;
+    let closes = 0;
+    const report = await runAdapterConformance({
+      fixture: createConformanceFixture({
+        hangScenario: "context",
+        onCancel: () => { cancellations += 1; },
+        onClose: () => { closes += 1; },
+      }),
+      timeoutMs: 20,
+    });
+
+    expect(report.cases.find((entry) => entry.name === "context boundary")).toEqual({
+      name: "context boundary",
+      status: "failed",
+      message: "context boundary did not settle within 20 ms",
+    });
+    expect(cancellations).toBeGreaterThan(0);
+    expect(closes).toBeGreaterThan(0);
+  });
 });
