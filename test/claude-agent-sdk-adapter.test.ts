@@ -457,6 +457,43 @@ describe("Claude Agent SDK adapter", () => {
     await session.close();
   });
 
+  test("retires a provider stream when sending a turn fails", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    let sends = 0;
+    let closes = 0;
+    let late!: () => void;
+    const adapter = createClaudeAgentSdkAdapter({
+      connect: () => ({
+        messages,
+        send() {
+          sends += 1;
+          late = () => {
+            messages.push({ type: "assistant", message: { content: [{ type: "text", text: "late-from-first" }] } });
+            messages.push({ type: "result", subtype: "success", is_error: false });
+          };
+          throw new Error("private send failure");
+        },
+        interrupt() {},
+        close() {
+          closes += 1;
+          messages.close();
+        },
+      }),
+    });
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "send-failure" },
+      resumeToken: null,
+    });
+
+    await expect(collect(session.run(adapterRequest("send-failure", "one")))).rejects.toThrow("private send failure");
+    late();
+    await expect(collect(session.run(adapterRequest("send-failure", "two")))).rejects.toThrow("private send failure");
+
+    expect(sends).toBe(1);
+    expect(closes).toBe(1);
+    await session.close();
+  });
+
   test("bounds an interrupt that the provider never finishes and retires its stream", async () => {
     const messages = createPushableAsyncIterable<unknown>();
     let closes = 0;

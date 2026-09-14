@@ -159,7 +159,9 @@ An Agent SDK `system/init` message updates only the opaque resume checkpoint.
 The optional checkpoint hook is awaited before a turn completes. Interrupts
 wait for the provider's terminal boundary so an old result cannot settle the
 next turn. A provider that does not reach that boundary within the configured
-grace period has its connection retired rather than reused.
+grace period has its connection retired rather than reused. A rejected turn
+send retires the stream immediately too, because provider work may already
+have started and its delayed output cannot be attributed to another turn.
 
 A long-lived connection is pinned to the account, model, effort, run settings,
 and provider configuration from its first turn. A later turn that changes that

@@ -454,7 +454,10 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
 
       const consume = async (value: ClaudeAgentSdkConnection): Promise<void> => {
         try {
-          for await (const message of value.messages) active?.consumer.message(message);
+          for await (const message of value.messages) {
+            const turn = active;
+            if (turn && !turn.finished) turn.consumer.message(message);
+          }
         } catch (error) {
           streamFailure = error;
         } finally {
@@ -629,7 +632,18 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             const opened = await connect(request, requestedBinding);
             if (request.signal.aborted) throw new HarnessAdapterInterruptedError();
             const input = await (options.mapInput?.(request) ?? defaultTurnInput(request));
-            await opened.send(input);
+            try {
+              await opened.send(input);
+            } catch (error) {
+              // `send` may have started provider work before rejecting. Its
+              // stream can no longer be assigned safely to another turn.
+              streamFailure = error;
+              streamEnded = true;
+              if (connection === opened) connection = null;
+              connecting = null;
+              void Promise.resolve(opened.close()).catch(() => undefined);
+              throw error;
+            }
           })();
           void execute.catch((error: unknown) => {
             if (turn.finished) return;
