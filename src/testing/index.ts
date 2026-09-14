@@ -8,6 +8,9 @@ import type {
   HarnessAdapterSession,
 } from "../runtime.js";
 
+export * from "./conformance.js";
+export * from "./conformance-fixture.js";
+
 const unsupported = { support: "unsupported" as const };
 
 export const scriptedCapabilities: HarnessCapabilities = {
@@ -77,4 +80,3 @@ export function createScriptedAdapter(options: ScriptedAdapterOptions): {
   };
   return { adapter, state };
 }
-
