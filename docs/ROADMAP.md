@@ -14,13 +14,16 @@
 - Deterministic adapter fixtures, a framework-neutral conformance runner, and publish checks.
 - Codex App Server request builders for initialize, thread start/resume, and turns.
 - Codex App Server event normalization, including tool lifecycles, turn usage, and separate account-limit snapshots.
+- A provider-injected Codex App Server adapter covering transport lifecycle,
+  context trust labels, dynamic tools, cancellation, checkpoints, and safe
+  terminal semantics, verified through the shared conformance runner.
 - Fold dogfood integration for shared Claude and Codex communication seams.
 
 ## Next
 
-1. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
-2. Make the Codex and Claude fake-provider adapters pass the conformance runner.
-3. Migrate Fold's Codex App Server lane onto the package event consumer while keeping its frozen product projection in Fold.
+1. Migrate Fold's Codex App Server lane onto the complete package adapter while keeping process policy and its frozen product projection in Fold.
+2. Compose the Claude SDK seams into a provider-injected adapter and make its fake provider pass the conformance runner.
+3. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
 4. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
 5. Decide from measured parity which native adapters remain necessary.
 6. Move the generic MCP tool bridge behind `HarnessToolHost`.
