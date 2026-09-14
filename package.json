@@ -1,6 +1,6 @@
 {
   "name": "@serhiitroinin/fold-harness",
-  "version": "0.1.0-next.7",
+  "version": "0.1.0-next.8",
   "description": "A provider-neutral runtime for building domain-specific agent harnesses.",
   "type": "module",
   "license": "MIT",
