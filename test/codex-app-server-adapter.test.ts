@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createHarness } from "../src/runtime.ts";
+import { createCodexAppServerAdapter } from "../src/adapters/codex-app-server-adapter.ts";
 import { createMemoryPersistence } from "../src/stores.ts";
 import { createToolHost } from "../src/tools.ts";
+import { createPushableAsyncIterable } from "../src/transports/async-iterable.ts";
 import {
   CODEX_SERVICE_TIER_CONTROL_ID,
   createCodexAppServerConformanceFixture,
@@ -114,6 +116,89 @@ describe("Codex App Server adapter", () => {
       },
     });
 
+    await runtime.close();
+  });
+
+  test("cancels a pending connection and closes it if it arrives late", async () => {
+    let startConnection!: () => void;
+    const connecting = new Promise<void>((resolve) => { startConnection = resolve; });
+    let resolveConnection!: (connection: {
+      write(line: string): void;
+      output: AsyncIterable<string>;
+      close(): void;
+    }) => void;
+    const connection = new Promise<{
+      write(line: string): void;
+      output: AsyncIterable<string>;
+      close(): void;
+    }>((resolve) => { resolveConnection = resolve; });
+    let closes = 0;
+    const output = createPushableAsyncIterable<string>();
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "pending-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect() {
+        startConnection();
+        return connection;
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "pending" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "hello" }],
+    });
+    const events = collect(run.events);
+
+    await connecting;
+    await run.cancel();
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+
+    resolveConnection({
+      write() {},
+      output,
+      close() {
+        closes += 1;
+        output.close();
+      },
+    });
+    await Bun.sleep(0);
+    expect(closes).toBe(1);
+    await runtime.close();
+  });
+
+  test("does not expose a thrown application-tool error to Codex", async () => {
+    const fixture = createCodexAppServerConformanceFixture();
+    fixture.useScenario("tools");
+    const runtime = createHarness({
+      adapters: [fixture.adapter],
+      persistence: createMemoryPersistence(),
+      tools: {
+        list: () => [{
+          name: "conformance_echo",
+          description: "Fail during the test.",
+          inputSchema: { type: "object" },
+        }],
+        call: async () => { throw new Error("secret from application internals"); },
+      },
+    });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "tool-error" },
+      adapterId: fixture.adapterId,
+      input: [{ type: "text", text: "call it" }],
+    });
+
+    const events = await collect(run.events);
+    expect(await run.done).toBe("completed");
+    expect(fixture.state.toolResponses).toContainEqual({
+      success: false,
+      contentItems: [{ type: "inputText", text: "The application tool failed." }],
+    });
+    expect(JSON.stringify(events)).not.toContain("secret from application internals");
     await runtime.close();
   });
 });

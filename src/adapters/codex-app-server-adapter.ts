@@ -154,6 +154,58 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
+function linkedAbortSignal(...sources: readonly AbortSignal[]): {
+  signal: AbortSignal;
+  dispose(): void;
+} {
+  const controller = new AbortController();
+  const abort = (): void => controller.abort();
+  for (const source of sources) {
+    if (source.aborted) controller.abort();
+    else source.addEventListener("abort", abort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    dispose() {
+      for (const source of sources) source.removeEventListener("abort", abort);
+    },
+  };
+}
+
+function connectUntilAbort(
+  connect: () => Promise<CodexAppServerConnection> | CodexAppServerConnection,
+  signal: AbortSignal,
+): Promise<CodexAppServerConnection> {
+  if (signal.aborted) return Promise.reject(new HarnessAdapterInterruptedError());
+  const pending = Promise.resolve().then(connect);
+  return new Promise((resolve, reject) => {
+    let interrupted = false;
+    const abort = (): void => {
+      if (interrupted) return;
+      interrupted = true;
+      signal.removeEventListener("abort", abort);
+      // The host may be unable to stop connection establishment immediately.
+      // If it resolves later, close the orphan without reviving the turn.
+      void pending.then((connection) => connection.close()).catch(() => undefined);
+      reject(new HarnessAdapterInterruptedError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    void pending.then(
+      (connection) => {
+        if (interrupted) return;
+        signal.removeEventListener("abort", abort);
+        resolve(connection);
+      },
+      (error: unknown) => {
+        if (interrupted) return;
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+}
+
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -279,6 +331,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
       let checkpoint = resumeToken;
       let active: ActiveTurn | null = null;
       let closed = false;
+      const lifetime = new AbortController();
 
       const adapterSession: HarnessAdapterSession = {
         async *run(request) {
@@ -286,6 +339,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
           if (active !== null) throw new Error("the Codex adapter session is already running");
 
           const queue = new AdapterEventQueue();
+          const turnAbort = linkedAbortSignal(request.signal, lifetime.signal);
           const settled = deferred<
             | { kind: "terminal"; outcome: CodexAppServerTurnOutcome }
             | { kind: "transport"; error?: unknown }
@@ -300,11 +354,18 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
             turnId: request.turnId,
             ...(request.accountId ? { accountId: request.accountId } : {}),
             ...(request.configuration ? { configuration: request.configuration } : {}),
-            signal: request.signal,
+            signal: turnAbort.signal,
           };
 
           const execute = async (): Promise<void> => {
-            const connection = await options.connect(connectRequest);
+            const connection = await connectUntilAbort(
+              () => options.connect(connectRequest),
+              connectRequest.signal,
+            );
+            if (connectRequest.signal.aborted) {
+              await Promise.resolve(connection.close()).catch(() => undefined);
+              throw new HarnessAdapterInterruptedError();
+            }
             let consumer!: ReturnType<typeof createCodexAppServerEventConsumer>;
             const client = createCodexAppServerClient({
               write: (line) => connection.write(line),
@@ -319,7 +380,16 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
                   if (name === null) {
                     return { error: { code: -32602, message: "the dynamic tool call named no tool" } };
                   }
-                  const result = await request.tools.call(name, value.arguments);
+                  let result: HarnessToolResult;
+                  try {
+                    result = await request.tools.call(name, value.arguments);
+                  } catch {
+                    result = {
+                      content: [{ type: "text", text: "The application tool failed." }],
+                      isError: true,
+                      code: "TOOL_EXECUTION_FAILED",
+                    };
+                  }
                   return { result: codexDynamicToolResult(result) };
                 },
               },
@@ -362,7 +432,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               } catch (error) {
                 failure = error;
               } finally {
-                consumer.end(request.signal.aborted ? "cancelled" : "failed");
+                consumer.end(connectRequest.signal.aborted ? "cancelled" : "failed");
                 client.end();
                 if (!terminal) settled.resolve({ kind: "transport", ...(failure === undefined ? {} : { error: failure }) });
               }
@@ -410,6 +480,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
 
               const end = await settled.promise;
               if (end.kind === "transport") {
+                if (connectRequest.signal.aborted) throw new HarnessAdapterInterruptedError();
                 if (end.error !== undefined) throw end.error;
                 throw new Error("the Codex App Server transport ended before the turn completed");
               }
@@ -443,8 +514,12 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
             executionFailure = error;
           } finally {
             // If a consumer stops reading, still release the provider connection.
-            if (active !== null) await closeActive(active);
-            await execution.catch(() => undefined);
+            try {
+              if (active !== null) await closeActive(active);
+              await execution.catch(() => undefined);
+            } finally {
+              turnAbort.dispose();
+            }
           }
           if (executionFailure !== undefined) throw executionFailure;
         },
@@ -469,6 +544,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
         async close() {
           if (closed) return;
           closed = true;
+          lifetime.abort();
           if (active !== null) await closeActive(active);
         },
       };
