@@ -5,6 +5,7 @@
     "@serhiitroinin/fold-harness": "0.1.0-next.0"
   },
   "changesets": [
-    "calm-contexts-prepare"
+    "calm-contexts-prepare",
+    "fuzzy-hounds-discover"
   ]
 }

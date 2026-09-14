@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.2
+
+### Patch Changes
+
+- c155b79: Expose provider-neutral engine profiles, model catalogs, typed controls, permission grants, and account limits. Add Codex model discovery mapping with per-model Fast service-tier support.
+
 ## 0.1.0-next.1
 
 ### Patch Changes
