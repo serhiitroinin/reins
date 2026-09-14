@@ -16,6 +16,7 @@ import {
   type HarnessSessionKey,
   type HarnessTurnStatus,
 } from "./protocol.js";
+import { emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
 
 export type HarnessAdapterEvent = Exclude<
   HarnessEventPayload,
@@ -26,6 +27,7 @@ export interface HarnessAdapterRunRequest extends HarnessRunRequest {
   runId: string;
   turnId: string;
   signal: AbortSignal;
+  tools: HarnessTurnTools;
 }
 
 export interface HarnessAdapterSession {
@@ -88,6 +90,7 @@ export interface HarnessRuntime {
 export interface HarnessRuntimeOptions {
   adapters: readonly HarnessAdapter[];
   persistence: HarnessPersistence;
+  tools?: HarnessToolHost;
   createId?: () => string;
   now?: () => Date;
 }
@@ -145,6 +148,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   if (adapters.size !== options.adapters.length) throw new Error("adapter identifiers must be unique");
   const createId = options.createId ?? (() => crypto.randomUUID());
   const now = options.now ?? (() => new Date());
+  const tools = options.tools ?? emptyToolHost;
   const opened = new Map<string, Promise<ManagedSession>>();
   let closed = false;
 
@@ -218,7 +222,17 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           managed = await open(request.session, adapter);
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          for await (const payload of managed.session.run({ ...request, runId, turnId, signal: controller.signal })) {
+          const toolContext = { session: request.session, adapterId: adapter.id, runId, turnId, signal: controller.signal };
+          for await (const payload of managed.session.run({
+            ...request,
+            runId,
+            turnId,
+            signal: controller.signal,
+            tools: {
+              list: () => tools.list(toolContext),
+              call: (name, input) => tools.call(name, input, toolContext),
+            },
+          })) {
             if (controller.signal.aborted) break;
             await emit(payload);
           }
@@ -275,4 +289,3 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     },
   };
 }
-
