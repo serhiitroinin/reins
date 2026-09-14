@@ -169,6 +169,83 @@ export function codexTurnSettingOverrides(settings?: HarnessRunSettings): {
   return typeof value === "string" ? { serviceTierForTurn: value } : {};
 }
 
+export interface CodexAppServerClientInfo {
+  name: string;
+  title?: string;
+  version: string;
+}
+
+export interface CodexInitializeOptions {
+  clientInfo: CodexAppServerClientInfo;
+  experimentalApi?: boolean;
+  requestAttestation?: boolean;
+  optOutNotificationMethods?: readonly string[] | null;
+}
+
+/** Build `initialize` without assigning a product identity or experimental behavior. */
+export function codexInitializeParams(options: CodexInitializeOptions): Record<string, unknown> {
+  return {
+    clientInfo: options.clientInfo,
+    capabilities: {
+      experimentalApi: options.experimentalApi ?? false,
+      requestAttestation: options.requestAttestation ?? false,
+      optOutNotificationMethods: options.optOutNotificationMethods ?? null,
+    },
+  };
+}
+
+export interface CodexThreadOptions {
+  cwd: string;
+  sandbox: string;
+  approvalPolicy: string;
+  model?: string;
+}
+
+/** Serialize explicit host policy into a Codex `thread/start` request. */
+export function codexThreadStartParams(options: CodexThreadOptions): Record<string, unknown> {
+  return {
+    cwd: options.cwd,
+    sandbox: options.sandbox,
+    approvalPolicy: options.approvalPolicy,
+    ...(options.model ? { model: options.model } : {}),
+  };
+}
+
+export interface CodexThreadResumeOptions extends CodexThreadOptions {
+  threadId: string;
+  excludeTurns: boolean;
+}
+
+/** Serialize explicit host policy into a Codex `thread/resume` request. */
+export function codexThreadResumeParams(options: CodexThreadResumeOptions): Record<string, unknown> {
+  return {
+    threadId: options.threadId,
+    excludeTurns: options.excludeTurns,
+    ...codexThreadStartParams(options),
+  };
+}
+
+export interface CodexTurnOptions {
+  threadId: string;
+  prompt: string;
+  effort?: string;
+  imageFiles?: readonly string[];
+  settings?: HarnessRunSettings;
+}
+
+/** Serialize a provider-neutral turn, including adapter-owned control translation. */
+export function codexTurnStartParams(options: CodexTurnOptions): Record<string, unknown> {
+  return {
+    threadId: options.threadId,
+    input: [
+      { type: "text", text: options.prompt, text_elements: [] },
+      ...(options.imageFiles ?? []).map((path) => ({ type: "localImage", path })),
+    ],
+    ...(options.effort ? { effort: options.effort } : {}),
+    ...codexTurnSettingOverrides(options.settings),
+  };
+}
+
 export function createCodexAppServerClient(options: CodexAppServerClientOptions): CodexAppServerClient {
   const peer: JsonRpcPeer = createJsonRpcPeer({
     write: options.write,
