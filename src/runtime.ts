@@ -102,6 +102,18 @@ export class HarnessRuntimeError extends Error {
   }
 }
 
+/** An adapter failure whose message is explicitly safe to show and persist. */
+export class HarnessAdapterError extends Error {
+  constructor(
+    readonly code: string,
+    readonly publicMessage: string,
+    readonly retryable = false,
+  ) {
+    super(publicMessage);
+    this.name = "HarnessAdapterError";
+  }
+}
+
 interface ManagedSession {
   adapter: HarnessAdapter;
   session: HarnessAdapterSession;
@@ -138,8 +150,14 @@ class AsyncQueue<T> implements AsyncIterable<T> {
   }
 }
 
-function safeError(error: unknown): { code: string; message: string } {
-  if (error instanceof Error) return { code: error.name || "ADAPTER_ERROR", message: error.message };
+function safeError(error: unknown): { code: string; message: string; retryable?: boolean } {
+  if (error instanceof HarnessAdapterError) {
+    return {
+      code: error.code,
+      message: error.publicMessage,
+      ...(error.retryable ? { retryable: true } : {}),
+    };
+  }
   return { code: "ADAPTER_ERROR", message: "The adapter turn failed." };
 }
 
@@ -247,12 +265,17 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
         } finally {
           if (managed) managed.active = false;
-          await emit({
-            kind: "turn-completed",
-            status,
-            usage: { durationMs: Math.max(0, now().getTime() - startedAt) },
-          });
-          queue.close();
+          try {
+            await emit({
+              kind: "turn-completed",
+              status,
+              usage: { durationMs: Math.max(0, now().getTime() - startedAt) },
+            });
+          } finally {
+            // A failed event store must reject `done`, but never leave readers
+            // waiting on a queue no producer can write to again.
+            queue.close();
+          }
         }
         return status;
       })();

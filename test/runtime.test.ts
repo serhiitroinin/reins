@@ -3,6 +3,7 @@ import {
   createHarness,
   createMemoryPersistence,
   HarnessRuntimeError,
+  HarnessAdapterError,
   type HarnessAdapter,
   type HarnessAdapterRunRequest,
   type HarnessCapabilities,
@@ -108,5 +109,58 @@ describe("harness runtime", () => {
     const harness = createHarness({ adapters: [], persistence: createMemoryPersistence() });
     expect(() => harness.start({ ...request, adapterId: "missing" })).toThrow(HarnessRuntimeError);
   });
-});
 
+  test("does not persist an arbitrary adapter error message", async () => {
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return { async *run() { throw new Error("prompt bytes and credentials"); } };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = await collect(run.events);
+    expect(events.find((event) => event.payload.kind === "error")?.payload).toEqual({
+      kind: "error",
+      code: "ADAPTER_ERROR",
+      message: "The adapter turn failed.",
+    });
+  });
+
+  test("persists only an adapter error explicitly marked safe", async () => {
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            throw new HarnessAdapterError("ENGINE_UNAVAILABLE", "Codex is not installed.", true);
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = await collect(run.events);
+    expect(events.find((event) => event.payload.kind === "error")?.payload).toMatchObject({
+      code: "ENGINE_UNAVAILABLE",
+      message: "Codex is not installed.",
+      retryable: true,
+    });
+  });
+
+  test("closes the event iterator when persistence fails", async () => {
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() { return { async *run() {} }; },
+    };
+    const persistence = createMemoryPersistence();
+    persistence.events.append = async () => { throw new Error("store unavailable"); };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    expect(await collect(run.events)).toEqual([]);
+    await expect(run.done).rejects.toThrow("store unavailable");
+  });
+});
