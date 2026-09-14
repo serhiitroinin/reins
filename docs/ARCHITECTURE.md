@@ -102,15 +102,15 @@ An adapter opens or resumes a provider session and exposes an `AsyncIterable`
 of normalized events. It must state its real capabilities and must not leak
 provider SDK types into the core protocol.
 
-Codex App Server communication currently uses a shared newline JSON-RPC peer.
+Codex App Server communication uses a shared newline JSON-RPC peer.
 Its model mapper exposes App Server reasoning options, modalities, and service
 tiers through the generic catalog. In particular, Fast is a model-declared
 service-tier control rather than a universal boolean. OpenCode-style adapters
 may group models from multiple underlying providers, and Grok-specific
 behavior can be added as namespaced controls without changing the runtime.
-The same adapter module serializes initialize, thread, resume, and turn
-requests, but only from host-supplied product identity, sandbox, approval,
-model, effort, image, and generic control decisions.
+The low-level module serializes initialize, thread, resume, and turn requests,
+but only from host-supplied product identity, sandbox, approval, model, effort,
+image, and generic control decisions.
 Its turn-scoped event consumer translates App Server notifications into
 `HarnessAdapterEvent`, `HarnessLimitSnapshot`, and terminal turn outcomes. It
 reconciles streamed message deltas with the authoritative completed message,
@@ -121,8 +121,23 @@ never serializes MCP arguments, while a domain product can classify its own
 tools without teaching the package about its event schema. Provider failure
 text is redacted by default and becomes public only through an explicit host
 mapper.
-The process, environment, MCP configuration, and sandbox posture remain host
-decisions during the first Fold migration.
+`createCodexAppServerAdapter` composes that client and consumer into the public
+runtime contract. It owns the wire lifecycle, dynamic tool round trips,
+context trust labels, cancellation, checkpoints, and transport termination.
+Its connection factory is injected per turn. The process, environment,
+credentials, account selection, MCP configuration, sandbox posture, domain
+context, and persistence remain host decisions.
+
+This division is also the stack boundary. The protocol, discovery contracts,
+and wire formats do not assume React, Electron, HTTP, or a particular database.
+JavaScript hosts can use the runtime directly. Other language and native hosts
+can implement the same versioned protocol from generated bindings once the JSON
+Schema milestone lands; they do not need to embed Fold's UI or daemon.
+
+The current Codex App Server schema accepts dynamic tools on thread creation,
+not thread resume. A resumed thread therefore keeps its original catalog. A
+host must discard a stale checkpoint when its application tool catalog is no
+longer compatible.
 
 ## Security boundary
 

@@ -114,6 +114,7 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/context` — turn-scoped application context sources.
+- `@serhiitroinin/fold-harness/adapters/codex-app-server-adapter` — a complete, provider-injected Codex adapter.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
@@ -157,4 +158,27 @@ The package is pre-release software. Fold is the first dogfood consumer.
 The current Fold integration uses the shared NDJSON transport for Claude and
 Codex output, the shared pushable input stream for Claude SDK turns, and the
 shared App Server lifecycle client and request builders for Codex. A package
-event consumer is available for the next Fold migration slice.
+event consumer is available, and the complete Codex adapter composes those
+pieces behind an injected connection. Fold will migrate onto that adapter
+without moving process creation, credentials, sandbox policy, vault context,
+or product event projection into this package.
+
+## Codex adapter boundary
+
+`createCodexAppServerAdapter` owns initialize, thread start or resume, turn
+start, byte-safe JSON-RPC reading, dynamic tool calls, normalized events,
+cancellation, checkpoints, and terminal semantics. The host supplies a
+connection plus explicit client identity, working directory, sandbox and
+approval policy, discovery data, application tools, and any public redaction
+or presentation hooks.
+
+The adapter does not spawn Codex, inherit an environment, find an account, or
+read credentials. Its default capabilities intentionally report provider
+interactions, shell, filesystem, and network as unsupported. A host may report
+a more exact capability profile only when its injected policy and connection
+actually provide those surfaces.
+
+Dynamic tools are attached when a Codex thread is created. The current App
+Server resume request does not accept a replacement catalog, so a resumed
+thread retains its original catalog; the host should invalidate its resume
+token when that catalog is no longer compatible.
