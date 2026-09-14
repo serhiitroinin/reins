@@ -23,38 +23,46 @@
   ],
   "files": [
     "dist",
+    "src",
     "README.md",
     "LICENSE"
   ],
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
     "./protocol": {
-      "types": "./dist/protocol.d.ts",
+      "types": "./src/protocol.ts",
+      "bun": "./src/protocol.ts",
       "import": "./dist/protocol.js"
     },
     "./runtime": {
-      "types": "./dist/runtime.d.ts",
+      "types": "./src/runtime.ts",
+      "bun": "./src/runtime.ts",
       "import": "./dist/runtime.js"
     },
     "./transports/ndjson": {
-      "types": "./dist/transports/ndjson.d.ts",
+      "types": "./src/transports/ndjson.ts",
+      "bun": "./src/transports/ndjson.ts",
       "import": "./dist/transports/ndjson.js"
     },
     "./transports/json-rpc": {
-      "types": "./dist/transports/json-rpc.d.ts",
+      "types": "./src/transports/json-rpc.ts",
+      "bun": "./src/transports/json-rpc.ts",
       "import": "./dist/transports/json-rpc.js"
     },
     "./adapters/codex-app-server": {
-      "types": "./dist/adapters/codex-app-server.d.ts",
+      "types": "./src/adapters/codex-app-server.ts",
+      "bun": "./src/adapters/codex-app-server.ts",
       "import": "./dist/adapters/codex-app-server.js"
     },
     "./testing": {
-      "types": "./dist/testing/index.d.ts",
+      "types": "./src/testing/index.ts",
+      "bun": "./src/testing/index.ts",
       "import": "./dist/testing/index.js"
     }
   },
@@ -82,4 +90,3 @@
     "access": "public"
   }
 }
-
