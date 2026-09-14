@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   CODEX_SERVICE_TIER_CONTROL_ID,
   codexInitializeParams,
+  codexDynamicTools,
   codexModelCatalog,
   codexThreadResumeParams,
   codexThreadStartParams,
@@ -47,11 +48,25 @@ describe("Codex App Server client", () => {
       sandbox: "read-only",
       approvalPolicy: "never",
       model: "gpt-test",
+      dynamicTools: [{
+        type: "function",
+        name: "lookup",
+        description: "Look up a record.",
+        inputSchema: { type: "object" },
+        deferLoading: false,
+      }],
     })).toEqual({
       cwd: "/tmp/work",
       sandbox: "read-only",
       approvalPolicy: "never",
       model: "gpt-test",
+      dynamicTools: [{
+        type: "function",
+        name: "lookup",
+        description: "Look up a record.",
+        inputSchema: { type: "object" },
+        deferLoading: false,
+      }],
     });
     expect(codexThreadResumeParams({
       threadId: "thread-1",
@@ -59,6 +74,13 @@ describe("Codex App Server client", () => {
       cwd: "/tmp/work",
       sandbox: "workspace-write",
       approvalPolicy: "on-request",
+      dynamicTools: [{
+        type: "function",
+        name: "must-not-be-sent-on-resume",
+        description: "Already persisted on the Codex thread.",
+        inputSchema: {},
+        deferLoading: false,
+      }],
     })).toEqual({
       threadId: "thread-1",
       excludeTurns: true,
@@ -66,6 +88,17 @@ describe("Codex App Server client", () => {
       sandbox: "workspace-write",
       approvalPolicy: "on-request",
     });
+    expect(codexDynamicTools([{
+      name: "lookup",
+      description: "Look up a record.",
+      inputSchema: { type: "object" },
+    }])).toEqual([{
+      type: "function",
+      name: "lookup",
+      description: "Look up a record.",
+      inputSchema: { type: "object" },
+      deferLoading: false,
+    }]);
   });
 
   test("translates generic model controls only while building the Codex turn", () => {
