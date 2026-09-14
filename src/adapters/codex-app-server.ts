@@ -229,7 +229,9 @@ export function codexThreadStartParams(options: CodexThreadOptions): Record<stri
     sandbox: options.sandbox,
     approvalPolicy: options.approvalPolicy,
     ...(options.model ? { model: options.model } : {}),
-    ...(options.dynamicTools ? { dynamicTools: options.dynamicTools } : {}),
+    ...(options.dynamicTools && options.dynamicTools.length > 0
+      ? { dynamicTools: options.dynamicTools }
+      : {}),
   };
 }
 

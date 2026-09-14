@@ -47,6 +47,16 @@ describe("Codex App Server client", () => {
       cwd: "/tmp/work",
       sandbox: "read-only",
       approvalPolicy: "never",
+      dynamicTools: [],
+    })).toEqual({
+      cwd: "/tmp/work",
+      sandbox: "read-only",
+      approvalPolicy: "never",
+    });
+    expect(codexThreadStartParams({
+      cwd: "/tmp/work",
+      sandbox: "read-only",
+      approvalPolicy: "never",
       model: "gpt-test",
       dynamicTools: [{
         type: "function",
