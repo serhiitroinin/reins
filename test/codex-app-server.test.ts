@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CODEX_SERVICE_TIER_CONTROL_ID,
+  codexModelCatalog,
+  codexTurnSettingOverrides,
   createCodexAppServerClient,
   openCodexTurn,
 } from "../src/adapters/codex-app-server.ts";
@@ -25,6 +28,56 @@ function fixture() {
 }
 
 describe("Codex App Server client", () => {
+  test("maps model-specific effort and Fast into generic controls", () => {
+    expect(codexModelCatalog({
+      data: [{
+        id: "gpt-5.4",
+        displayName: "GPT-5.4",
+        description: "General purpose",
+        isDefault: true,
+        hidden: false,
+        inputModalities: ["text", "image"],
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "Balanced" },
+          { reasoningEffort: "xhigh", description: "Deep reasoning" },
+        ],
+        defaultReasoningEffort: "medium",
+        serviceTiers: [{ id: "fast", name: "Fast", description: "Faster responses" }],
+        defaultServiceTier: null,
+      }],
+    })).toEqual({
+      defaultModelId: "gpt-5.4",
+      models: [{
+        id: "gpt-5.4",
+        label: "GPT-5.4",
+        description: "General purpose",
+        inputModalities: ["text", "image"],
+        effort: {
+          options: [
+            { id: "medium", label: "Medium", description: "Balanced" },
+            { id: "xhigh", label: "Xhigh", description: "Deep reasoning" },
+          ],
+          defaultOptionId: "medium",
+        },
+        controls: [{
+          id: CODEX_SERVICE_TIER_CONTROL_ID,
+          label: "Speed",
+          description: "Choose the service tier for this turn.",
+          kind: "select",
+          scope: "turn",
+          options: [
+            { id: "default", label: "Standard" },
+            { id: "fast", label: "Fast", description: "Faster responses" },
+          ],
+          defaultValue: "default",
+        }],
+      }],
+    });
+    expect(codexTurnSettingOverrides({
+      controls: { [CODEX_SERVICE_TIER_CONTROL_ID]: "fast" },
+    })).toEqual({ serviceTierForTurn: "fast" });
+  });
+
   test("opens a new thread and starts its turn in protocol order", async () => {
     const fx = fixture();
     const opening = openCodexTurn({
@@ -73,4 +126,3 @@ describe("Codex App Server client", () => {
     await expect(answer).rejects.toThrow("thread/resume: no rollout");
   });
 });
-

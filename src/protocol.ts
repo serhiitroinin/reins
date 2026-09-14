@@ -6,6 +6,8 @@
  * package's public contract.
  */
 
+import type { HarnessRunSettings } from "./profile.js";
+
 export type HarnessId = string;
 
 export interface HarnessSessionKey {
@@ -127,6 +129,9 @@ export interface HarnessRunRequest {
   input: readonly HarnessInput[];
   model?: string;
   accountId?: string;
+  /** Adapter-declared, provider-neutral settings selected by the host. */
+  settings?: HarnessRunSettings;
+  /** Escape hatch for adapter configuration that has no portable UI contract. */
   configuration?: Readonly<Record<string, unknown>>;
   metadata?: Readonly<Record<string, unknown>>;
 }
@@ -150,4 +155,3 @@ export function isHarnessEvent(value: unknown): value is HarnessEvent {
     && event.payload !== null
     && typeof event.payload.kind === "string";
 }
-

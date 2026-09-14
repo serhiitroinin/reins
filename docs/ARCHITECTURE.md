@@ -30,6 +30,29 @@ Provider identifiers are strings. Optional behavior is expressed through
 capability data, not `if provider === ...` branches. Provider-only information
 uses namespaced extension events.
 
+## Engine profiles and discovery
+
+The runtime exposes engine profiles, model catalogs, and account limits as
+three independent discovery calls. Their availability can differ and their
+refresh cadence usually does too. Discovery failures use explicit safe
+messages; raw provider errors are not returned to a product.
+
+An engine profile owns its permission vocabulary. The core does not pretend a
+Claude approval policy and a Codex sandbox mode mean the same thing. Permission
+modes can require a versioned consent; a stored grant whose version no longer
+matches resolves to the safe default. This lets an adapter change the meaning
+of an elevated mode without silently reusing old consent.
+
+Common settings are adapter-declared toggle, select, or number controls with
+open identifiers and turn, session, or account scope. Models can override the
+engine controls where available values differ. Effort remains a first-class
+model attribute because its options and default are model-specific, but effort
+option ids are still open strings.
+
+Limits are snapshots, separate from per-turn token and cost usage events. A
+snapshot can represent rolling rate windows, credits, spend, context, or an
+unknown future kind without embedding a provider response type.
+
 ## Runtime
 
 `createHarness` caches one adapter session per tenant, actor, thread, and
@@ -80,6 +103,11 @@ of normalized events. It must state its real capabilities and must not leak
 provider SDK types into the core protocol.
 
 Codex App Server communication currently uses a shared newline JSON-RPC peer.
+Its model mapper exposes App Server reasoning options, modalities, and service
+tiers through the generic catalog. In particular, Fast is a model-declared
+service-tier control rather than a universal boolean. OpenCode-style adapters
+may group models from multiple underlying providers, and Grok-specific
+behavior can be added as namespaced controls without changing the runtime.
 The process, environment, MCP configuration, and sandbox posture remain host
 decisions during the first Fold migration.
 

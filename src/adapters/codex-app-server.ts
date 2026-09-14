@@ -11,6 +11,15 @@ import {
   type JsonRpcPeer,
   type JsonRpcRequestAnswer,
 } from "../transports/json-rpc.js";
+import type {
+  HarnessControl,
+  HarnessModel,
+  HarnessModelCatalog,
+  HarnessRunSettings,
+} from "../profile.js";
+
+/** Public control id used to render and submit Codex speed tiers, including Fast. */
+export const CODEX_SERVICE_TIER_CONTROL_ID = "openai:service-tier";
 
 export interface CodexAppServerHooks {
   notification(method: string, params: Record<string, unknown>): void;
@@ -47,6 +56,93 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function title(value: string): string {
+  return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Convert one `model/list` response into the provider-neutral catalog.
+ * Pagination remains the adapter's responsibility; concatenate pages before
+ * passing a response when the server supplies `nextCursor`.
+ */
+export function codexModelCatalog(response: unknown): HarnessModelCatalog {
+  const data = record(response).data;
+  const models: HarnessModel[] = [];
+  if (!Array.isArray(data)) return { models };
+  for (const entry of data) {
+    const model = record(entry);
+    const id = stringValue(model.id) ?? stringValue(model.model);
+    if (!id) continue;
+    const effortRows = Array.isArray(model.supportedReasoningEfforts)
+      ? model.supportedReasoningEfforts
+      : [];
+    const effortOptions = effortRows.flatMap((row) => {
+      const value = record(row);
+      const effort = stringValue(value.reasoningEffort);
+      return effort ? [{
+        id: effort,
+        label: title(effort),
+        ...(stringValue(value.description) ? { description: stringValue(value.description)! } : {}),
+      }] : [];
+    });
+    const tierRows = Array.isArray(model.serviceTiers) ? model.serviceTiers : [];
+    const tierOptions = [{ id: "default", label: "Standard" }, ...tierRows.flatMap((row) => {
+      const value = record(row);
+      const tierId = stringValue(value.id);
+      return tierId ? [{
+        id: tierId,
+        label: stringValue(value.name) ?? title(tierId),
+        ...(stringValue(value.description) ? { description: stringValue(value.description)! } : {}),
+      }] : [];
+    })].filter((option, index, all) => all.findIndex(({ id: candidate }) => candidate === option.id) === index);
+    const controls: HarnessControl[] = tierOptions.length > 1 ? [{
+      id: CODEX_SERVICE_TIER_CONTROL_ID,
+      label: "Speed",
+      description: "Choose the service tier for this turn.",
+      kind: "select",
+      scope: "turn",
+      options: tierOptions,
+      defaultValue: stringValue(model.defaultServiceTier) ?? "default",
+    }] : [];
+    const modalities = Array.isArray(model.inputModalities)
+      ? model.inputModalities.filter((value): value is string => typeof value === "string")
+      : [];
+    models.push({
+      id,
+      label: stringValue(model.displayName) ?? id,
+      ...(stringValue(model.description) ? { description: stringValue(model.description)! } : {}),
+      ...(model.hidden === true ? { hidden: true } : {}),
+      ...(modalities.length > 0 ? { inputModalities: modalities } : {}),
+      ...(effortOptions.length > 0 ? {
+        effort: {
+          options: effortOptions,
+          ...(stringValue(model.defaultReasoningEffort)
+            ? { defaultOptionId: stringValue(model.defaultReasoningEffort)! }
+            : {}),
+        },
+      } : {}),
+      ...(controls.length > 0 ? { controls } : {}),
+    });
+  }
+  const defaultModel = data.find((entry) => record(entry).isDefault === true);
+  const defaultModelId = defaultModel
+    ? stringValue(record(defaultModel).id) ?? stringValue(record(defaultModel).model)
+    : undefined;
+  return { models, ...(defaultModelId ? { defaultModelId } : {}) };
+}
+
+/** Translate generic turn settings into the Codex App Server turn override. */
+export function codexTurnSettingOverrides(settings?: HarnessRunSettings): {
+  serviceTierForTurn?: string;
+} {
+  const value = settings?.controls?.[CODEX_SERVICE_TIER_CONTROL_ID];
+  return typeof value === "string" ? { serviceTierForTurn: value } : {};
 }
 
 export function createCodexAppServerClient(options: CodexAppServerClientOptions): CodexAppServerClient {
@@ -100,4 +196,3 @@ export async function openCodexTurn(options: OpenCodexTurnOptions): Promise<stri
   await options.client.startTurn(options.turn(threadId));
   return threadId;
 }
-

@@ -1,5 +1,6 @@
 /** Public entry point for the Fold Harness runtime. */
 export * from "./protocol.js";
+export * from "./profile.js";
 export * from "./context.js";
 export * from "./runtime.js";
 export * from "./stores.js";

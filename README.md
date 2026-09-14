@@ -85,6 +85,7 @@ Run the complete example with `bun run example`.
 
 - `@serhiitroinin/fold-harness` — protocol, runtime, stores, tools, and transports.
 - `@serhiitroinin/fold-harness/protocol` — browser-safe public contracts.
+- `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/context` — turn-scoped application context sources.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
@@ -102,6 +103,25 @@ See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADM
 - Unknown extension events remain forward-compatible.
 - An adapter reports its actual security posture; the runtime does not claim
   that a subprocess is sandboxed merely because it was launched by the runtime.
+
+## Engine discovery
+
+Products can call `harness.profile()`, `harness.models()`, and
+`harness.limits()` independently. Each returns `available`, `unavailable`, or
+`unsupported`, so a model picker does not have to wait for account limits and a
+provider without usage APIs does not need a fake response.
+
+The profile describes its permission modes and generic typed controls. Model
+entries can add or replace controls whose choices vary by model. For example,
+the Codex App Server mapper turns its per-model service tiers into an
+`openai:service-tier` select control with Standard and Fast choices. A host
+submits the selected value through `HarnessRunSettings`; only the Codex adapter
+knows that it becomes `serviceTierForTurn` on the wire.
+
+This is also the extension path for aggregating engines such as OpenCode: a
+model may carry a provider-like `group`, while all adapter, model, control,
+permission, and limit identifiers remain open strings. New providers do not
+require a core-package enum release.
 
 ## Status
 

@@ -40,6 +40,11 @@
       "bun": "./src/protocol.ts",
       "import": "./dist/protocol.js"
     },
+    "./profile": {
+      "types": "./src/profile.ts",
+      "bun": "./src/profile.ts",
+      "import": "./dist/profile.js"
+    },
     "./runtime": {
       "types": "./src/runtime.ts",
       "bun": "./src/runtime.ts",

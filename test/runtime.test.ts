@@ -39,6 +39,72 @@ async function collect(stream: AsyncIterable<HarnessEvent>): Promise<HarnessEven
 }
 
 describe("harness runtime", () => {
+  test("discovers profiles, models, and limits independently", async () => {
+    const adapter: HarnessAdapter = {
+      id: "multi-provider",
+      capabilities: () => capabilities,
+      profile: () => ({
+        status: "available",
+        value: {
+          id: "multi-provider",
+          label: "OpenCode",
+          permissions: {
+            kind: "approval-policy",
+            selectable: false,
+            defaultModeId: "host",
+            modes: [{ id: "host", label: "Managed by host", posture: "standard" }],
+          },
+        },
+      }),
+      models: ({ accountId }) => ({
+        status: "available",
+        value: {
+          models: [{
+            id: "xai/grok-4",
+            label: "Grok 4",
+            group: { id: "xai", label: "xAI" },
+          }],
+          ...(accountId ? { defaultModelId: "xai/grok-4" } : {}),
+        },
+      }),
+      limits: () => ({ status: "unsupported" }),
+      async open() { return { async *run() {} }; },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+
+    expect(await harness.profile("multi-provider")).toMatchObject({
+      status: "available",
+      value: { label: "OpenCode" },
+    });
+    expect(await harness.models("multi-provider", { accountId: "account" })).toMatchObject({
+      status: "available",
+      value: { defaultModelId: "xai/grok-4", models: [{ group: { id: "xai" } }] },
+    });
+    expect(await harness.limits("multi-provider")).toEqual({ status: "unsupported" });
+  });
+
+  test("returns safe discovery failures and unsupported optional methods", async () => {
+    const adapter: HarnessAdapter = {
+      id: "failing",
+      capabilities: () => capabilities,
+      models: () => { throw new Error("secret provider response"); },
+      limits: () => { throw new HarnessAdapterError("SIGNED_OUT", "Sign in to continue.", true); },
+      async open() { return { async *run() {} }; },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+
+    expect(await harness.profile("failing")).toEqual({ status: "unsupported" });
+    expect(await harness.models("failing")).toEqual({
+      status: "unavailable",
+      message: "failing discovery failed.",
+    });
+    expect(await harness.limits("failing")).toEqual({
+      status: "unavailable",
+      message: "Sign in to continue.",
+      retryable: true,
+    });
+  });
+
   test("frames adapter events and persists a resume token", async () => {
     const openedWith: Array<string | null> = [];
     const adapter: HarnessAdapter = {

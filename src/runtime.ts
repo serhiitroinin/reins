@@ -25,6 +25,13 @@ import {
   type HarnessPreparedContext,
   type HarnessContextSource,
 } from "./context.js";
+import type {
+  HarnessDiscovery,
+  HarnessDiscoveryRequest,
+  HarnessEngineProfile,
+  HarnessLimitSnapshot,
+  HarnessModelCatalog,
+} from "./profile.js";
 import { emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
 
 export type HarnessAdapterEvent = Exclude<
@@ -56,6 +63,9 @@ export interface HarnessAdapterOpenRequest {
 export interface HarnessAdapter {
   readonly id: string;
   capabilities(): Promise<HarnessCapabilities> | HarnessCapabilities;
+  profile?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessEngineProfile>> | HarnessDiscovery<HarnessEngineProfile>;
+  models?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>> | HarnessDiscovery<HarnessModelCatalog>;
+  limits?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessLimitSnapshot>> | HarnessDiscovery<HarnessLimitSnapshot>;
   open(request: HarnessAdapterOpenRequest): Promise<HarnessAdapterSession>;
 }
 
@@ -93,6 +103,9 @@ export interface HarnessRun {
 
 export interface HarnessRuntime {
   capabilities(adapterId: string): Promise<HarnessCapabilities>;
+  profile(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessEngineProfile>>;
+  models(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>>;
+  limits(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessLimitSnapshot>>;
   start(request: HarnessRunRequest): HarnessRun;
   close(): Promise<void>;
 }
@@ -196,6 +209,26 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     return adapter;
   };
 
+  const discover = async <T>(
+    adapterId: string,
+    method: ((request: HarnessDiscoveryRequest) => Promise<HarnessDiscovery<T>> | HarnessDiscovery<T>) | undefined,
+    request: HarnessDiscoveryRequest,
+  ): Promise<HarnessDiscovery<T>> => {
+    if (!method) return { status: "unsupported" };
+    try {
+      return await method(request);
+    } catch (error) {
+      if (error instanceof HarnessAdapterError) {
+        return {
+          status: "unavailable",
+          message: error.publicMessage,
+          ...(error.retryable ? { retryable: true } : {}),
+        };
+      }
+      return { status: "unavailable", message: `${adapterId} discovery failed.` };
+    }
+  };
+
   const open = (key: HarnessSessionKey, adapter: HarnessAdapter): Promise<ManagedSession> => {
     const id = harnessSessionKey(key, adapter.id);
     const known = opened.get(id);
@@ -224,6 +257,21 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   return {
     async capabilities(adapterId) {
       return adapterFor(adapterId).capabilities();
+    },
+
+    profile(adapterId, request = {}) {
+      const adapter = adapterFor(adapterId);
+      return discover(adapterId, adapter.profile?.bind(adapter), request);
+    },
+
+    models(adapterId, request = {}) {
+      const adapter = adapterFor(adapterId);
+      return discover(adapterId, adapter.models?.bind(adapter), request);
+    },
+
+    limits(adapterId, request = {}) {
+      const adapter = adapterFor(adapterId);
+      return discover(adapterId, adapter.limits?.bind(adapter), request);
     },
 
     start(request) {
