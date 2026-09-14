@@ -84,9 +84,11 @@ Run the complete example with `bun run example`.
 ## Adapter conformance
 
 Adapter packages can run the framework-neutral contract suite from
-`@serhiitroinin/fold-harness/testing`. A fixture translates named scenarios
-into deterministic fake provider traffic; the runner exercises it only through
-the public runtime and returns a report instead of depending on a test library.
+`@serhiitroinin/fold-harness/testing`. The adapter under test is constructed
+once against a controllable fake provider. Its fixture changes that provider's
+script for each named scenario without replacing or wrapping the adapter. The
+runner exercises the same adapter through the public runtime and returns a
+report instead of depending on a test library.
 
 ```ts
 import {

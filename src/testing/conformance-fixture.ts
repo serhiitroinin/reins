@@ -23,12 +23,16 @@ export const conformanceCapabilities: HarnessCapabilities = {
   extensions: { "conformance:fixture": { support: "stable" } },
 };
 
-export function createConformanceFixture(options: { basicText?: string } = {}): AdapterConformanceFixture {
+export function createConformanceFixture(options: {
+  basicText?: string;
+  hangScenario?: AdapterConformanceScenario;
+  onCancel?: () => void;
+  onClose?: () => void;
+} = {}): AdapterConformanceFixture {
   const adapterId = "conformance";
+  let scenario: AdapterConformanceScenario = "basic";
 
-  return {
-    adapterId,
-    discovery: {
+  const discovery = {
       profile: {
         status: "available",
         value: {
@@ -47,28 +51,32 @@ export function createConformanceFixture(options: { basicText?: string } = {}): 
         value: { models: [{ id: "conformance-model", label: "Conformance Model" }] },
       },
       limits: { status: "unsupported" },
-    },
-    createAdapter(scenario: AdapterConformanceScenario): HarnessAdapter {
-      return {
+    } satisfies AdapterConformanceFixture["discovery"];
+  const adapter: HarnessAdapter = {
         id: adapterId,
         capabilities: () => conformanceCapabilities,
-        profile: () => this.discovery.profile,
-        models: () => this.discovery.models,
-        limits: () => this.discovery.limits,
+        profile: () => discovery.profile,
+        models: () => discovery.models,
+        limits: () => discovery.limits,
         async open({ resumeToken }) {
+          const current = scenario;
           let release: (() => void) | undefined;
           let interactionResponse: HarnessInteractionResponse | undefined;
           const blocked = new Promise<void>((resolve) => { release = resolve; });
           const session: HarnessAdapterSession = {
             async *run(request) {
-              if (scenario === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
-              if (scenario === "safe-error") throw conformanceSafeError();
-              if (scenario === "cancel") {
+              if (current === options.hangScenario) {
+                await blocked;
+                return;
+              }
+              if (current === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
+              if (current === "safe-error") throw conformanceSafeError();
+              if (current === "cancel") {
                 yield { kind: "assistant-text", text: CONFORMANCE.waitingText };
                 await blocked;
                 return;
               }
-              if (scenario === "interaction") {
+              if (current === "interaction") {
                 yield { kind: "interaction-requested", interaction: CONFORMANCE.interaction };
                 await blocked;
                 yield {
@@ -78,18 +86,18 @@ export function createConformanceFixture(options: { basicText?: string } = {}): 
                 };
                 return;
               }
-              if (scenario === "resume-restored") {
+              if (current === "resume-restored") {
                 if (resumeToken !== CONFORMANCE.resumeToken) throw new Error(CONFORMANCE.unsafeSecret);
                 yield { kind: "assistant-text", text: CONFORMANCE.resumedText };
                 return;
               }
-              if (scenario === "tools") {
+              if (current === "tools") {
                 const result = await request.tools.call(CONFORMANCE.toolName, { value: CONFORMANCE.toolInput });
                 const text = result.content[0]?.type === "text" ? result.content[0].text : "";
                 yield { kind: "assistant-text", text };
                 return;
               }
-              if (scenario === "context") {
+              if (current === "context") {
                 const source = request.context.sources.find((entry) => entry.sourceId === CONFORMANCE.contextSourceId);
                 const content = source?.value.content[0];
                 yield { kind: "assistant-text", text: content?.type === "text" ? content.text : "" };
@@ -104,14 +112,26 @@ export function createConformanceFixture(options: { basicText?: string } = {}): 
               return Promise.resolve();
             },
             cancel() {
+              options.onCancel?.();
               release?.();
               return Promise.resolve();
             },
-            checkpoint: () => scenario === "resume-initial" ? CONFORMANCE.resumeToken : resumeToken,
+            checkpoint: () => current === "resume-initial" ? CONFORMANCE.resumeToken : resumeToken,
+            close() {
+              options.onClose?.();
+              return Promise.resolve();
+            },
           };
           return session;
         },
       };
+
+  return {
+    adapterId,
+    adapter,
+    discovery,
+    useScenario(value) {
+      scenario = value;
     },
   };
 }
