@@ -5,5 +5,6 @@ export * from "./stores.js";
 export * from "./tools.js";
 export * from "./transports/ndjson.js";
 export * from "./transports/json-rpc.js";
+export * from "./transports/async-iterable.js";
 export * from "./adapters/codex-app-server.js";
 

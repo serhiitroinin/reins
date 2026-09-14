@@ -55,6 +55,11 @@
       "bun": "./src/transports/json-rpc.ts",
       "import": "./dist/transports/json-rpc.js"
     },
+    "./transports/async-iterable": {
+      "types": "./src/transports/async-iterable.ts",
+      "bun": "./src/transports/async-iterable.ts",
+      "import": "./dist/transports/async-iterable.js"
+    },
     "./adapters/codex-app-server": {
       "types": "./src/adapters/codex-app-server.ts",
       "bun": "./src/adapters/codex-app-server.ts",
