@@ -4,6 +4,7 @@ import {
   createMemoryPersistence,
   HarnessRuntimeError,
   HarnessAdapterError,
+  HarnessAdapterInterruptedError,
   type HarnessAdapter,
   type HarnessAdapterRunRequest,
   type HarnessCapabilities,
@@ -168,6 +169,30 @@ describe("harness runtime", () => {
     const events = await eventsPromise;
     expect(cancelled).toBe(true);
     expect(await run.done).toBe("interrupted");
+    expect(events.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
+  test("seals a provider-owned interruption without inventing an error", async () => {
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            yield { kind: "assistant-text", text: "partial" };
+            throw new HarnessAdapterInterruptedError();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = await collect(run.events);
+
+    expect(await run.done).toBe("interrupted");
+    expect(events.map((event) => event.payload.kind)).toEqual([
+      "turn-started", "assistant-text", "turn-completed",
+    ]);
     expect(events.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 

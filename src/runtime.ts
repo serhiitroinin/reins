@@ -139,6 +139,14 @@ export class HarnessAdapterError extends Error {
   }
 }
 
+/** A provider-owned interruption that should seal the turn without an error event. */
+export class HarnessAdapterInterruptedError extends Error {
+  constructor() {
+    super("The provider interrupted the turn.");
+    this.name = "HarnessAdapterInterruptedError";
+  }
+}
+
 interface ManagedSession {
   adapter: HarnessAdapter;
   session: HarnessAdapterSession;
@@ -347,7 +355,9 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           if (controller.signal.aborted) status = "interrupted";
           await persistCheckpoint(managed, request.session);
         } catch (error) {
-          if (controller.signal.aborted || stopping) status = "interrupted";
+          if (controller.signal.aborted || stopping || error instanceof HarnessAdapterInterruptedError) {
+            status = "interrupted";
+          }
           else {
             status = "error";
             const failure = safeError(error);
