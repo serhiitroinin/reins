@@ -17,6 +17,7 @@ import type {
   HarnessModelCatalog,
   HarnessRunSettings,
 } from "../profile.js";
+import type { HarnessToolDescriptor } from "../tools.js";
 
 /** Public control id used to render and submit Codex speed tiers, including Fast. */
 export const CODEX_SERVICE_TIER_CONTROL_ID = "openai:service-tier";
@@ -199,6 +200,26 @@ export interface CodexThreadOptions {
   sandbox: string;
   approvalPolicy: string;
   model?: string;
+  dynamicTools?: readonly CodexDynamicToolSpec[];
+}
+
+export interface CodexDynamicToolSpec {
+  type: "function";
+  name: string;
+  description: string;
+  inputSchema: Readonly<Record<string, unknown>>;
+  deferLoading: boolean;
+}
+
+/** Expose one turn tool catalog through the App Server dynamic-tool protocol. */
+export function codexDynamicTools(tools: readonly HarnessToolDescriptor[]): CodexDynamicToolSpec[] {
+  return tools.map((tool) => ({
+    type: "function",
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    deferLoading: false,
+  }));
 }
 
 /** Serialize explicit host policy into a Codex `thread/start` request. */
@@ -208,6 +229,7 @@ export function codexThreadStartParams(options: CodexThreadOptions): Record<stri
     sandbox: options.sandbox,
     approvalPolicy: options.approvalPolicy,
     ...(options.model ? { model: options.model } : {}),
+    ...(options.dynamicTools ? { dynamicTools: options.dynamicTools } : {}),
   };
 }
 
@@ -221,7 +243,10 @@ export function codexThreadResumeParams(options: CodexThreadResumeOptions): Reco
   return {
     threadId: options.threadId,
     excludeTurns: options.excludeTurns,
-    ...codexThreadStartParams(options),
+    cwd: options.cwd,
+    sandbox: options.sandbox,
+    approvalPolicy: options.approvalPolicy,
+    ...(options.model ? { model: options.model } : {}),
   };
 }
 
