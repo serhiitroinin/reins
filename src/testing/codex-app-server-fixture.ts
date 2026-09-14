@@ -1,0 +1,281 @@
+/** A deterministic fake App Server driving the real Codex adapter. */
+
+import type { HarnessCapabilities } from "../protocol.js";
+import { createPushableAsyncIterable } from "../transports/async-iterable.js";
+import { createNdjsonReader } from "../transports/ndjson.js";
+import {
+  CODEX_APP_SERVER_CAPABILITIES,
+  createCodexAppServerAdapter,
+  type CodexAppServerConnection,
+} from "../adapters/codex-app-server-adapter.js";
+import { CODEX_SERVICE_TIER_CONTROL_ID } from "../adapters/codex-app-server.js";
+import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
+import { CONFORMANCE } from "./conformance.js";
+
+interface RpcMessage {
+  id?: string | number;
+  method?: string;
+  params?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: unknown;
+}
+
+export interface CodexAppServerFixtureRequest {
+  method: string;
+  params: Record<string, unknown>;
+}
+
+export interface CodexAppServerFixtureState {
+  requests: CodexAppServerFixtureRequest[];
+  interruptions: number;
+  toolResponses: Record<string, unknown>[];
+  closes: number;
+}
+
+const capabilities: HarnessCapabilities = {
+  ...CODEX_APP_SERVER_CAPABILITIES,
+  interactions: { support: "unsupported" },
+};
+
+function object(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function string(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function fakeConnection(
+  scenario: AdapterConformanceScenario,
+  state: CodexAppServerFixtureState,
+): CodexAppServerConnection {
+  const output = createPushableAsyncIterable<Uint8Array | string>();
+  const encoder = new TextEncoder();
+  let nextServerId = 100;
+  const waiting = new Map<number, (message: RpcMessage) => void>();
+  let threadId = "codex-conformance-thread";
+
+  const send = (message: unknown): void => {
+    const bytes = encoder.encode(`${JSON.stringify(message)}\n`);
+    const cut = Math.min(7, bytes.length);
+    output.push(bytes.slice(0, cut));
+    output.push(bytes.slice(cut));
+  };
+  const answer = (id: string | number, result: unknown): void => {
+    send({ jsonrpc: "2.0", id, result });
+  };
+  const notify = (method: string, params: unknown): void => {
+    send({ jsonrpc: "2.0", method, params });
+  };
+  const assistant = (text: string): void => {
+    notify("item/started", { item: { type: "agentMessage", id: "message-1", text: "" } });
+    notify("item/agentMessage/delta", { itemId: "message-1", delta: text });
+    notify("item/completed", { item: { type: "agentMessage", id: "message-1", text } });
+  };
+  const complete = (status = "completed", error?: unknown): void => {
+    notify("turn/completed", { turn: { status, ...(error === undefined ? {} : { error }) } });
+  };
+  const callTool = (name: string, input: unknown): void => {
+    const id = ++nextServerId;
+    send({
+      jsonrpc: "2.0",
+      id,
+      method: "item/tool/call",
+      params: { threadId, turnId: "codex-turn", callId: "tool-call", tool: name, arguments: input },
+    });
+    waiting.set(id, (message) => {
+      const result = object(message.result);
+      state.toolResponses.push(result);
+      const rows = Array.isArray(result.contentItems) ? result.contentItems : [];
+      const text = rows.map((row) => string(object(row).text)).filter(Boolean).join("\n");
+      notify("item/completed", {
+        item: {
+          type: "dynamicToolCall",
+          id: "tool-call",
+          namespace: null,
+          tool: name,
+          arguments: input,
+          status: result.success === false ? "failed" : "completed",
+          success: result.success !== false,
+          contentItems: rows,
+        },
+      });
+      assistant(text);
+      complete();
+    });
+  };
+
+  const afterTurnStarts = (params: Record<string, unknown>): void => {
+    if (scenario === "safe-error") {
+      complete("failed", {
+        code: CONFORMANCE.safeError.code,
+        message: CONFORMANCE.safeError.message,
+      });
+      return;
+    }
+    if (scenario === "cancel") {
+      assistant(CONFORMANCE.waitingText);
+      return;
+    }
+    if (scenario === "tools") {
+      notify("item/started", {
+        item: {
+          type: "dynamicToolCall",
+          id: "tool-call",
+          namespace: null,
+          tool: CONFORMANCE.toolName,
+          arguments: { value: CONFORMANCE.toolInput },
+          status: "inProgress",
+        },
+      });
+      callTool(CONFORMANCE.toolName, { value: CONFORMANCE.toolInput });
+      return;
+    }
+    if (scenario === "context") {
+      const context = object(params.additionalContext);
+      const untrusted = Object.values(context)
+        .map(object)
+        .find((entry) => entry.kind === "untrusted" && entry.value === CONFORMANCE.contextText);
+      assistant(untrusted ? CONFORMANCE.contextText : "context-missing");
+      complete();
+      return;
+    }
+    assistant(scenario === "resume-restored" ? CONFORMANCE.resumedText : CONFORMANCE.text);
+    complete();
+  };
+
+  const handle = (message: RpcMessage): void => {
+    if (message.method === undefined && typeof message.id === "number") {
+      const resolve = waiting.get(message.id);
+      if (resolve) {
+        waiting.delete(message.id);
+        resolve(message);
+      }
+      return;
+    }
+    if (message.method === undefined || message.id === undefined) return;
+    const params = object(message.params);
+    state.requests.push({ method: message.method, params });
+    if (message.method === "initialize") {
+      answer(message.id, {});
+      return;
+    }
+    if (message.method === "thread/start") {
+      threadId = scenario === "resume-initial" ? CONFORMANCE.resumeToken : "codex-conformance-thread";
+      answer(message.id, { thread: { id: threadId } });
+      return;
+    }
+    if (message.method === "thread/resume") {
+      threadId = string(params.threadId);
+      answer(message.id, { thread: { id: threadId } });
+      return;
+    }
+    if (message.method === "turn/start") {
+      answer(message.id, { turn: { id: "codex-turn" } });
+      queueMicrotask(() => afterTurnStarts(params));
+      return;
+    }
+    if (message.method === "turn/interrupt") {
+      state.interruptions += 1;
+      answer(message.id, {});
+      queueMicrotask(() => complete("interrupted"));
+      return;
+    }
+    send({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "unsupported fake method" } });
+  };
+
+  const reader = createNdjsonReader((message) => handle(message as RpcMessage));
+  let closed = false;
+  return {
+    write(line) {
+      reader.text(line);
+    },
+    output,
+    close() {
+      if (closed) return;
+      closed = true;
+      state.closes += 1;
+      reader.end();
+      output.close();
+    },
+  };
+}
+
+/** Construct the real adapter against deterministic JSON-RPC provider traffic. */
+export function createCodexAppServerConformanceFixture(): AdapterConformanceFixture & {
+  state: CodexAppServerFixtureState;
+} {
+  const adapterId = "codex-conformance";
+  let scenario: AdapterConformanceScenario = "basic";
+  const state: CodexAppServerFixtureState = {
+    requests: [],
+    interruptions: 0,
+    toolResponses: [],
+    closes: 0,
+  };
+  const discovery = {
+    profile: {
+      status: "available",
+      value: {
+        id: adapterId,
+        label: "Codex Conformance",
+        permissions: {
+          kind: "sandbox",
+          selectable: true,
+          defaultModeId: "read-only",
+          modes: [{ id: "read-only", label: "Read-only", posture: "restricted" }],
+        },
+      },
+    },
+    models: {
+      status: "available",
+      value: { models: [{ id: "codex-conformance-model", label: "Codex Conformance Model" }] },
+    },
+    limits: { status: "unsupported" },
+  } satisfies AdapterConformanceFixture["discovery"];
+
+  const adapter = createCodexAppServerAdapter({
+    id: adapterId,
+    clientInfo: { name: "fold-harness-conformance", version: "1" },
+    capabilities,
+    profile: discovery.profile,
+    models: discovery.models,
+    limits: discovery.limits,
+    thread: (request) => ({
+      cwd: "/conformance",
+      sandbox: request.settings?.permission?.modeId ?? "read-only",
+      approvalPolicy: "never",
+      ...(request.model ? { model: request.model } : {}),
+    }),
+    connect() {
+      if (scenario === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
+      return fakeConnection(scenario, state);
+    },
+    events: {
+      publicError(error) {
+        if (error.code === CONFORMANCE.safeError.code) {
+          return {
+            code: CONFORMANCE.safeError.code,
+            message: CONFORMANCE.safeError.message,
+            retryable: true,
+          };
+        }
+        return { code: "CODEX_PROVIDER_ERROR", message: "Codex could not complete the turn." };
+      },
+    },
+  });
+
+  return {
+    adapterId,
+    adapter,
+    discovery,
+    state,
+    useScenario(value) {
+      scenario = value;
+    },
+  };
+}
+
+export { CODEX_SERVICE_TIER_CONTROL_ID };
