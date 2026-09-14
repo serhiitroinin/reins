@@ -13,8 +13,8 @@ Its first releases focus on five boundaries:
 - application-owned tools, policy, and human interactions;
 - adapter conformance across native and ACP-backed agents.
 
-This repository is currently private while the extraction API is changing.
-No npm release has been made yet.
+This repository remains private while the extraction API is changing. Preview
+releases are published publicly on npm for Fold and other early consumers.
 
 ## Development
 
@@ -33,8 +33,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "@fold-harness/core";
-import { createScriptedAdapter } from "@fold-harness/core/testing";
+} from "@serhiitroinin/fold-harness";
+import { createScriptedAdapter } from "@serhiitroinin/fold-harness/testing";
 
 const tools = createToolHost([{
   name: "lookup_order",
@@ -73,11 +73,11 @@ Run the complete example with `bun run example`.
 
 ## Package entry points
 
-- `@fold-harness/core` — protocol, runtime, stores, tools, and transports.
-- `@fold-harness/core/protocol` — browser-safe public contracts.
-- `@fold-harness/core/runtime` — adapter and host lifecycle.
-- `@fold-harness/core/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
-- `@fold-harness/core/testing` — deterministic host fixtures.
+- `@serhiitroinin/fold-harness` — protocol, runtime, stores, tools, and transports.
+- `@serhiitroinin/fold-harness/protocol` — browser-safe public contracts.
+- `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
+- `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
+- `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
 
 See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADMAP.md).
 
@@ -98,4 +98,3 @@ The package is pre-release software. Fold is the first dogfood consumer.
 The current Fold integration uses the shared NDJSON transport for Claude and
 Codex output, the shared pushable input stream for Claude SDK turns, and the
 shared App Server lifecycle client for Codex.
-
