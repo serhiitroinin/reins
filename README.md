@@ -81,6 +81,30 @@ for await (const event of run.events) console.log(event.payload);
 
 Run the complete example with `bun run example`.
 
+## Adapter conformance
+
+Adapter packages can run the framework-neutral contract suite from
+`@serhiitroinin/fold-harness/testing`. A fixture translates named scenarios
+into deterministic fake provider traffic; the runner exercises it only through
+the public runtime and returns a report instead of depending on a test library.
+
+```ts
+import {
+  createConformanceFixture,
+  runAdapterConformance,
+} from "@serhiitroinin/fold-harness/testing";
+
+const report = await runAdapterConformance({
+  fixture: createConformanceFixture(),
+});
+if (!report.passed) throw new Error(JSON.stringify(report.cases));
+```
+
+Real adapters supply their own fixture backed by recorded or scripted provider
+traffic. The common suite covers event framing, lifecycle, safe errors, tools,
+context, discovery, cancellation, interactions, and resume. Provider wire
+parsing and operating-system security posture stay in adapter-specific tests.
+
 ## Package entry points
 
 - `@serhiitroinin/fold-harness` — protocol, runtime, stores, tools, and transports.
