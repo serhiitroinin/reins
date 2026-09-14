@@ -26,6 +26,61 @@ bun run check
 Node.js 20 or newer is the supported runtime baseline. Bun is used for local
 development and tests.
 
+## Minimal runtime
+
+```ts
+import {
+  createHarness,
+  createMemoryPersistence,
+  createToolHost,
+} from "@fold-harness/core";
+import { createScriptedAdapter } from "@fold-harness/core/testing";
+
+const tools = createToolHost([{
+  name: "lookup_order",
+  description: "Read one order",
+  inputSchema: { type: "object", required: ["id"] },
+  execute: async ({ id }: { id: string }) => ({
+    content: [{ type: "text", text: `Order ${id} is ready` }],
+  }),
+}]);
+
+const { adapter } = createScriptedAdapter({
+  async *script({ tools }) {
+    const result = await tools.call("lookup_order", { id: "42" });
+    yield { kind: "assistant-text", text: result.content[0]?.type === "text"
+      ? result.content[0].text
+      : "No result" };
+  },
+});
+
+const harness = createHarness({
+  adapters: [adapter],
+  persistence: createMemoryPersistence(),
+  tools,
+});
+
+const run = harness.start({
+  session: { tenantId: "acme", actorId: "ada", threadId: "order-42" },
+  adapterId: "scripted",
+  input: [{ type: "text", text: "Where is order 42?" }],
+});
+
+for await (const event of run.events) console.log(event.payload);
+```
+
+Run the complete example with `bun run example`.
+
+## Package entry points
+
+- `@fold-harness/core` — protocol, runtime, stores, tools, and transports.
+- `@fold-harness/core/protocol` — browser-safe public contracts.
+- `@fold-harness/core/runtime` — adapter and host lifecycle.
+- `@fold-harness/core/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
+- `@fold-harness/core/testing` — deterministic host fixtures.
+
+See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADMAP.md).
+
 ## Design constraints
 
 - Provider identifiers are open strings, never a closed enum.
@@ -39,4 +94,8 @@ development and tests.
 ## Status
 
 The package is pre-release software. Fold is the first dogfood consumer.
+
+The current Fold integration uses the shared NDJSON transport for Claude and
+Codex output, the shared pushable input stream for Claude SDK turns, and the
+shared App Server lifecycle client for Codex.
 

@@ -79,6 +79,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "bun test",
+    "example": "bun run examples/minimal/index.ts",
     "check": "bun run typecheck && bun test && bun run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
