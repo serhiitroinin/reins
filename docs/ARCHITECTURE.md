@@ -111,6 +111,16 @@ behavior can be added as namespaced controls without changing the runtime.
 The same adapter module serializes initialize, thread, resume, and turn
 requests, but only from host-supplied product identity, sandbox, approval,
 model, effort, image, and generic control decisions.
+Its turn-scoped event consumer translates App Server notifications into
+`HarnessAdapterEvent`, `HarnessLimitSnapshot`, and terminal turn outcomes. It
+reconciles streamed message deltas with the authoritative completed message,
+tracks cumulative token baselines per turn, and closes orphaned tool rows.
+Account limits travel through a separate callback rather than masquerading as
+turn usage. Tool presentation and output redaction are host hooks: the default
+never serializes MCP arguments, while a domain product can classify its own
+tools without teaching the package about its event schema. Provider failure
+text is redacted by default and becomes public only through an explicit host
+mapper.
 The process, environment, MCP configuration, and sandbox posture remain host
 decisions during the first Fold migration.
 

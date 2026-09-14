@@ -115,6 +115,7 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/context` — turn-scoped application context sources.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
+- `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
 
 See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADMAP.md).
@@ -155,4 +156,5 @@ The package is pre-release software. Fold is the first dogfood consumer.
 
 The current Fold integration uses the shared NDJSON transport for Claude and
 Codex output, the shared pushable input stream for Claude SDK turns, and the
-shared App Server lifecycle client for Codex.
+shared App Server lifecycle client and request builders for Codex. A package
+event consumer is available for the next Fold migration slice.
