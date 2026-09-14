@@ -117,6 +117,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-adapter` — a complete, provider-injected Codex adapter.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.
+- `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter` — a complete, provider-injected Claude Agent SDK adapter.
+- `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-events` — SDK-free Claude events, usage, limits, compaction, and subagent extensions.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
 
 See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADMAP.md).
@@ -155,13 +157,10 @@ require a core-package enum release.
 
 The package is pre-release software. Fold is the first dogfood consumer.
 
-The current Fold integration uses the shared NDJSON transport for Claude and
-Codex output, the shared pushable input stream for Claude SDK turns, and the
-shared App Server lifecycle client and request builders for Codex. A package
-event consumer is available, and the complete Codex adapter composes those
-pieces behind an injected connection. Fold will migrate onto that adapter
-without moving process creation, credentials, sandbox policy, vault context,
-or product event projection into this package.
+Fold's Codex lane consumes the complete App Server adapter. Its Claude lane
+uses the shared pushable input stream and will move onto the complete Claude
+adapter next. Both adapters keep process creation, credentials, sandbox policy,
+vault context, and product event projection in Fold.
 
 ## Codex adapter boundary
 
@@ -184,3 +183,25 @@ An empty catalog is omitted and keeps that capability disabled. The current
 App Server resume request does not accept a replacement catalog, so a resumed
 thread retains its original catalog; the host should invalidate its resume
 token when that catalog is no longer compatible.
+
+## Claude adapter boundary
+
+`createClaudeAgentSdkAdapter` owns a long-lived provider stream, turn routing,
+normalized events, provider interaction round trips, cancellation, opaque
+resume checkpoints, and separate account-limit snapshots. The injected
+connection owns the real Agent SDK query. Its public structural contracts do
+not import or re-export Anthropic SDK types.
+
+The adapter passes each connection an application-tool bridge and a
+`canUseTool` callback. A host policy may allow or deny a call immediately, or
+defer it as a generic interaction that any UI can render and answer through
+`HarnessRun.respond`. Application transaction confirmation remains a separate
+tool concern.
+
+The host still chooses the explicit environment, login, private provider home,
+working directory, built-in tool allowlist, MCP servers, settings sources,
+plugins, hooks, sandbox, and approval rules. The package never inherits the
+host environment or claims that Claude is sandboxed. Provider-visible context
+contains trusted instructions and untrusted content, but not application-only
+context state. Tool input, tool output, and provider error text are not
+persisted unless the host explicitly maps safe values.

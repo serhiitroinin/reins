@@ -133,6 +133,41 @@ Its connection factory is injected per turn. The process, environment,
 credentials, account selection, MCP configuration, sandbox posture, domain
 context, and persistence remain host decisions.
 
+Claude Agent SDK communication uses a host-injected, long-lived connection.
+`createClaudeAgentSdkAdapter` starts that connection lazily on its first turn,
+routes later turns over the same provider stream, and converts unknown SDK
+messages into the same `HarnessAdapterEvent` contract. The public connection,
+input, permission, and event types are package-owned structural contracts; no
+Anthropic SDK type crosses the adapter boundary.
+
+The adapter normalizes prose, thinking, plans, tool runs, usage, account-limit
+updates, compaction, and subagent activity. Claude-only activity uses the
+`anthropic:claude-agent-sdk` extension namespace. Tool input and output are
+private by default. A host must explicitly select a safe presentation and
+redacted output before either enters an event. Provider failures follow the
+same explicit public-error rule as Codex.
+
+The injected connection receives application tools and a provider-permission
+callback. A host can decide immediately or return a deferred interaction. The
+adapter then owns `interaction-requested`, `respond`, and
+`interaction-resolved`, while the host still defines the choices and their
+meaning. This provider execution permission remains separate from any product
+transaction confirmation performed by an application tool.
+
+An Agent SDK `system/init` message updates only the opaque resume checkpoint.
+The optional checkpoint hook is awaited before a turn completes. Interrupts
+wait for the provider's terminal boundary so an old result cannot settle the
+next turn. A provider that does not reach that boundary within the configured
+grace period has its connection retired rather than reused.
+
+The connection factory still owns the actual SDK query and every option that
+can change its authority: explicit environment, account and credentials,
+private provider home, working directory, tool allowlist, settings sources,
+plugins, hooks, MCP servers, sandbox, and approval rules. The adapter does not
+spawn Claude or infer any of them. Application-only context `state` is removed
+from the default provider input; only trusted instructions and untrusted
+content cross that boundary.
+
 This division is also the stack boundary. The protocol, discovery contracts,
 and wire formats do not assume React, Electron, HTTP, or a particular database.
 JavaScript hosts can use the runtime directly. Other language and native hosts

@@ -18,18 +18,21 @@
   context trust labels, dynamic tools, cancellation, checkpoints, and safe
   terminal semantics, verified through the shared conformance runner.
 - Fold dogfood integration for shared Claude and Codex communication seams.
+- Fold's Codex App Server lane consuming the complete package adapter.
+- A provider-injected Claude Agent SDK adapter covering long-lived stream
+  routing, provider interactions, normalized events, cancellation, checkpoints,
+  subagents, and separate limit snapshots through the conformance runner.
 
 ## Next
 
-1. Migrate Fold's Codex App Server lane onto the complete package adapter while keeping process policy and its frozen product projection in Fold.
-2. Compose the Claude SDK seams into a provider-injected adapter and make its fake provider pass the conformance runner.
-3. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
-4. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
-5. Decide from measured parity which native adapters remain necessary.
-6. Move the generic MCP tool bridge behind `HarnessToolHost`.
-7. Migrate Fold's complete context assembly onto runtime contributions.
-8. Implement durable Fold stores behind the runtime interfaces.
-9. Build a non-Fold domain example with a browser, terminal, or native UI.
+1. Migrate Fold's Claude session lane onto the complete package adapter while keeping process policy and its frozen product projection in Fold.
+2. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
+3. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
+4. Decide from measured parity which native adapters remain necessary.
+5. Move the generic MCP tool bridge behind `HarnessToolHost`.
+6. Migrate Fold's complete context assembly onto runtime contributions.
+7. Implement durable Fold stores behind the runtime interfaces.
+8. Build a non-Fold domain example with a browser, terminal, or native UI.
 
 ## Deliberately outside the first release
 
