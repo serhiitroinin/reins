@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { harnessSessionKey, isHarnessEvent, type HarnessEvent } from "../src/protocol.ts";
+import {
+  harnessSessionKey,
+  isHarnessEvent,
+  type HarnessEvent,
+  type HarnessRunRequest,
+} from "../src/protocol.ts";
 
 describe("harness protocol", () => {
   test("session keys cannot collide across identity fields", () => {
@@ -23,5 +28,16 @@ describe("harness protocol", () => {
     expect(isHarnessEvent({ ...event, sequence: 0 })).toBe(false);
     expect(isHarnessEvent({ ...event, payload: null })).toBe(false);
   });
-});
 
+  test("keeps model effort as an open run option", () => {
+    const request: HarnessRunRequest = {
+      session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
+      adapterId: "codex",
+      input: [{ type: "text", text: "hello" }],
+      model: "gpt-example",
+      effort: "provider:future-effort",
+    };
+
+    expect(request.effort).toBe("provider:future-effort");
+  });
+});
