@@ -16,14 +16,15 @@
 
 ## Next
 
-1. Define an adapter conformance suite around recorded provider fixtures, including discovery.
-2. Extract the Fold event projection from provider consumers.
-3. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
-4. Decide from measured parity which native adapters remain necessary.
-5. Move the generic MCP tool bridge behind `HarnessToolHost`.
-6. Migrate Fold's complete context assembly onto runtime contributions.
-7. Implement durable Fold stores behind the runtime interfaces.
-8. Build a non-Fold domain example with a browser or terminal UI.
+1. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
+2. Define an adapter conformance suite around recorded provider fixtures, including discovery.
+3. Extract the Fold event projection from provider consumers.
+4. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
+5. Decide from measured parity which native adapters remain necessary.
+6. Move the generic MCP tool bridge behind `HarnessToolHost`.
+7. Migrate Fold's complete context assembly onto runtime contributions.
+8. Implement durable Fold stores behind the runtime interfaces.
+9. Build a non-Fold domain example with a browser, terminal, or native UI.
 
 ## Deliberately outside the first release
 

@@ -78,6 +78,27 @@ describe("Codex App Server client", () => {
     })).toEqual({ serviceTierForTurn: "fast" });
   });
 
+  test("maps the Codex account cache without leaking its wire shape", () => {
+    expect(codexModelCatalog({ models: [{
+      slug: "gpt-5.6-sol",
+      display_name: "GPT-5.6-Sol",
+      visibility: "list",
+      priority: 1,
+      input_modalities: ["text", "image"],
+      supported_reasoning_levels: [{ effort: "high", description: "More reasoning" }],
+      default_reasoning_level: "high",
+      service_tiers: [{ id: "priority", name: "Fast", description: "2x speed, increased usage" }],
+    }] }).models[0]).toMatchObject({
+      id: "gpt-5.6-sol",
+      label: "GPT-5.6-Sol",
+      effort: { defaultOptionId: "high", options: [{ id: "high" }] },
+      controls: [{
+        id: CODEX_SERVICE_TIER_CONTROL_ID,
+        options: [{ id: "default", label: "Standard" }, { id: "priority", label: "Fast" }],
+      }],
+    });
+  });
+
   test("opens a new thread and starts its turn in protocol order", async () => {
     const fx = fixture();
     const opening = openCodexTurn({

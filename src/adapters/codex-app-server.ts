@@ -66,32 +66,39 @@ function title(value: string): string {
   return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function field(value: Record<string, unknown>, camel: string, snake: string): unknown {
+  return value[camel] ?? value[snake];
+}
+
 /**
  * Convert one `model/list` response into the provider-neutral catalog.
  * Pagination remains the adapter's responsibility; concatenate pages before
  * passing a response when the server supplies `nextCursor`.
  */
 export function codexModelCatalog(response: unknown): HarnessModelCatalog {
-  const data = record(response).data;
+  const envelope = record(response);
+  const data = envelope.data ?? envelope.models;
   const models: HarnessModel[] = [];
   if (!Array.isArray(data)) return { models };
   for (const entry of data) {
     const model = record(entry);
-    const id = stringValue(model.id) ?? stringValue(model.model);
+    const id = stringValue(model.id) ?? stringValue(model.model) ?? stringValue(model.slug);
     if (!id) continue;
-    const effortRows = Array.isArray(model.supportedReasoningEfforts)
-      ? model.supportedReasoningEfforts
+    const rawEfforts = field(model, "supportedReasoningEfforts", "supported_reasoning_levels");
+    const effortRows = Array.isArray(rawEfforts)
+      ? rawEfforts
       : [];
     const effortOptions = effortRows.flatMap((row) => {
       const value = record(row);
-      const effort = stringValue(value.reasoningEffort);
+      const effort = stringValue(field(value, "reasoningEffort", "effort"));
       return effort ? [{
         id: effort,
         label: title(effort),
         ...(stringValue(value.description) ? { description: stringValue(value.description)! } : {}),
       }] : [];
     });
-    const tierRows = Array.isArray(model.serviceTiers) ? model.serviceTiers : [];
+    const rawTiers = field(model, "serviceTiers", "service_tiers");
+    const tierRows = Array.isArray(rawTiers) ? rawTiers : [];
     const tierOptions = [{ id: "default", label: "Standard" }, ...tierRows.flatMap((row) => {
       const value = record(row);
       const tierId = stringValue(value.id);
@@ -108,31 +115,48 @@ export function codexModelCatalog(response: unknown): HarnessModelCatalog {
       kind: "select",
       scope: "turn",
       options: tierOptions,
-      defaultValue: stringValue(model.defaultServiceTier) ?? "default",
+      defaultValue: stringValue(field(model, "defaultServiceTier", "default_service_tier")) ?? "default",
     }] : [];
-    const modalities = Array.isArray(model.inputModalities)
-      ? model.inputModalities.filter((value): value is string => typeof value === "string")
+    const rawModalities = field(model, "inputModalities", "input_modalities");
+    const modalities = Array.isArray(rawModalities)
+      ? rawModalities.filter((value): value is string => typeof value === "string")
       : [];
     models.push({
       id,
-      label: stringValue(model.displayName) ?? id,
+      label: stringValue(field(model, "displayName", "display_name")) ?? id,
       ...(stringValue(model.description) ? { description: stringValue(model.description)! } : {}),
-      ...(model.hidden === true ? { hidden: true } : {}),
+      ...(model.hidden === true || (typeof model.visibility === "string" && model.visibility !== "list")
+        ? { hidden: true }
+        : {}),
       ...(modalities.length > 0 ? { inputModalities: modalities } : {}),
       ...(effortOptions.length > 0 ? {
         effort: {
           options: effortOptions,
-          ...(stringValue(model.defaultReasoningEffort)
-            ? { defaultOptionId: stringValue(model.defaultReasoningEffort)! }
+          ...(stringValue(field(model, "defaultReasoningEffort", "default_reasoning_level"))
+            ? { defaultOptionId: stringValue(field(model, "defaultReasoningEffort", "default_reasoning_level"))! }
             : {}),
         },
       } : {}),
       ...(controls.length > 0 ? { controls } : {}),
     });
   }
+  models.sort((left, right) => {
+    const leftRaw = data.find((entry) => {
+      const value = record(entry);
+      return (stringValue(value.id) ?? stringValue(value.model) ?? stringValue(value.slug)) === left.id;
+    });
+    const rightRaw = data.find((entry) => {
+      const value = record(entry);
+      return (stringValue(value.id) ?? stringValue(value.model) ?? stringValue(value.slug)) === right.id;
+    });
+    const leftPriority = record(leftRaw).priority;
+    const rightPriority = record(rightRaw).priority;
+    return (typeof leftPriority === "number" ? leftPriority : Number.MAX_SAFE_INTEGER)
+      - (typeof rightPriority === "number" ? rightPriority : Number.MAX_SAFE_INTEGER);
+  });
   const defaultModel = data.find((entry) => record(entry).isDefault === true);
   const defaultModelId = defaultModel
-    ? stringValue(record(defaultModel).id) ?? stringValue(record(defaultModel).model)
+    ? stringValue(record(defaultModel).id) ?? stringValue(record(defaultModel).model) ?? stringValue(record(defaultModel).slug)
     : undefined;
   return { models, ...(defaultModelId ? { defaultModelId } : {}) };
 }
