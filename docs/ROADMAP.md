@@ -11,13 +11,14 @@
 - Codex App Server lifecycle client.
 - Independent engine profile, model catalog, typed control, permission, and limit discovery.
 - Codex model mapping, including model-specific reasoning and Fast service-tier controls.
-- Deterministic adapter fixtures and publish checks.
+- Deterministic adapter fixtures, a framework-neutral conformance runner, and publish checks.
+- Codex App Server request builders for initialize, thread start/resume, and turns.
 - Fold dogfood integration for shared Claude and Codex communication seams.
 
 ## Next
 
 1. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
-2. Define an adapter conformance suite around recorded provider fixtures, including discovery.
+2. Make the Codex and Claude fake-provider adapters pass the conformance runner.
 3. Extract the Fold event projection from provider consumers.
 4. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
 5. Decide from measured parity which native adapters remain necessary.

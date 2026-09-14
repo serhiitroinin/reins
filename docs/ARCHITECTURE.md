@@ -108,6 +108,9 @@ tiers through the generic catalog. In particular, Fast is a model-declared
 service-tier control rather than a universal boolean. OpenCode-style adapters
 may group models from multiple underlying providers, and Grok-specific
 behavior can be added as namespaced controls without changing the runtime.
+The same adapter module serializes initialize, thread, resume, and turn
+requests, but only from host-supplied product identity, sandbox, approval,
+model, effort, image, and generic control decisions.
 The process, environment, MCP configuration, and sandbox posture remain host
 decisions during the first Fold migration.
 
