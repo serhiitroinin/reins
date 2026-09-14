@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   CODEX_SERVICE_TIER_CONTROL_ID,
+  codexInitializeParams,
   codexModelCatalog,
+  codexThreadResumeParams,
+  codexThreadStartParams,
+  codexTurnStartParams,
   codexTurnSettingOverrides,
   createCodexAppServerClient,
   openCodexTurn,
@@ -28,6 +32,64 @@ function fixture() {
 }
 
 describe("Codex App Server client", () => {
+  test("serializes explicit host decisions into initialize and thread requests", () => {
+    const clientInfo = { name: "test-host", title: "Test Host", version: "1" };
+    expect(codexInitializeParams({ clientInfo })).toEqual({
+      clientInfo,
+      capabilities: {
+        experimentalApi: false,
+        requestAttestation: false,
+        optOutNotificationMethods: null,
+      },
+    });
+    expect(codexThreadStartParams({
+      cwd: "/tmp/work",
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      model: "gpt-test",
+    })).toEqual({
+      cwd: "/tmp/work",
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      model: "gpt-test",
+    });
+    expect(codexThreadResumeParams({
+      threadId: "thread-1",
+      excludeTurns: true,
+      cwd: "/tmp/work",
+      sandbox: "workspace-write",
+      approvalPolicy: "on-request",
+    })).toEqual({
+      threadId: "thread-1",
+      excludeTurns: true,
+      cwd: "/tmp/work",
+      sandbox: "workspace-write",
+      approvalPolicy: "on-request",
+    });
+  });
+
+  test("translates generic model controls only while building the Codex turn", () => {
+    expect(codexTurnStartParams({
+      threadId: "thread-1",
+      prompt: "hello",
+      effort: "high",
+      imageFiles: ["/tmp/reference.png"],
+      settings: { controls: { [CODEX_SERVICE_TIER_CONTROL_ID]: "priority" } },
+    })).toEqual({
+      threadId: "thread-1",
+      input: [
+        { type: "text", text: "hello", text_elements: [] },
+        { type: "localImage", path: "/tmp/reference.png" },
+      ],
+      effort: "high",
+      serviceTierForTurn: "priority",
+    });
+    expect(codexTurnStartParams({ threadId: "thread-2", prompt: "standard" })).toEqual({
+      threadId: "thread-2",
+      input: [{ type: "text", text: "standard", text_elements: [] }],
+    });
+  });
+
   test("maps model-specific effort and Fast into generic controls", () => {
     expect(codexModelCatalog({
       data: [{
