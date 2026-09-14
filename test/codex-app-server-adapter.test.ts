@@ -16,6 +16,49 @@ async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
   return values;
 }
 
+function checkpointConnection(
+  requests: Array<{ method: string; params: Record<string, unknown> }>,
+  refuseTurn = false,
+) {
+  const output = createPushableAsyncIterable<string>();
+  let closed = false;
+  const send = (message: unknown): void => output.push(`${JSON.stringify(message)}\n`);
+
+  return {
+    write(line: string): void {
+      const message = JSON.parse(line) as {
+        id: string | number;
+        method: string;
+        params?: Record<string, unknown>;
+      };
+      const params = message.params ?? {};
+      requests.push({ method: message.method, params });
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else if (message.method === "thread/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "durable-thread" } } });
+      } else if (message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: params.threadId } } });
+      } else if (message.method === "turn/start" && refuseTurn) {
+        send({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: "turn refused" } });
+      } else if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "provider-turn" } } });
+        send({
+          jsonrpc: "2.0",
+          method: "turn/completed",
+          params: { turn: { status: "completed" } },
+        });
+      }
+    },
+    output,
+    close(): void {
+      if (closed) return;
+      closed = true;
+      output.close();
+    },
+  };
+}
+
 describe("Codex App Server adapter", () => {
   test("passes the provider-neutral adapter contract through real JSON-RPC", async () => {
     const fixture = createCodexAppServerConformanceFixture();
@@ -168,6 +211,87 @@ describe("Codex App Server adapter", () => {
     });
     await Bun.sleep(0);
     expect(closes).toBe(1);
+    await runtime.close();
+  });
+
+  test("awaits durable checkpoint persistence after accepted start and resume turns", async () => {
+    const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const checkpoints: string[] = [];
+    let releasePersistence!: () => void;
+    const persistence = new Promise<void>((resolve) => { releasePersistence = resolve; });
+    let reachedPersistence!: () => void;
+    const persistenceReached = new Promise<void>((resolve) => { reachedPersistence = resolve; });
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "checkpoint-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => checkpointConnection(requests),
+      async onCheckpoint(checkpoint) {
+        checkpoints.push(checkpoint);
+        if (checkpoints.length === 1) {
+          reachedPersistence();
+          await persistence;
+        }
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const session = { tenantId: "tenant", actorId: "actor", threadId: "checkpoint" };
+    const first = runtime.start({
+      session,
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "first" }],
+    });
+    const firstEvents = collect(first.events);
+
+    await persistenceReached;
+    expect(await Promise.race([
+      first.done.then(() => "settled"),
+      Bun.sleep(0).then(() => "pending"),
+    ])).toBe("pending");
+    releasePersistence();
+    await firstEvents;
+    expect(await first.done).toBe("completed");
+
+    const second = runtime.start({
+      session,
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "second" }],
+    });
+    await collect(second.events);
+    expect(await second.done).toBe("completed");
+    expect(checkpoints).toEqual(["durable-thread", "durable-thread"]);
+    expect(requests).toContainEqual({
+      method: "thread/resume",
+      params: {
+        threadId: "durable-thread",
+        excludeTurns: true,
+        cwd: "/work",
+        sandbox: "read-only",
+        approvalPolicy: "never",
+      },
+    });
+    await runtime.close();
+  });
+
+  test("does not publish a checkpoint when turn opening is refused", async () => {
+    const checkpoints: string[] = [];
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "checkpoint-refusal-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => checkpointConnection([], true),
+      onCheckpoint(checkpoint) {
+        checkpoints.push(checkpoint);
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "refused" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "hello" }],
+    });
+
+    await collect(run.events);
+    expect(await run.done).toBe("error");
+    expect(checkpoints).toEqual([]);
     await runtime.close();
   });
 
