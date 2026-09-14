@@ -150,6 +150,89 @@ describe("harness runtime", () => {
     });
   });
 
+  test("prepares turn context once and shares it with the adapter and tools", async () => {
+    let adapterContext: HarnessAdapterRunRequest["context"] | undefined;
+    let toolContext: HarnessAdapterRunRequest["context"] | undefined;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run(runRequest) {
+            adapterContext = runRequest.context;
+            await runRequest.tools.call("inspect", {});
+          },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [
+        {
+          id: "app:workspace",
+          failureMode: "required",
+          prepare: ({ turnId }) => ({
+            instructions: "Use the workspace snapshot.",
+            content: [{ type: "text", text: "untrusted workspace data" }],
+            state: { turnId },
+          }),
+        },
+        {
+          id: "app:optional",
+          failureMode: "optional",
+          prepare: () => null,
+        },
+      ],
+      tools: {
+        list: () => [{ name: "inspect", description: "Inspect context", inputSchema: {} }],
+        async call(_name, _input, context) {
+          toolContext = context.context;
+          return { content: [] };
+        },
+      },
+    });
+
+    const run = harness.start(request);
+    await collect(run.events);
+    expect(await run.done).toBe("completed");
+    expect(toolContext).toBe(adapterContext);
+    expect(adapterContext?.sources[0]).toMatchObject({
+      sourceId: "app:workspace",
+      value: { state: { turnId: run.turnId } },
+    });
+    expect(adapterContext?.unavailable).toEqual([{
+      sourceId: "app:optional",
+      code: "CONTEXT_SOURCE_UNAVAILABLE",
+      message: "Context source \"app:optional\" is unavailable.",
+    }]);
+  });
+
+  test("seals a missing required context source as a safe error", async () => {
+    let adapterRan = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return { async *run() { adapterRan = true; } };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{ id: "app:required", failureMode: "required", prepare: () => null }],
+    });
+    const run = harness.start(request);
+    const events = await collect(run.events);
+    expect(await run.done).toBe("error");
+    expect(adapterRan).toBe(false);
+    expect(events.find((event) => event.payload.kind === "error")?.payload).toEqual({
+      kind: "error",
+      code: "CONTEXT_SOURCE_UNAVAILABLE",
+      message: "Context source \"app:required\" is unavailable.",
+    });
+  });
+
   test("closes the event iterator when persistence fails", async () => {
     const adapter: HarnessAdapter = {
       id: "scripted",

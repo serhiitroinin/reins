@@ -7,6 +7,7 @@ const context = {
   runId: "run",
   turnId: "turn",
   signal: new AbortController().signal,
+  context: { sources: [], unavailable: [] },
 };
 
 describe("tool host", () => {
@@ -47,4 +48,3 @@ describe("tool host", () => {
     expect(called).toBe(false);
   });
 });
-

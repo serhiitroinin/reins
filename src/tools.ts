@@ -1,6 +1,7 @@
 /** Application-owned tool definitions and policy, independent of provider SDKs. */
 
 import type { HarnessSessionKey } from "./protocol.js";
+import type { HarnessContextContribution, HarnessPreparedContext } from "./context.js";
 
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
@@ -29,6 +30,8 @@ export interface HarnessToolContext {
   runId: string;
   turnId: string;
   signal: AbortSignal;
+  /** The same turn-scoped context snapshot received by the adapter. */
+  context: HarnessPreparedContext<HarnessContextContribution>;
 }
 
 export interface HarnessToolDefinition<TInput = unknown> extends HarnessToolDescriptor {
@@ -116,4 +119,3 @@ export function createToolHost(
     },
   };
 }
-

@@ -16,6 +16,15 @@ import {
   type HarnessSessionKey,
   type HarnessTurnStatus,
 } from "./protocol.js";
+import {
+  HarnessContextPreparationError,
+  prepareHarnessContext,
+  type HarnessContextContribution,
+  type HarnessContextPrepareRequest,
+  type HarnessContextPreparationOptions,
+  type HarnessPreparedContext,
+  type HarnessContextSource,
+} from "./context.js";
 import { emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
 
 export type HarnessAdapterEvent = Exclude<
@@ -28,6 +37,7 @@ export interface HarnessAdapterRunRequest extends HarnessRunRequest {
   turnId: string;
   signal: AbortSignal;
   tools: HarnessTurnTools;
+  context: HarnessPreparedContext<HarnessContextContribution>;
 }
 
 export interface HarnessAdapterSession {
@@ -91,6 +101,8 @@ export interface HarnessRuntimeOptions {
   adapters: readonly HarnessAdapter[];
   persistence: HarnessPersistence;
   tools?: HarnessToolHost;
+  contextSources?: readonly HarnessContextSource<HarnessContextContribution, HarnessContextPrepareRequest>[];
+  onContextError?: HarnessContextPreparationOptions<HarnessContextContribution, HarnessContextPrepareRequest>["onError"];
   createId?: () => string;
   now?: () => Date;
 }
@@ -158,6 +170,13 @@ function safeError(error: unknown): { code: string; message: string; retryable?:
       ...(error.retryable ? { retryable: true } : {}),
     };
   }
+  if (error instanceof HarnessContextPreparationError) {
+    return {
+      code: error.code,
+      message: error.publicMessage,
+      ...(error.retryable ? { retryable: true } : {}),
+    };
+  }
   return { code: "ADAPTER_ERROR", message: "The adapter turn failed." };
 }
 
@@ -167,6 +186,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const createId = options.createId ?? (() => crypto.randomUUID());
   const now = options.now ?? (() => new Date());
   const tools = options.tools ?? emptyToolHost;
+  const contextSources = options.contextSources ?? [];
   const opened = new Map<string, Promise<ManagedSession>>();
   let closed = false;
 
@@ -240,12 +260,31 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           managed = await open(request.session, adapter);
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          const toolContext = { session: request.session, adapterId: adapter.id, runId, turnId, signal: controller.signal };
+          const contextRequest: HarnessContextPrepareRequest = {
+            ...request,
+            runId,
+            turnId,
+            signal: controller.signal,
+          };
+          const contextOptions: HarnessContextPreparationOptions<
+            HarnessContextContribution,
+            HarnessContextPrepareRequest
+          > = options.onContextError ? { onError: options.onContextError } : {};
+          const context = await prepareHarnessContext(contextSources, contextRequest, contextOptions);
+          const toolContext = {
+            session: request.session,
+            adapterId: adapter.id,
+            runId,
+            turnId,
+            signal: controller.signal,
+            context,
+          };
           for await (const payload of managed.session.run({
             ...request,
             runId,
             turnId,
             signal: controller.signal,
+            context,
             tools: {
               list: () => tools.list(toolContext),
               call: (name, input) => tools.call(name, input, toolContext),

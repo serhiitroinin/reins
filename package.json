@@ -45,6 +45,11 @@
       "bun": "./src/runtime.ts",
       "import": "./dist/runtime.js"
     },
+    "./context": {
+      "types": "./src/context.ts",
+      "bun": "./src/context.ts",
+      "import": "./dist/context.js"
+    },
     "./transports/ndjson": {
       "types": "./src/transports/ndjson.ts",
       "bun": "./src/transports/ndjson.ts",
