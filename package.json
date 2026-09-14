@@ -85,6 +85,16 @@
       "bun": "./src/adapters/codex-app-server-adapter.ts",
       "import": "./dist/adapters/codex-app-server-adapter.js"
     },
+    "./adapters/claude-agent-sdk-adapter": {
+      "types": "./src/adapters/claude-agent-sdk-adapter.ts",
+      "bun": "./src/adapters/claude-agent-sdk-adapter.ts",
+      "import": "./dist/adapters/claude-agent-sdk-adapter.js"
+    },
+    "./adapters/claude-agent-sdk-events": {
+      "types": "./src/adapters/claude-agent-sdk-events.ts",
+      "bun": "./src/adapters/claude-agent-sdk-events.ts",
+      "import": "./dist/adapters/claude-agent-sdk-events.js"
+    },
     "./testing": {
       "types": "./src/testing/index.ts",
       "bun": "./src/testing/index.ts",
