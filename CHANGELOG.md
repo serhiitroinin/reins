@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.8
+
+### Patch Changes
+
+- 9e65953: Negotiate Codex's experimental API only when dynamic tools are exposed, and omit an empty dynamic tool catalog so standard App Server sessions are accepted.
+
 ## 0.1.0-next.7
 
 ### Patch Changes
