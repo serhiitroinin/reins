@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.5
+
+### Patch Changes
+
+- fd9b630: Add a stateful Codex App Server event consumer that emits provider-neutral
+  assistant, reasoning, plan, tool, usage, limit, error, and turn-outcome
+  contracts with host-controlled presentation and redaction.
+
 ## 0.1.0-next.4
 
 ### Patch Changes
