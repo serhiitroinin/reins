@@ -210,6 +210,43 @@ describe("Claude Agent SDK adapter", () => {
     await runtime.close();
   });
 
+  test("bounds an interrupt that the provider never finishes and retires its stream", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    let closes = 0;
+    const adapter = createClaudeAgentSdkAdapter({
+      interruptTimeoutMs: 5,
+      connect: () => ({
+        messages,
+        send() {
+          messages.push({ type: "assistant", message: { content: [{ type: "text", text: "waiting" }] } });
+        },
+        interrupt() {},
+        close() {
+          closes += 1;
+          messages.close();
+        },
+      }),
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const request = {
+      session: { tenantId: "tenant", actorId: "actor", threadId: "stuck" },
+      adapterId: adapter.id,
+      input: [{ type: "text" as const, text: "wait" }],
+    };
+    const run = runtime.start(request);
+    const iterator = run.events[Symbol.asyncIterator]();
+    expect((await iterator.next()).value?.payload.kind).toBe("turn-started");
+    await Bun.sleep(0);
+
+    await run.cancel();
+    expect(await run.done).toBe("interrupted");
+    expect(closes).toBe(1);
+    const next = runtime.start(request);
+    await collect(next.events);
+    expect(await next.done).toBe("error");
+    await runtime.close();
+  });
+
   test("reuses one provider stream across turns and exposes bounded subagent stop", async () => {
     const state = { interrupts: 0, closes: 0, stops: [] as string[] };
     let sends = 0;

@@ -150,6 +150,20 @@ describe("Claude Agent SDK event consumer", () => {
     expect(JSON.stringify(events)).not.toContain("secret");
   });
 
+  test("treats an interrupted provider result as cancellation without a public error", () => {
+    const events: HarnessAdapterEvent[] = [];
+    const outcomes: ClaudeAgentSdkTurnOutcome[] = [];
+    const consumer = createClaudeAgentSdkEventConsumer({
+      emit: (event) => events.push(event),
+      onTurnEnded: (outcome) => outcomes.push(outcome),
+    });
+
+    consumer.message({ type: "result", subtype: "interrupted", is_error: true, error: "private" });
+
+    expect(events).toEqual([]);
+    expect(outcomes).toEqual([{ status: "interrupted", usage: {} }]);
+  });
+
   test("normalizes compaction and nested subagent activity as namespaced extensions", () => {
     const events: HarnessAdapterEvent[] = [];
     let summary: string | null = "kept summary";

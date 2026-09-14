@@ -140,6 +140,8 @@ export interface ClaudeAgentSdkAdapterOptions {
     checkpoint: string,
     request: Pick<ClaudeAgentSdkConnectRequest, "session" | "accountId" | "runId" | "turnId">,
   ): Promise<void> | void;
+  /** Bound a provider that acknowledges interrupt but never ends the turn. */
+  interruptTimeoutMs?: number;
 }
 
 export interface ClaudeAgentSdkAdapterSession extends HarnessAdapterSession {
@@ -290,11 +292,16 @@ interface ActiveTurn {
   >>;
   publicFailure: ClaudeAgentSdkPublicError | null;
   finished: boolean;
+  cancelling: Promise<void> | null;
 }
 
 /** Compose a real HarnessAdapter over a host-owned Agent SDK connection. */
 export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOptions): ClaudeAgentSdkAdapter {
   const id = options.id ?? "claude";
+  const interruptTimeoutMs = options.interruptTimeoutMs ?? 2_000;
+  if (!Number.isFinite(interruptTimeoutMs) || interruptTimeoutMs < 1) {
+    throw new Error("interruptTimeoutMs must be a positive number");
+  }
   const observedLimits = new Map<string, Map<string, HarnessLimitSnapshot["limits"][number]>>();
 
   return {
@@ -481,6 +488,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             settled,
             publicFailure: null,
             finished: false,
+            cancelling: null,
           };
           const consumer = createClaudeAgentSdkEventConsumer({
             ...options.events,
@@ -598,12 +606,34 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         async cancel() {
           const turn = active;
           if (!turn || turn.finished) return;
-          turn.finished = true;
-          closePending(turn);
-          turn.consumer.end("cancelled");
-          turn.queue.close();
-          turn.settled.resolve({ kind: "interrupted" });
-          await Promise.resolve(connection?.interrupt()).catch(() => undefined);
+          if (turn.cancelling) return turn.cancelling;
+          turn.cancelling = (async () => {
+            closePending(turn);
+            if (!connection) {
+              turn.finished = true;
+              turn.consumer.end("cancelled");
+              turn.queue.close();
+              turn.settled.resolve({ kind: "interrupted" });
+              return;
+            }
+            await Promise.resolve(connection.interrupt()).catch(() => undefined);
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const ended = await Promise.race([
+              turn.settled.promise.then(() => true),
+              new Promise<boolean>((resolve) => {
+                timer = setTimeout(() => resolve(false), interruptTimeoutMs);
+                timer.unref?.();
+              }),
+            ]);
+            if (timer !== undefined) clearTimeout(timer);
+            if (ended || turn.finished) return;
+            turn.finished = true;
+            turn.consumer.end("cancelled");
+            turn.queue.close();
+            turn.settled.resolve({ kind: "interrupted" });
+            await Promise.resolve(connection.close()).catch(() => undefined);
+          })();
+          return turn.cancelling;
         },
         checkpoint: () => checkpoint,
         async stopSubagent(taskId) {

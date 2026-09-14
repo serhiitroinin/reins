@@ -140,6 +140,7 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
         },
         interrupt() {
           state.interruptions += 1;
+          messages.push({ type: "result", subtype: "interrupted", is_error: true });
         },
         close() {
           if (closed) return;

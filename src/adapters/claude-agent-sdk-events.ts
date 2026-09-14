@@ -521,7 +521,12 @@ export function createClaudeAgentSdkEventConsumer(
       }));
     }
     if (Object.keys(usage).length > 0) options.emit({ kind: "usage", usage });
-    const failed = message.is_error === true;
+    const subtype = text(message.subtype);
+    const interrupted = subtype === "interrupted"
+      || subtype === "cancelled"
+      || subtype === "canceled"
+      || subtype === "error_interrupted";
+    const failed = message.is_error === true && !interrupted;
     if (failed) {
       const failure = publicFailure(message);
       options.emit({
@@ -538,7 +543,7 @@ export function createClaudeAgentSdkEventConsumer(
     }
     openAgents.clear();
     terminal = true;
-    options.onTurnEnded?.({ status: failed ? "error" : "completed", usage });
+    options.onTurnEnded?.({ status: interrupted ? "interrupted" : failed ? "error" : "completed", usage });
   };
 
   return {
