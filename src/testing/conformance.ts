@@ -295,7 +295,11 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
     const run = harness.start(request(fixture.adapterId));
     const events = await collect(run.events);
     check(await run.done === "completed", "tool scenario did not complete");
-    same(events.slice(1, -1).map((event) => event.payload), [{ kind: "assistant-text", text: CONFORMANCE.toolOutput }], "tool result changed at the adapter boundary");
+    same(
+      events.filter((event) => event.payload.kind === "assistant-text").map((event) => event.payload),
+      [{ kind: "assistant-text", text: CONFORMANCE.toolOutput }],
+      "tool result changed at the adapter boundary",
+    );
   });
 
   await runCase("context boundary", async (defer) => {

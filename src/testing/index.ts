@@ -10,6 +10,7 @@ import type {
 
 export * from "./conformance.js";
 export * from "./conformance-fixture.js";
+export * from "./codex-app-server-fixture.js";
 
 const unsupported = { support: "unsupported" as const };
 
