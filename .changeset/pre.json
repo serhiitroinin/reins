@@ -7,6 +7,7 @@
   "changesets": [
     "bright-codex-events",
     "calm-contexts-prepare",
+    "fresh-codex-adapter",
     "fuzzy-hounds-discover",
     "tidy-codex-caches"
   ]

@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.6
+
+### Patch Changes
+
+- cf3ace1: Add a complete provider-injected Codex App Server adapter with normalized
+  lifecycle events, model effort and Fast controls, context trust labels, dynamic
+  application tools, cancellation, resume checkpoints, and safe error semantics.
+
 ## 0.1.0-next.5
 
 ### Patch Changes
