@@ -506,14 +506,22 @@ export function createCodexAppServerEventConsumer(
     const body = truncated ? clip(redacted, toolOutputMaximum) : redacted;
     const parts = chunks(body, textChunkChars);
     for (const outputAppend of parts.slice(0, -1)) {
-      options.emit({ kind: "tool-updated", toolId, outputAppend });
+      options.emit({
+        kind: "tool-updated",
+        toolId,
+        toolKind: presentation.toolKind,
+        title: presentation.title,
+        outputAppend,
+        ...(presentation.extensions ? { extensions: presentation.extensions } : {}),
+      });
     }
     const outputAppend = parts.at(-1);
     options.emit({
       kind: "tool-completed",
       toolId,
       status: outcome.status,
-      ...(!held ? { toolKind: presentation.toolKind, title: presentation.title } : {}),
+      toolKind: presentation.toolKind,
+      title: presentation.title,
       ...(outputAppend ? { outputAppend } : {}),
       ...(outcome.exitCode !== undefined ? { exitCode: outcome.exitCode } : {}),
       ...(truncated ? { truncated: true } : {}),
@@ -527,6 +535,8 @@ export function createCodexAppServerEventConsumer(
         kind: "tool-completed",
         toolId,
         status,
+        toolKind: held.presentation.toolKind,
+        title: held.presentation.title,
         ...(held.presentation.extensions ? { extensions: held.presentation.extensions } : {}),
       });
     }
