@@ -24,6 +24,18 @@ describe("NDJSON transport", () => {
     expect(overflows).toEqual([5]);
     expect(lines).toEqual(["ok"]);
   });
+
+  test("drops an oversized line even when its newline arrives with it", () => {
+    const overflows: number[] = [];
+    const lines: string[] = [];
+    const reader = createLineReader((line) => lines.push(line), {
+      maxBufferedChars: 4,
+      onOverflow: (size) => overflows.push(size),
+    });
+    reader.text("abcde\nok\n");
+    expect(overflows).toEqual([5]);
+    expect(lines).toEqual(["ok"]);
+  });
 });
 
 describe("JSON-RPC transport", () => {
@@ -66,4 +78,3 @@ describe("JSON-RPC transport", () => {
     await expect(result).rejects.toThrow("child ended");
   });
 });
-

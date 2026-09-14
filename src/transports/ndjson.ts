@@ -22,6 +22,10 @@ export function createLineReader(
   let ended = false;
 
   const deliver = (line: string): void => {
+    if (line.length > maximum) {
+      options.onOverflow?.(line.length);
+      return;
+    }
     const normalized = line.trim();
     if (normalized !== "") onLine(normalized);
   };
@@ -79,4 +83,3 @@ export function createNdjsonReader(
   const reader = createLineReader(line, options);
   return { ...reader, line };
 }
-
