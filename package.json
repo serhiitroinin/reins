@@ -75,6 +75,11 @@
       "bun": "./src/adapters/codex-app-server.ts",
       "import": "./dist/adapters/codex-app-server.js"
     },
+    "./adapters/codex-app-server-events": {
+      "types": "./src/adapters/codex-app-server-events.ts",
+      "bun": "./src/adapters/codex-app-server-events.ts",
+      "import": "./dist/adapters/codex-app-server-events.js"
+    },
     "./testing": {
       "types": "./src/testing/index.ts",
       "bun": "./src/testing/index.ts",
