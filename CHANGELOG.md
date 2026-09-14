@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.3
+
+### Patch Changes
+
+- f6e9e4d: Map Codex account model caches into the generic catalog, including model-specific Fast service tiers.
+
 ## 0.1.0-next.2
 
 ### Patch Changes

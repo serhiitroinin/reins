@@ -6,6 +6,7 @@
   },
   "changesets": [
     "calm-contexts-prepare",
-    "fuzzy-hounds-discover"
+    "fuzzy-hounds-discover",
+    "tidy-codex-caches"
   ]
 }
