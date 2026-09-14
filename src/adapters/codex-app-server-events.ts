@@ -11,6 +11,7 @@ import type { HarnessLimit, HarnessLimitSnapshot } from "../profile.js";
 import type { HarnessToolStatus, HarnessTurnStatus, HarnessUsage } from "../protocol.js";
 
 export const CODEX_ASSISTANT_TEXT_CHUNK_CHARS = 240;
+export const CODEX_EVENT_CONTENT_CHUNK_CHARS = 4_000;
 export const CODEX_TOOL_OUTPUT_MAX_CHARS = 32_000;
 
 export type CodexToolInput =
@@ -64,6 +65,8 @@ export interface CodexAppServerEventConsumerOptions {
   /** Raw provider failures are hidden unless the host explicitly maps them. */
   publicError?(error: CodexPublicErrorInput): CodexPublicError;
   assistantTextChunkChars?: number;
+  /** Chunk size for whole messages, reasoning, and tool output. */
+  eventContentChunkChars?: number;
   toolOutputMaxChars?: number;
 }
 
@@ -423,6 +426,11 @@ export function createCodexAppServerEventConsumer(
     CODEX_TOOL_OUTPUT_MAX_CHARS,
     "toolOutputMaxChars",
   );
+  const contentChunkChars = positiveInteger(
+    options.eventContentChunkChars,
+    CODEX_EVENT_CONTENT_CHUNK_CHARS,
+    "eventContentChunkChars",
+  );
   const present = options.presentTool ?? defaultToolPresentation;
   const open = new Map<string, { tool: CodexToolInput; presentation: CodexToolPresentation }>();
   const unnamed: string[] = [];
@@ -504,7 +512,7 @@ export function createCodexAppServerEventConsumer(
     const redacted = options.redactToolOutput?.(tool, rawOutput) ?? rawOutput;
     const truncated = redacted.length > toolOutputMaximum;
     const body = truncated ? clip(redacted, toolOutputMaximum) : redacted;
-    const parts = chunks(body, textChunkChars);
+    const parts = chunks(body, contentChunkChars);
     for (const outputAppend of parts.slice(0, -1)) {
       options.emit({
         kind: "tool-updated",
@@ -589,14 +597,14 @@ export function createCodexAppServerEventConsumer(
             return;
           }
           closeText();
-          for (const part of chunks(whole, textChunkChars)) {
+          for (const part of chunks(whole, contentChunkChars)) {
             options.emit({ kind: "assistant-text", text: part });
           }
           return;
         }
         if (item.type === "reasoning") {
           closeText();
-          for (const part of chunks(reasoningText(item), textChunkChars)) {
+          for (const part of chunks(reasoningText(item), contentChunkChars)) {
             options.emit({ kind: "thinking", text: part });
           }
           return;
@@ -626,6 +634,7 @@ export function createCodexAppServerEventConsumer(
       if (method === "turn/completed") {
         const turn = record(params.turn);
         const status = text(turn?.status);
+        if (status !== "completed" && status !== "failed" && status !== "interrupted") return;
         finish(
           status === "failed" ? "error" : status === "interrupted" ? "interrupted" : "completed",
           status === "failed" ? turn?.error : undefined,
