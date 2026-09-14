@@ -155,6 +155,8 @@ export interface HarnessRunRequest {
   adapterId: string;
   input: readonly HarnessInput[];
   model?: string;
+  /** Open option id from the selected model effort profile. */
+  effort?: string;
   accountId?: string;
   /** Adapter-declared, provider-neutral settings selected by the host. */
   settings?: HarnessRunSettings;
