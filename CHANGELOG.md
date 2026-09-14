@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.4
+
+### Patch Changes
+
+- Add a framework-neutral adapter conformance runner with deterministic provider fixtures and timeout cleanup.
+- Preserve safe runtime errors such as `SESSION_BUSY`.
+- Move Codex App Server initialize, thread, resume, and turn request builders behind the adapter boundary.
+
 ## 0.1.0-next.3
 
 ### Patch Changes
