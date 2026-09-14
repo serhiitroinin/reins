@@ -171,6 +171,37 @@ describe("harness runtime", () => {
     expect(events.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 
+  test("preserves the safe runtime code when a session is already busy", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() { yield { kind: "assistant-text", text: "waiting" }; await waiting; },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const first = harness.start(request);
+    const iterator = first.events[Symbol.asyncIterator]();
+    await iterator.next();
+    await iterator.next();
+
+    const second = harness.start(request);
+    const events = await collect(second.events);
+    expect(await second.done).toBe("error");
+    expect(events.find((event) => event.payload.kind === "error")?.payload).toEqual({
+      kind: "error",
+      code: "SESSION_BUSY",
+      message: "This harness session already has a running turn.",
+    });
+
+    await first.cancel();
+  });
+
   test("rejects unknown adapters before starting work", () => {
     const harness = createHarness({ adapters: [], persistence: createMemoryPersistence() });
     expect(() => harness.start({ ...request, adapterId: "missing" })).toThrow(HarnessRuntimeError);

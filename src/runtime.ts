@@ -176,6 +176,9 @@ class AsyncQueue<T> implements AsyncIterable<T> {
 }
 
 function safeError(error: unknown): { code: string; message: string; retryable?: boolean } {
+  if (error instanceof HarnessRuntimeError) {
+    return { code: error.code, message: error.message };
+  }
   if (error instanceof HarnessAdapterError) {
     return {
       code: error.code,
