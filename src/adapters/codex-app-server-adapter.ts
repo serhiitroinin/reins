@@ -88,6 +88,11 @@ export interface CodexAppServerAdapterOptions {
     snapshot: HarnessLimitSnapshot,
     request: Pick<CodexAppServerConnectRequest, "session" | "accountId" | "runId" | "turnId">,
   ): void;
+  /** Persist a resume checkpoint after App Server accepts the turn. */
+  onCheckpoint?(
+    checkpoint: string,
+    request: Pick<CodexAppServerConnectRequest, "session" | "accountId" | "runId" | "turnId">,
+  ): Promise<void> | void;
   excludeTurnsOnResume?: boolean;
 }
 
@@ -477,6 +482,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               current.turnId = turnId;
               // A thread becomes resumable only after the provider accepted its turn.
               checkpoint = threadId;
+              await options.onCheckpoint?.(checkpoint, connectRequest);
 
               const end = await settled.promise;
               if (end.kind === "transport") {

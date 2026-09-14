@@ -124,6 +124,11 @@ mapper.
 `createCodexAppServerAdapter` composes that client and consumer into the public
 runtime contract. It owns the wire lifecycle, dynamic tool round trips,
 context trust labels, cancellation, checkpoints, and transport termination.
+After App Server accepts a turn, its optional `onCheckpoint` hook lets the host
+durably store the resumable thread id before the turn completes or fails. The
+hook is never called for a refused thread or turn opening, and an asynchronous
+hook is awaited so persistence failures cannot be mistaken for a durable
+checkpoint.
 Its connection factory is injected per turn. The process, environment,
 credentials, account selection, MCP configuration, sandbox posture, domain
 context, and persistence remain host decisions.
