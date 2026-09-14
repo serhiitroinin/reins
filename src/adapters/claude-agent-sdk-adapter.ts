@@ -118,6 +118,12 @@ export interface ClaudeAgentSdkAdapterOptions {
   connect(
     request: ClaudeAgentSdkConnectRequest,
   ): Promise<ClaudeAgentSdkConnection> | ClaudeAgentSdkConnection;
+  /**
+   * Select the provider configuration that fixes a connection's identity.
+   * Account, model, effort, and run settings are always included. By default,
+   * the complete `configuration` object is included too.
+   */
+  connectionKey?(request: HarnessAdapterRunRequest): unknown;
   /** Change the SDK-free value passed to the injected connection. */
   mapInput?(
     request: HarnessAdapterRunRequest,
@@ -275,10 +281,11 @@ function publicAdapterError(error: ClaudeAgentSdkPublicError): HarnessAdapterErr
 }
 
 interface PendingInteraction {
-  queue: AdapterEventQueue;
   authorization: ClaudeAgentSdkDeferredAuthorization;
   settle(decision: ClaudeAgentSdkToolDecision): void;
   request: ClaudeAgentSdkToolRequest;
+  turn: ActiveTurn;
+  resolving: boolean;
 }
 
 interface ActiveTurn {
@@ -293,6 +300,52 @@ interface ActiveTurn {
   publicFailure: ClaudeAgentSdkPublicError | null;
   finished: boolean;
   cancelling: Promise<void> | null;
+}
+
+function canonical(value: unknown, seen = new Set<object>()): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return `string:${JSON.stringify(value)}`;
+  if (typeof value === "boolean") return `boolean:${value}`;
+  if (typeof value === "number") {
+    return `number:${Object.is(value, -0) ? "-0" : String(value)}`;
+  }
+  if (typeof value === "bigint") return `bigint:${value}`;
+  if (value === undefined) return "undefined";
+  if (Array.isArray(value)) {
+    if (seen.has(value)) throw new Error("Claude connection identity must be serializable");
+    seen.add(value);
+    const output = `array:[${value.map((entry) => canonical(entry, seen)).join(",")}]`;
+    seen.delete(value);
+    return output;
+  }
+  if (typeof value === "object") {
+    if (seen.has(value)) throw new Error("Claude connection identity must be serializable");
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("Claude connection identity must be serializable");
+    }
+    seen.add(value);
+    const output = Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key], seen)}`)
+      .join(",");
+    seen.delete(value);
+    return `object:{${output}}`;
+  }
+  throw new Error("Claude connection identity must be serializable");
+}
+
+function connectionIdentity(
+  request: HarnessAdapterRunRequest,
+  providerConfiguration: unknown,
+): string {
+  return canonical({
+    accountId: request.accountId ?? null,
+    model: request.model ?? null,
+    effort: request.effort ?? null,
+    settings: request.settings ?? null,
+    providerConfiguration,
+  });
 }
 
 /** Compose a real HarnessAdapter over a host-owned Agent SDK connection. */
@@ -322,6 +375,8 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
       let active: ActiveTurn | null = null;
       let connection: ClaudeAgentSdkConnection | null = null;
       let connecting: Promise<ClaudeAgentSdkConnection> | null = null;
+      let connectionBinding: string | null = null;
+      let connectionAccountId: string | undefined;
       let consuming: Promise<void> | null = null;
       let streamEnded = false;
       let streamFailure: unknown;
@@ -335,9 +390,9 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
 
       const closePending = (turn: ActiveTurn | null): void => {
         for (const [id, value] of pending) {
-          if (turn !== null && value.queue !== turn.queue) continue;
+          if (turn !== null && value.turn !== turn) continue;
           pending.delete(id);
-          value.queue.push({
+          value.turn.queue.push({
             kind: "interaction-resolved",
             interactionId: id,
             response: { choiceId: "cancelled" },
@@ -388,10 +443,11 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         turn.queue.push({ kind: "interaction-requested", interaction: authorization.interaction });
         return new Promise<ClaudeAgentSdkToolDecision>((resolve) => {
           pending.set(id, {
-            queue: turn.queue,
             authorization,
             request,
             settle: resolve,
+            turn,
+            resolving: false,
           });
         });
       };
@@ -412,10 +468,15 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         }
       };
 
-      const connect = async (request: HarnessAdapterRunRequest): Promise<ClaudeAgentSdkConnection> => {
+      const connect = async (
+        request: HarnessAdapterRunRequest,
+        requestedBinding: string,
+      ): Promise<ClaudeAgentSdkConnection> => {
         if (connection) return connection;
         if (streamEnded) throw streamFailure ?? new Error("the Claude provider stream ended");
         if (!connecting) {
+          connectionBinding = requestedBinding;
+          connectionAccountId = request.accountId;
           const connectRequest: ClaudeAgentSdkConnectRequest = {
             session,
             resumeToken: checkpoint,
@@ -436,24 +497,29 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           const pendingConnection = Promise.resolve().then(() => options.connect(connectRequest));
           connecting = new Promise<ClaudeAgentSdkConnection>((resolve, reject) => {
             let interrupted = false;
+            const cleanup = (): void => {
+              request.signal.removeEventListener("abort", abort);
+              lifetime.signal.removeEventListener("abort", abort);
+            };
             const abort = (): void => {
               if (interrupted) return;
               interrupted = true;
-              request.signal.removeEventListener("abort", abort);
+              cleanup();
               void pendingConnection.then((late) => late.close()).catch(() => undefined);
               reject(new HarnessAdapterInterruptedError());
             };
             request.signal.addEventListener("abort", abort, { once: true });
-            if (request.signal.aborted) abort();
+            lifetime.signal.addEventListener("abort", abort, { once: true });
+            if (request.signal.aborted || lifetime.signal.aborted) abort();
             void pendingConnection.then(
               (opened) => {
                 if (interrupted) return;
-                request.signal.removeEventListener("abort", abort);
+                cleanup();
                 resolve(opened);
               },
               (error: unknown) => {
                 if (interrupted) return;
-                request.signal.removeEventListener("abort", abort);
+                cleanup();
                 reject(error);
               },
             );
@@ -463,6 +529,8 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           connection = await connecting;
         } catch (error) {
           connecting = null;
+          connectionBinding = null;
+          connectionAccountId = undefined;
           throw error;
         }
         consuming = consume(connection);
@@ -474,6 +542,16 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           if (closed) throw new Error("the Claude adapter session is closed");
           if (active !== null) throw new Error("the Claude adapter session is already running");
           if (streamEnded) throw streamFailure ?? new Error("the Claude provider stream ended");
+          const requestedBinding = connectionIdentity(
+            request,
+            options.connectionKey ? options.connectionKey(request) : request.configuration ?? null,
+          );
+          if (connectionBinding !== null && connectionBinding !== requestedBinding) {
+            throw new HarnessAdapterError(
+              "CLAUDE_SESSION_CONFIGURATION_CHANGED",
+              "Claude session settings changed. Start a new harness session.",
+            );
+          }
           declined.clear();
           const queue = new AdapterEventQueue();
           const settled = deferred<
@@ -523,7 +601,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               checkpointWork = checkpointWork.then(() => options.onCheckpoint?.(value, checkpointRequest(requestValue)));
             },
             onLimits(snapshot) {
-              const account = request.accountId ?? "";
+              const account = connectionAccountId ?? "";
               let limits = observedLimits.get(account);
               if (!limits) {
                 limits = new Map();
@@ -532,7 +610,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               for (const limit of snapshot.limits) limits.set(limit.id, limit);
               options.onLimits?.(snapshot, {
                 session,
-                ...(request.accountId ? { accountId: request.accountId } : {}),
+                ...(connectionAccountId ? { accountId: connectionAccountId } : {}),
                 runId: request.runId,
                 turnId: request.turnId,
               });
@@ -548,7 +626,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           active = turn;
 
           const execute = (async (): Promise<void> => {
-            const opened = await connect(request);
+            const opened = await connect(request, requestedBinding);
             if (request.signal.aborted) throw new HarnessAdapterInterruptedError();
             const input = await (options.mapInput?.(request) ?? defaultTurnInput(request));
             await opened.send(input);
@@ -589,18 +667,26 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         async respond(interactionId, response) {
           const held = pending.get(interactionId);
           if (!held) throw new Error("unknown Claude interaction");
-          pending.delete(interactionId);
+          if (held.resolving) throw new Error("Claude interaction is already being resolved");
+          held.resolving = true;
           let decision: ClaudeAgentSdkToolDecision;
           try {
             decision = await held.authorization.resolve(response);
           } catch {
             decision = { behavior: "deny", message: "The host could not resolve this interaction." };
           }
+          if (
+            pending.get(interactionId) !== held
+            || active !== held.turn
+            || held.turn.finished
+            || held.turn.request.signal.aborted
+          ) return;
+          pending.delete(interactionId);
           if (decision.behavior === "deny" && held.request.toolUseId) declined.add(held.request.toolUseId);
           if (decision.behavior === "allow") {
             decision = { behavior: "allow", updatedInput: decision.updatedInput ?? held.request.input };
           }
-          held.queue.push({ kind: "interaction-resolved", interactionId, response });
+          held.turn.queue.push({ kind: "interaction-resolved", interactionId, response });
           held.settle(decision);
         },
         async cancel() {

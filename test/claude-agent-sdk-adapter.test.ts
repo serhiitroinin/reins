@@ -4,7 +4,10 @@ import {
   type ClaudeAgentSdkConnectRequest,
   type ClaudeAgentSdkConnection,
 } from "../src/adapters/claude-agent-sdk-adapter.ts";
-import { createHarness } from "../src/runtime.ts";
+import {
+  createHarness,
+  type HarnessAdapterRunRequest,
+} from "../src/runtime.ts";
 import { createMemoryPersistence } from "../src/stores.ts";
 import { createPushableAsyncIterable } from "../src/transports/async-iterable.ts";
 import {
@@ -42,6 +45,24 @@ function scriptedConnection(
       state.closes += 1;
       messages.close();
     },
+  };
+}
+
+function adapterRequest(
+  threadId: string,
+  turnId: string,
+  overrides: Partial<HarnessAdapterRunRequest> = {},
+): HarnessAdapterRunRequest {
+  return {
+    session: { tenantId: "tenant", actorId: "actor", threadId },
+    adapterId: "claude",
+    input: [{ type: "text", text: turnId }],
+    runId: `run-${turnId}`,
+    turnId,
+    signal: new AbortController().signal,
+    tools: { list: () => [], call: async () => ({ content: [] }) },
+    context: { sources: [], unavailable: [] },
+    ...overrides,
   };
 }
 
@@ -208,6 +229,232 @@ describe("Claude Agent SDK adapter", () => {
     expect(closes).toBe(1);
     expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
     await runtime.close();
+  });
+
+  test("closes a connection that arrives after the adapter session closes", async () => {
+    let started!: () => void;
+    const connecting = new Promise<void>((resolve) => { started = resolve; });
+    let resolveConnection!: (connection: ClaudeAgentSdkConnection) => void;
+    const pending = new Promise<ClaudeAgentSdkConnection>((resolve) => { resolveConnection = resolve; });
+    const messages = createPushableAsyncIterable<unknown>();
+    let sends = 0;
+    let closes = 0;
+    const adapter = createClaudeAgentSdkAdapter({
+      connect() {
+        started();
+        return pending;
+      },
+    });
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "close-pending" },
+      resumeToken: null,
+    });
+    const turn = collect(session.run(adapterRequest("close-pending", "one"))).catch((error) => error);
+
+    await connecting;
+    await session.close();
+    resolveConnection({
+      messages,
+      send() { sends += 1; },
+      interrupt() {},
+      close() {
+        closes += 1;
+        messages.close();
+      },
+    });
+    await Bun.sleep(0);
+
+    expect((await turn).name).toBe("HarnessAdapterInterruptedError");
+    expect(sends).toBe(0);
+    expect(closes).toBe(1);
+  });
+
+  test("a cancelled interaction cannot settle with a late allow decision", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    const decisions: unknown[] = [];
+    let resolveAuthorization!: () => void;
+    const authorization = new Promise<void>((resolve) => { resolveAuthorization = resolve; });
+    let resolving!: () => void;
+    const resolverStarted = new Promise<void>((resolve) => { resolving = resolve; });
+    const adapter = createClaudeAgentSdkAdapter({
+      connect(request) {
+        return {
+          messages,
+          send() {
+            void request.canUseTool({ toolName: "Write", input: {}, toolUseId: "tool-1" })
+              .then((decision) => decisions.push(decision));
+          },
+          interrupt() {
+            messages.push({ type: "result", subtype: "interrupted", is_error: true });
+          },
+          close() { messages.close(); },
+        };
+      },
+      authorizeTool: () => ({
+        behavior: "ask",
+        interaction: {
+          id: "approval-1",
+          kind: "approval",
+          title: "Allow Write?",
+          choices: [
+            { id: "allow", label: "Allow", posture: "allow" },
+            { id: "deny", label: "Deny", posture: "deny" },
+          ],
+        },
+        async resolve() {
+          resolving();
+          await authorization;
+          return { behavior: "allow" };
+        },
+      }),
+    });
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "interaction-race" },
+      resumeToken: null,
+    });
+    const controller = new AbortController();
+    const stream = session.run(adapterRequest("interaction-race", "one", { signal: controller.signal }));
+    const iterator = stream[Symbol.asyncIterator]();
+    expect(await iterator.next()).toMatchObject({
+      value: { kind: "interaction-requested", interaction: { id: "approval-1" } },
+    });
+    const responding = session.respond("approval-1", { choiceId: "allow" });
+    await resolverStarted;
+    controller.abort();
+    await session.cancel();
+    resolveAuthorization();
+    await responding;
+    expect(await iterator.next()).toMatchObject({
+      value: { kind: "interaction-resolved", interactionId: "approval-1" },
+    });
+    await expect(iterator.next()).rejects.toMatchObject({ name: "HarnessAdapterInterruptedError" });
+
+    expect(decisions).toEqual([{
+      behavior: "deny",
+      message: "The turn ended before the interaction was answered.",
+    }]);
+    await session.close();
+  });
+
+  test("pins account and session settings to the provider connection", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    let sends = 0;
+    const limitAccounts: Array<string | undefined> = [];
+    const adapter = createClaudeAgentSdkAdapter({
+      connect: (request) => ({
+        messages,
+        send() {
+          sends += 1;
+          messages.push({
+            type: "rate_limit_event",
+            rate_limit_info: { rateLimitType: "five_hour", utilization: 20 },
+          });
+          messages.push({ type: "result", subtype: "success", is_error: false });
+        },
+        interrupt() {},
+        close() { messages.close(); },
+      }),
+      onLimits: (_snapshot, request) => limitAccounts.push(request.accountId),
+    });
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "binding" },
+      resumeToken: null,
+    });
+    await collect(session.run(adapterRequest("binding", "one", {
+      accountId: "account-a",
+      model: "claude-a",
+      effort: "high",
+      settings: { permission: { modeId: "managed" } },
+      configuration: { endpoint: "one" },
+    })));
+    await expect(collect(session.run(adapterRequest("binding", "two", {
+      accountId: "account-b",
+      model: "claude-a",
+      effort: "high",
+      settings: { permission: { modeId: "managed" } },
+      configuration: { endpoint: "one" },
+    })))).rejects.toMatchObject({
+      name: "HarnessAdapterError",
+      code: "CLAUDE_SESSION_CONFIGURATION_CHANGED",
+      message: "Claude session settings changed. Start a new harness session.",
+    });
+
+    expect(sends).toBe(1);
+    expect(limitAccounts).toEqual(["account-a"]);
+    expect(await adapter.limits?.({ accountId: "account-a" })).toMatchObject({ status: "available" });
+    expect(await adapter.limits?.({ accountId: "account-b" })).toEqual({ status: "unsupported" });
+    await session.close();
+  });
+
+  test("rejects every connection-scoped setting change by default", async () => {
+    const base = {
+      accountId: "account-a",
+      model: "claude-a",
+      effort: "high",
+      settings: { permission: { modeId: "managed" } },
+      configuration: { endpoint: "one" },
+    } satisfies Partial<HarnessAdapterRunRequest>;
+    const variants: Array<Partial<HarnessAdapterRunRequest>> = [
+      { accountId: "account-b" },
+      { model: "claude-b" },
+      { effort: "low" },
+      { settings: { permission: { modeId: "opened" } } },
+      { configuration: { endpoint: "two" } },
+    ];
+
+    for (const [index, changed] of variants.entries()) {
+      const messages = createPushableAsyncIterable<unknown>();
+      const adapter = createClaudeAgentSdkAdapter({
+        connect: () => ({
+          messages,
+          send() { messages.push({ type: "result", subtype: "success", is_error: false }); },
+          interrupt() {},
+          close() { messages.close(); },
+        }),
+      });
+      const session = await adapter.open({
+        session: { tenantId: "tenant", actorId: "actor", threadId: `identity-${index}` },
+        resumeToken: null,
+      });
+      await collect(session.run(adapterRequest(`identity-${index}`, "one", base)));
+      await expect(collect(session.run(adapterRequest(`identity-${index}`, "two", {
+        ...base,
+        ...changed,
+      })))).rejects.toMatchObject({ code: "CLAUDE_SESSION_CONFIGURATION_CHANGED" });
+      await session.close();
+    }
+  });
+
+  test("lets hosts exclude turn-only configuration from connection identity", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    let sends = 0;
+    const adapter = createClaudeAgentSdkAdapter({
+      connectionKey: (request) => ({ endpoint: request.configuration?.endpoint }),
+      connect: () => ({
+        messages,
+        send() {
+          sends += 1;
+          messages.push({ type: "result", subtype: "success", is_error: false });
+        },
+        interrupt() {},
+        close() { messages.close(); },
+      }),
+    });
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "key" },
+      resumeToken: null,
+    });
+    await collect(session.run(adapterRequest("key", "one", {
+      accountId: "account-a",
+      configuration: { endpoint: "same", command: false },
+    })));
+    await collect(session.run(adapterRequest("key", "two", {
+      accountId: "account-a",
+      configuration: { endpoint: "same", command: true },
+    })));
+
+    expect(sends).toBe(2);
+    await session.close();
   });
 
   test("bounds an interrupt that the provider never finishes and retires its stream", async () => {

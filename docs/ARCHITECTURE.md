@@ -143,9 +143,10 @@ Anthropic SDK type crosses the adapter boundary.
 The adapter normalizes prose, thinking, plans, tool runs, usage, account-limit
 updates, compaction, and subagent activity. Claude-only activity uses the
 `anthropic:claude-agent-sdk` extension namespace. Tool input and output are
-private by default. A host must explicitly select a safe presentation and
-redacted output before either enters an event. Provider failures follow the
-same explicit public-error rule as Codex.
+private by default. A host must explicitly select a safe presentation,
+redacted output, or redacted subagent failure before any of those details enter
+an event. Provider failures follow the same explicit public-error rule as
+Codex.
 
 The injected connection receives application tools and a provider-permission
 callback. A host can decide immediately or return a deferred interaction. The
@@ -159,6 +160,13 @@ The optional checkpoint hook is awaited before a turn completes. Interrupts
 wait for the provider's terminal boundary so an old result cannot settle the
 next turn. A provider that does not reach that boundary within the configured
 grace period has its connection retired rather than reused.
+
+A long-lived connection is pinned to the account, model, effort, run settings,
+and provider configuration from its first turn. A later turn that changes that
+identity is refused with a public error instead of being sent through a process
+with stale authority. Hosts whose configuration contains turn-only fields can
+provide `connectionKey` to select only the connection-scoped portion; account,
+model, effort, and run settings remain pinned regardless.
 
 The connection factory still owns the actual SDK query and every option that
 can change its authority: explicit environment, account and credentials,

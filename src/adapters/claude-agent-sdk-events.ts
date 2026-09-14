@@ -65,6 +65,8 @@ export interface ClaudeAgentSdkEventConsumerOptions {
   presentTool?(tool: ClaudeAgentSdkToolInput): ClaudeAgentSdkToolPresentation | null;
   /** Raw tool output is omitted unless the host explicitly returns safe text. */
   redactToolOutput?(tool: ClaudeAgentSdkToolInput, output: string): string;
+  /** Raw subagent failures are omitted unless the host explicitly returns safe text. */
+  redactSubagentError?(error: string): string | undefined;
   /** Raw provider failures are hidden unless the host explicitly maps them. */
   publicError?(error: ClaudeAgentSdkPublicErrorInput): ClaudeAgentSdkPublicError;
   eventContentChunkChars?: number;
@@ -212,7 +214,11 @@ export function claudeAgentSdkLimitSnapshot(value: unknown): HarnessLimitSnapsho
   const usedPercent = finite(info.utilization);
   if (usedPercent === undefined) return null;
   const resetsSeconds = finite(info.resetsAt) ?? finite(info.resets_at);
-  const resetsAt = resetsSeconds === undefined ? undefined : new Date(resetsSeconds * 1_000).toISOString();
+  let resetsAt: string | undefined;
+  if (resetsSeconds !== undefined) {
+    const date = new Date(resetsSeconds * 1_000);
+    if (Number.isFinite(date.getTime())) resetsAt = date.toISOString();
+  }
   const windowDurationMs = id === "five_hour"
     ? 300 * 60_000
     : id.startsWith("seven_day") ? 10_080 * 60_000 : undefined;
@@ -572,6 +578,8 @@ export function createClaudeAgentSdkEventConsumer(
           const patch = record(message.patch) ?? {};
           if (taskId) {
             const raw = text(patch.status);
+            const rawError = text(patch.error);
+            const safeError = rawError ? options.redactSubagentError?.(rawError) : undefined;
             options.emit(extension("subagent", {
               taskId,
               phase: raw === "completed" || raw === "failed" || raw === "killed" ? "done" : "progress",
@@ -579,7 +587,7 @@ export function createClaudeAgentSdkEventConsumer(
               ...(raw === "completed" ? { status: "completed" }
                 : raw === "failed" ? { status: "failed" }
                   : raw === "killed" ? { status: "stopped" } : {}),
-              ...(text(patch.error) ? { error: text(patch.error) } : {}),
+              ...(safeError ? { error: safeError } : {}),
               ...(patch.is_backgrounded === true ? { backgrounded: true } : {}),
             }));
             if (raw === "completed" || raw === "failed" || raw === "killed") openAgents.delete(taskId);

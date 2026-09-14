@@ -126,6 +126,51 @@ describe("Claude Agent SDK event consumer", () => {
     expect(JSON.stringify(events)).not.toContain("secret output");
   });
 
+  test("keeps subagent errors private unless the host explicitly redacts them", () => {
+    const privateEvents: HarnessAdapterEvent[] = [];
+    const privateConsumer = createClaudeAgentSdkEventConsumer({ emit: (event) => privateEvents.push(event) });
+    privateConsumer.message({
+      type: "system",
+      subtype: "task_updated",
+      task_id: "agent-1",
+      patch: { status: "failed", description: "Inspect", error: "private stack and token" },
+    });
+
+    expect(JSON.stringify(privateEvents)).not.toContain("private stack and token");
+    expect(privateEvents).toEqual([{
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "subagent",
+      payload: { taskId: "agent-1", phase: "done", description: "Inspect", status: "failed" },
+    }]);
+
+    const publicEvents: HarnessAdapterEvent[] = [];
+    const publicConsumer = createClaudeAgentSdkEventConsumer({
+      emit: (event) => publicEvents.push(event),
+      redactSubagentError: () => "The subagent failed safely.",
+    });
+    publicConsumer.message({
+      type: "system",
+      subtype: "task_updated",
+      task_id: "agent-1",
+      patch: { status: "failed", error: "private stack and token" },
+    });
+
+    expect(JSON.stringify(publicEvents)).not.toContain("private stack and token");
+    expect(publicEvents).toEqual([{
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "subagent",
+      payload: {
+        taskId: "agent-1",
+        phase: "done",
+        description: "subagent",
+        status: "failed",
+        error: "The subagent failed safely.",
+      },
+    }]);
+  });
+
   test("maps public failures and closes unfinished tools without false success", () => {
     const events: HarnessAdapterEvent[] = [];
     const outcomes: ClaudeAgentSdkTurnOutcome[] = [];
@@ -262,5 +307,19 @@ describe("Claude Agent SDK event consumer", () => {
     });
     expect(claudeAgentSdkLimitSnapshot({ utilization: "8" })).toBeNull();
     expect(claudeAgentSdkLimitSnapshot(null)).toBeNull();
+    expect(claudeAgentSdkLimitSnapshot({
+      rate_limit_type: "huge_window",
+      utilization: 8,
+      resets_at: Number.MAX_VALUE,
+    })).toEqual({
+      limits: [{
+        id: "huge_window",
+        label: "Huge Window",
+        kind: "rate",
+        scope: "account",
+        unit: "%",
+        usedPercent: 8,
+      }],
+    });
   });
 });
