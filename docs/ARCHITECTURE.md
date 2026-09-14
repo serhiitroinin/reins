@@ -144,9 +144,10 @@ The adapter normalizes prose, thinking, plans, tool runs, usage, account-limit
 updates, compaction, and subagent activity. Claude-only activity uses the
 `anthropic:claude-agent-sdk` extension namespace. Tool input and output are
 private by default. A host must explicitly select a safe presentation,
-redacted output, or redacted subagent failure before any of those details enter
-an event. Provider failures follow the same explicit public-error rule as
-Codex.
+redacted output, subagent failure, or compaction failure before any of those
+details enter an event. A subagent's provider-owned `skip_transcript` signal is
+retained as extension metadata so a product can track the task without drawing
+it. Provider failures follow the same explicit public-error rule as Codex.
 
 The injected connection receives application tools and a provider-permission
 callback. A host can decide immediately or return a deferred interaction. The

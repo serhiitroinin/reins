@@ -67,6 +67,8 @@ export interface ClaudeAgentSdkEventConsumerOptions {
   redactToolOutput?(tool: ClaudeAgentSdkToolInput, output: string): string;
   /** Raw subagent failures are omitted unless the host explicitly returns safe text. */
   redactSubagentError?(error: string): string | undefined;
+  /** Raw compaction failures are omitted unless the host explicitly returns safe text. */
+  redactCompactionError?(error: string): string | undefined;
   /** Raw provider failures are hidden unless the host explicitly maps them. */
   publicError?(error: ClaudeAgentSdkPublicErrorInput): ClaudeAgentSdkPublicError;
   eventContentChunkChars?: number;
@@ -494,6 +496,7 @@ export function createClaudeAgentSdkEventConsumer(
       taskId,
       phase,
       description,
+      ...(message.skip_transcript === true ? { skipTranscript: true } : {}),
       ...(text(message.subagent_type) ? { subagentType: text(message.subagent_type) } : {}),
       ...(status === "completed" || status === "failed" || status === "stopped" ? { status } : {}),
       ...(text(message.summary) ? { summary: text(message.summary) } : {}),
@@ -612,9 +615,12 @@ export function createClaudeAgentSdkEventConsumer(
             options.emit(extension("status", { status: "compacting" }));
           } else if (compacting) {
             compacting = false;
+            const rawError = text(message.compact_error);
+            const safeError = rawError ? options.redactCompactionError?.(rawError) : undefined;
             options.emit(extension("status", {
               status: "working",
               ...(message.compact_result === "failed" ? { compactionFailed: true } : {}),
+              ...(safeError ? { error: safeError } : {}),
             }));
           }
         }

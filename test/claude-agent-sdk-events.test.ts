@@ -294,6 +294,72 @@ describe("Claude Agent SDK event consumer", () => {
     });
   });
 
+  test("keeps hidden subagents trackable and compaction errors private unless redacted", () => {
+    const privateEvents: HarnessAdapterEvent[] = [];
+    const privateConsumer = createClaudeAgentSdkEventConsumer({
+      emit: (event) => privateEvents.push(event),
+    });
+    privateConsumer.message({
+      type: "system",
+      subtype: "task_started",
+      task_id: "hidden-1",
+      description: "Internal task",
+      skip_transcript: true,
+    });
+    privateConsumer.message({ type: "system", subtype: "status", status: "compacting" });
+    privateConsumer.message({
+      type: "system",
+      subtype: "status",
+      status: null,
+      compact_result: "failed",
+      compact_error: "private transcript path and token",
+    });
+
+    expect(privateEvents).toContainEqual({
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "subagent",
+      payload: {
+        taskId: "hidden-1",
+        phase: "started",
+        description: "Internal task",
+        skipTranscript: true,
+      },
+    });
+    expect(privateEvents).toContainEqual({
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "status",
+      payload: { status: "working", compactionFailed: true },
+    });
+    expect(JSON.stringify(privateEvents)).not.toContain("private transcript path and token");
+
+    const publicEvents: HarnessAdapterEvent[] = [];
+    const publicConsumer = createClaudeAgentSdkEventConsumer({
+      emit: (event) => publicEvents.push(event),
+      redactCompactionError: () => "The context was too small to compact.",
+    });
+    publicConsumer.message({ type: "system", subtype: "status", status: "compacting" });
+    publicConsumer.message({
+      type: "system",
+      subtype: "status",
+      status: null,
+      compact_result: "failed",
+      compact_error: "private transcript path and token",
+    });
+    expect(publicEvents).toContainEqual({
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "status",
+      payload: {
+        status: "working",
+        compactionFailed: true,
+        error: "The context was too small to compact.",
+      },
+    });
+    expect(JSON.stringify(publicEvents)).not.toContain("private transcript path and token");
+  });
+
   test("maps unknown limit names and rejects malformed snapshots", () => {
     expect(claudeAgentSdkLimitSnapshot({ rate_limit_type: "monthly_team", utilization: 8 })).toEqual({
       limits: [{

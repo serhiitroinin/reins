@@ -205,3 +205,8 @@ host environment or claims that Claude is sandboxed. Provider-visible context
 contains trusted instructions and untrusted content, but not application-only
 context state. Tool input, tool output, and provider error text are not
 persisted unless the host explicitly maps safe values.
+
+Claude subagent extensions retain `skipTranscript` when the provider marks a
+task as non-transcript activity. Raw subagent and compaction failures stay
+private unless the host selects safe text with `redactSubagentError` or
+`redactCompactionError`.
