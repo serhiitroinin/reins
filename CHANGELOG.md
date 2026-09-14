@@ -1,5 +1,12 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.7
+
+### Patch Changes
+
+- d9917ba: Add a Codex adapter checkpoint callback that hosts can durably persist as soon
+  as App Server accepts a turn.
+
 ## 0.1.0-next.6
 
 ### Patch Changes
