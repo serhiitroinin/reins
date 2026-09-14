@@ -80,6 +80,11 @@
       "bun": "./src/adapters/codex-app-server-events.ts",
       "import": "./dist/adapters/codex-app-server-events.js"
     },
+    "./adapters/codex-app-server-adapter": {
+      "types": "./src/adapters/codex-app-server-adapter.ts",
+      "bun": "./src/adapters/codex-app-server-adapter.ts",
+      "import": "./dist/adapters/codex-app-server-adapter.js"
+    },
     "./testing": {
       "types": "./src/testing/index.ts",
       "bun": "./src/testing/index.ts",
