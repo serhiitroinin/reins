@@ -17,6 +17,7 @@ function fixture(overrides: Partial<CodexAppServerEventConsumerOptions> = {}) {
     onTurnEnded: (outcome) => outcomes.push(outcome),
     onLimits: (snapshot) => limits.push(snapshot),
     assistantTextChunkChars: 8,
+    eventContentChunkChars: 8,
     ...overrides,
   });
   return { consumer, events, outcomes, limits };
@@ -431,6 +432,7 @@ describe("Codex App Server event consumer", () => {
     fx.consumer.notification("item/started", { item: null });
     fx.consumer.notification("item/completed", { item: { type: "futureThing", id: "future-1" } });
     fx.consumer.notification("account/rateLimits/updated", { rateLimits: { primary: { usedPercent: "bad" } } });
+    fx.consumer.notification("turn/completed", { turn: { status: "inProgress" } });
     fx.consumer.notification("turn/completed", { turn: { status: "interrupted" } });
     fx.consumer.notification("item/completed", {
       item: { type: "agentMessage", id: "late", text: "must be ignored" },
@@ -443,6 +445,7 @@ describe("Codex App Server event consumer", () => {
 
   test("validates event buffer limits", () => {
     expect(() => fixture({ assistantTextChunkChars: 1 })).toThrow("assistantTextChunkChars");
+    expect(() => fixture({ eventContentChunkChars: 1 })).toThrow("eventContentChunkChars");
     expect(() => fixture({ toolOutputMaxChars: 1 })).toThrow("toolOutputMaxChars");
   });
 });
