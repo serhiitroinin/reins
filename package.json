@@ -145,5 +145,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.4.0",
+    "zod": "4.6.5"
   }
 }
