@@ -770,10 +770,13 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             const providerPromise = Promise.resolve().then(() => options.connect(connectRequest));
             let abandoned = false;
             let rejectAbort!: (error: HarnessAdapterInterruptedError) => void;
-            const turnAborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+            const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
             const abort = (): void => rejectAbort(new HarnessAdapterInterruptedError());
-            if (request.signal.aborted) abort();
-            else request.signal.addEventListener("abort", abort, { once: true });
+            if (request.signal.aborted || lifetime.signal.aborted) abort();
+            else {
+              request.signal.addEventListener("abort", abort, { once: true });
+              lifetime.signal.addEventListener("abort", abort, { once: true });
+            }
             void providerPromise.then((provider) => {
               if (abandoned || closed || request.signal.aborted) {
                 void Promise.resolve(provider.close()).catch(() => undefined);
@@ -781,12 +784,13 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             }, () => undefined);
             let providerConnection: AcpV1ByteConnection;
             try {
-              providerConnection = await Promise.race([providerPromise, turnAborted]);
+              providerConnection = await Promise.race([providerPromise, aborted]);
             } catch (error) {
               abandoned = true;
               throw error;
             } finally {
               request.signal.removeEventListener("abort", abort);
+              lifetime.signal.removeEventListener("abort", abort);
             }
             let providerClosed = false;
             created = {

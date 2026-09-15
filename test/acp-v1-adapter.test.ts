@@ -452,6 +452,44 @@ describe("ACP v1 adapter", () => {
     await runtime.close();
   });
 
+  test("closes promptly while its host connection is still pending", async () => {
+    let connectStarted!: () => void;
+    const started = new Promise<void>((resolve) => { connectStarted = resolve; });
+    let resolveConnection!: (connection: AcpV1ByteConnection) => void;
+    const pendingConnection = new Promise<AcpV1ByteConnection>((resolve) => { resolveConnection = resolve; });
+    let closes = 0;
+    const adapter = createAcpV1Adapter({
+      id: "acp-close-pending-connect",
+      session: () => ({ cwd: "/tmp/acp-close-pending-connect" }),
+      connect() {
+        connectStarted();
+        return pendingConnection;
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start(runRequest(adapter.id));
+    const events = collect(run.events);
+    await started;
+
+    const closeResult = await Promise.race([
+      runtime.close().then(() => "closed" as const),
+      Bun.sleep(100).then(() => "timed-out" as const),
+    ]);
+    expect(closeResult).toBe("closed");
+    expect(await run.done).toBe("interrupted");
+
+    const input = new TransformStream<Uint8Array>();
+    const output = new TransformStream<Uint8Array>();
+    resolveConnection({
+      readable: input.readable,
+      writable: output.writable,
+      close() { closes += 1; },
+    });
+    await Bun.sleep(0);
+    expect(closes).toBe(1);
+    expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
   test("does not allow a permission resolver to select after cancellation", async () => {
     const state = fakeState();
     let resolverStarted!: () => void;
