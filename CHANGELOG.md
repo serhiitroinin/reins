@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.21
+
+### Minor Changes
+
+- 02234a1: Add portable typed inline-context references, byte-free attachment/resource bindings, open input capability policy, pure validation/resolution helpers, and matching JSON Schema plus Swift/Rust bindings.
+
 ## 0.1.0-next.20
 
 ### Minor Changes
