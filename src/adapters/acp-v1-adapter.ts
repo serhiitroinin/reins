@@ -563,11 +563,28 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
         return true;
       };
 
+      const invalidatePermission = (
+        interactionId: string,
+        item: PendingPermission,
+      ): boolean => {
+        if (item.settled) return false;
+        item.settled = true;
+        pending.delete(interactionId);
+        item.turn.permissions.delete(interactionId);
+        item.turn.queue.push({
+          kind: "interaction-invalidated",
+          interactionId,
+          reason: "turn-ended",
+        });
+        item.response.resolve({ outcome: { outcome: "cancelled" } });
+        return true;
+      };
+
       const settlePermissions = (turn: ActiveTurn): void => {
         for (const interactionId of [...turn.permissions]) {
           const item = pending.get(interactionId);
           if (!item) continue;
-          settlePermission(interactionId, item, { outcome: { outcome: "cancelled" } }, {});
+          invalidatePermission(interactionId, item);
         }
       };
 
@@ -1105,14 +1122,14 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
         async respond(interactionId: string, response: HarnessInteractionResponse): Promise<void> {
           const item = pending.get(interactionId);
           if (!item || item.resolving || item.turn !== active || item.turn.cancelled) {
-            throw new HarnessAdapterError("ACP_UNKNOWN_PERMISSION", "The ACP permission request is no longer open.");
+            throw new HarnessAdapterError("INTERACTION_NOT_ACTIVE", "The ACP permission request is no longer open.");
           }
           item.resolving = true;
           let decision: AcpV1PermissionDecision;
           try {
             decision = await item.authorization.resolve(response);
             if (item.settled || item.turn.cancelled || item.turn !== active) {
-              throw new HarnessAdapterError("ACP_UNKNOWN_PERMISSION", "The ACP permission request is no longer open.");
+              throw new HarnessAdapterError("INTERACTION_NOT_ACTIVE", "The ACP permission request is no longer open.");
             }
             const outcome = selectedPermission(decision, item.offered);
             settlePermission(interactionId, item, outcome, response);

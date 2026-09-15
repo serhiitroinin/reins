@@ -384,9 +384,9 @@ describe("Claude Agent SDK adapter", () => {
     controller.abort();
     await session.cancel();
     resolveAuthorization();
-    await responding;
+    await expect(responding).rejects.toMatchObject({ code: "INTERACTION_NOT_ACTIVE" });
     expect(await iterator.next()).toMatchObject({
-      value: { kind: "interaction-resolved", interactionId: "approval-1" },
+      value: { kind: "interaction-invalidated", interactionId: "approval-1", reason: "turn-ended" },
     });
     await expect(iterator.next()).rejects.toMatchObject({ name: "HarnessAdapterInterruptedError" });
 

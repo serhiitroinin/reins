@@ -185,6 +185,7 @@ export class HarnessRuntimeError extends Error {
       | "UNKNOWN_ADAPTER"
       | "SESSION_BUSY"
       | "INTERACTION_UNSUPPORTED"
+      | "INTERACTION_NOT_ACTIVE"
       | "FOLLOW_UP_UNSUPPORTED"
       | "FOLLOW_UP_FAILED"
       | "STALE_TURN"
@@ -400,6 +401,9 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       let controlTail: Promise<void> = Promise.resolve();
       let replacementInFlight: AbortController | null = null;
       let preserveReplacementOnAbort = false;
+      /** Interactions the durable event stream still says this turn can answer. */
+      const openInteractions = new Set<string>();
+      const respondingInteractions = new Set<string>();
 
       const serializeControl = <T>(operation: () => Promise<T>): Promise<T> => {
         const result = controlTail.then(operation, operation);
@@ -447,6 +451,15 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           adapterId: adapter.id,
           payload,
         });
+        if (payload.kind === "interaction-requested") {
+          openInteractions.add(payload.interaction.id);
+        } else if (
+          payload.kind === "interaction-resolved"
+          || payload.kind === "interaction-invalidated"
+        ) {
+          openInteractions.delete(payload.interactionId);
+          respondingInteractions.delete(payload.interactionId);
+        }
         queue.push(event);
       };
 
@@ -525,6 +538,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         } finally {
           phase = "sealing";
           try {
+            // A custom adapter may end without explicitly closing a deferred
+            // interaction. Persist the loss of actionability before the
+            // terminal seal; a replay must never offer a dead callback.
+            for (const interactionId of [...openInteractions]) {
+              await emit({
+                kind: "interaction-invalidated",
+                interactionId,
+                reason: "turn-ended",
+              });
+            }
             await emit({
               kind: "turn-completed",
               status,
@@ -698,12 +721,44 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             }
           });
         },
-        async respond(interactionId, response) {
-          const target = managed ?? await open(request.session, adapter);
-          if (!target.session.respond) {
-            throw new HarnessRuntimeError("INTERACTION_UNSUPPORTED", `${adapter.id} cannot answer interactions.`);
-          }
-          await target.session.respond(interactionId, response);
+        respond(interactionId, response) {
+          return serializeControl(async () => {
+            if (
+              phase !== "running"
+              || controller.signal.aborted
+              || stopping
+              || !managed?.active
+              || !openInteractions.has(interactionId)
+              || respondingInteractions.has(interactionId)
+            ) {
+              throw new HarnessRuntimeError(
+                "INTERACTION_NOT_ACTIVE",
+                "This interaction is no longer open on the active harness turn.",
+              );
+            }
+            if (!managed.session.respond) {
+              throw new HarnessRuntimeError("INTERACTION_UNSUPPORTED", `${adapter.id} cannot answer interactions.`);
+            }
+            respondingInteractions.add(interactionId);
+            try {
+              await managed.session.respond(interactionId, response);
+              // The adapter event is persisted by the run consumer and is the
+              // only fact that closes the durable interaction. Keep the id in
+              // `openInteractions` until that event arrives so a custom
+              // adapter that acknowledges a response without resolving it is
+              // invalidated before the terminal seal. `respondingInteractions`
+              // still prevents a concurrent retry from reaching the provider.
+            } catch (error) {
+              respondingInteractions.delete(interactionId);
+              if (
+                error instanceof HarnessAdapterError
+                && error.code === "INTERACTION_NOT_ACTIVE"
+              ) {
+                openInteractions.delete(interactionId);
+              }
+              throw error;
+            }
+          });
         },
       };
       return publicRun;

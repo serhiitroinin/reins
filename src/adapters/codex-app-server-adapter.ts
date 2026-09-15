@@ -103,7 +103,7 @@ const unsupported = { support: "unsupported" as const };
 export const CODEX_APP_SERVER_CAPABILITIES: HarnessCapabilities = {
   resume: { support: "stable" },
   cancel: { support: "stable" },
-  interactions: unsupported,
+  interactions: { support: "unsupported", recovery: "live-only" },
   tools: { support: "stable" },
   images: { support: "stable" },
   thinking: { support: "stable" },

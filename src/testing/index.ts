@@ -19,7 +19,7 @@ const unsupported = { support: "unsupported" as const };
 export const scriptedCapabilities: HarnessCapabilities = {
   resume: { support: "stable" },
   cancel: { support: "stable" },
-  interactions: { support: "stable" },
+  interactions: { support: "stable", recovery: "live-only" },
   tools: { support: "stable" },
   images: unsupported,
   thinking: { support: "stable" },

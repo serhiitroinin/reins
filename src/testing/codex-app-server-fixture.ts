@@ -34,7 +34,7 @@ export interface CodexAppServerFixtureState {
 
 const capabilities: HarnessCapabilities = {
   ...CODEX_APP_SERVER_CAPABILITIES,
-  interactions: { support: "unsupported" },
+  interactions: { support: "unsupported", recovery: "live-only" },
 };
 
 function object(value: unknown): Record<string, unknown> {

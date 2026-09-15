@@ -379,7 +379,7 @@ describe("ACP v1 adapter", () => {
     expect(outcomes).toEqual([{ outcome: { outcome: "selected", optionId: "once" } }]);
     expect(rest.some((event) => event.payload.kind === "interaction-resolved")).toBe(true);
     await expect(run.respond(asked.payload.interaction.id, { choiceId: "once" })).rejects.toMatchObject({
-      code: "ACP_UNKNOWN_PERMISSION",
+      code: "INTERACTION_NOT_ACTIVE",
     });
     await runtime.close();
   });
@@ -619,7 +619,7 @@ describe("ACP v1 adapter", () => {
     await resolving;
     const cancellation = run.cancel();
     releaseResolver();
-    await expect(response).rejects.toMatchObject({ code: "ACP_UNKNOWN_PERMISSION" });
+    await expect(response).rejects.toMatchObject({ code: "INTERACTION_NOT_ACTIVE" });
     await cancellation;
     const tail: HarnessEvent[] = [];
     for (;;) {
@@ -629,12 +629,12 @@ describe("ACP v1 adapter", () => {
     }
     expect(await run.done).toBe("interrupted");
     expect(outcomes).toEqual([{ outcome: { outcome: "cancelled" } }]);
-    const resolved = tail.filter((event) => event.payload.kind === "interaction-resolved");
-    expect(resolved).toHaveLength(1);
-    expect(resolved[0]?.payload).toEqual({
-      kind: "interaction-resolved",
+    const invalidated = tail.filter((event) => event.payload.kind === "interaction-invalidated");
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0]?.payload).toEqual({
+      kind: "interaction-invalidated",
       interactionId: "permission-race",
-      response: {},
+      reason: "turn-ended",
     });
     await runtime.close();
   });
