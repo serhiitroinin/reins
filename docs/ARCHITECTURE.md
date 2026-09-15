@@ -97,6 +97,28 @@ from untrusted domain `content`. Adapters must preserve this distinction when
 building provider requests. Opaque `state` is for application tools and is
 never written to the harness event or session stores.
 
+## Follow-up coordination
+
+The optional turn queue is a framework-neutral host primitive, not a provider
+queue and not part of `HarnessRuntime.start`. It orders opaque host snapshots
+by the existing tenant, actor, thread, and adapter identity. A host chooses the
+safe dispatch boundary and supplies a unique boundary token; the queue leases
+at most one entry at that boundary. Held entries block the tail so later user
+intent cannot overtake them.
+
+An unsettled lease carries an abort signal. Holding or draining a queue bumps a
+monotonic generation, aborts the lease, and makes late completion invalid. The
+host must pass that signal through asynchronous preparation, check the lease by
+completing it, and begin irreversible dispatch in the same synchronous task.
+This closes the common race where Stop drains visible follow-ups while a
+previously taken item is still uploading.
+
+The queue is deliberately in-memory and inspects or persists none of its
+generic payload. Products decide whether an intent is a transient follow-up, a
+durable draft, or a domain record. Provider-native same-turn steering,
+replacement turns, and compaction remain separately negotiated lifecycle
+features; queueing a message never implies that an adapter can steer.
+
 ## Tools
 
 Tools use JSON Schema at the provider boundary and an application-owned
