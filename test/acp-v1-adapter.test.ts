@@ -7,6 +7,7 @@ import type { AcpV1ByteConnection } from "../src/adapters/acp-v1.ts";
 import { createHarness, type HarnessRuntime } from "../src/runtime.ts";
 import { createMemoryPersistence } from "../src/stores.ts";
 import type { HarnessEvent, HarnessRunRequest, HarnessTurnStatus } from "../src/protocol.ts";
+import { createAcpV1ConformanceFixture, runAdapterConformance } from "../src/testing/index.ts";
 
 async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -109,6 +110,17 @@ async function finish(runtime: HarnessRuntime, request: HarnessRunRequest): Prom
 }
 
 describe("ACP v1 adapter", () => {
+  test("passes the shared adapter conformance suite through an official-SDK ACP peer", async () => {
+    const fixture = createAcpV1ConformanceFixture();
+    const report = await runAdapterConformance({ fixture });
+
+    expect(report.passed).toBe(true);
+    expect(report.cases.filter((entry) => entry.status === "failed")).toEqual([]);
+    expect(fixture.state.cancellations).toBe(1);
+    expect(fixture.state.loadedSessions).toContain("conformance-resume-token");
+    expect(fixture.state.permissionOutcomes).toEqual([{ outcome: "selected", optionId: "continue" }]);
+  });
+
   test("negotiates v1 and normalizes streamed text, thought, plan, tools, limits, and cumulative usage", async () => {
     const state = fakeState();
     const secrets = "raw-secret-must-not-persist";
