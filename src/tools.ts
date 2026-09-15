@@ -65,6 +65,17 @@ export interface HarnessToolHostOptions {
   onError?: (error: unknown, tool: HarnessToolDescriptor, context: HarnessToolContext) => void;
 }
 
+/** Capture one trusted turn context so a provider cannot supply or replace it. */
+export function bindToolHost(
+  host: HarnessToolHost,
+  context: HarnessToolContext,
+): HarnessTurnTools {
+  return {
+    list: () => host.list(context),
+    call: (name, input) => host.call(name, input, context),
+  };
+}
+
 const failure = (code: string, text: string): HarnessToolResult => ({
   content: [{ type: "text", text }],
   isError: true,
