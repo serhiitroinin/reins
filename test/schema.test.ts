@@ -183,6 +183,12 @@ describe("versioned JSON Schema", () => {
     }
     const validateRun = validator(protocolSchema, "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireRunRequest");
     expect(validateRun({ schemaVersion: 1, session: {}, adapterId: "", input: [] })).toBe(false);
+    expect(validateRun({
+      schemaVersion: 1,
+      session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
+      adapterId: "example",
+      input: [{ type: "image", mediaType: "image/png", data: "AB==", encoding: "base64" }],
+    })).toBe(false);
   });
 
   test("keeps provider-specific models, controls, permissions, and limits as data", () => {

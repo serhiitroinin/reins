@@ -115,6 +115,7 @@ function jsonValue(value: unknown, path: string, ancestors: Set<object>): Harnes
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new TypeError(`${path} must contain only finite JSON numbers`);
+    if (Object.is(value, -0)) throw new TypeError(`${path} must not contain negative zero`);
     return value;
   }
   if (typeof value !== "object") throw new TypeError(`${path} must contain only JSON values`);
@@ -123,15 +124,30 @@ function jsonValue(value: unknown, path: string, ancestors: Set<object>): Harnes
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.map((entry, index) => jsonValue(entry, `${path}[${index}]`, ancestors));
+      if (Reflect.ownKeys(value).length !== value.length + 1) {
+        throw new TypeError(`${path} must not contain array holes or extra properties`);
+      }
+      const result: HarnessJsonValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.hasOwn(value, index)) {
+          throw new TypeError(`${path} must not contain array holes or extra properties`);
+        }
+        result.push(jsonValue(value[index], `${path}[${index}]`, ancestors));
+      }
+      return result;
     }
     const prototype = Object.getPrototypeOf(value) as object | null;
     if (prototype !== Object.prototype && prototype !== null) {
       throw new TypeError(`${path} must contain only plain JSON objects`);
     }
     const result: Record<string, HarnessJsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      result[key] = jsonValue(entry, `${path}.${key}`, ancestors);
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") throw new TypeError(`${path} must not contain symbol keys`);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !("value" in descriptor)) {
+        throw new TypeError(`${path}.${key} must be an enumerable data property`);
+      }
+      result[key] = jsonValue(descriptor.value, `${path}.${key}`, ancestors);
     }
     return result;
   } finally {

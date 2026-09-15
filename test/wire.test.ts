@@ -70,5 +70,12 @@ describe("JSON wire protocol", () => {
       ...base,
       settings: { controls: { temperature: Number.POSITIVE_INFINITY } },
     })).toThrow("finite JSON numbers");
+    expect(() => encodeHarnessRunRequest({ ...base, metadata: { offset: -0 } })).toThrow("negative zero");
+    expect(() => encodeHarnessRunRequest({
+      ...base,
+      metadata: { values: new Array(1) },
+    })).toThrow("array holes");
+    const symbolMetadata = { visible: true, [Symbol("private")]: "hidden" };
+    expect(() => encodeHarnessRunRequest({ ...base, metadata: symbolMetadata })).toThrow("symbol keys");
   });
 });
