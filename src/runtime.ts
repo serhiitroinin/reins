@@ -557,6 +557,11 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         events: queue,
         done,
         cancel() {
+          // Stop invalidates an in-flight follow-up immediately. Adapter
+          // cancellation is still idempotent and the public promise waits for
+          // the serialized operation plus the complete drain/seal barrier.
+          stopping = true;
+          if (!controller.signal.aborted) controller.abort();
           publicCancelWork ??= serializeControl(performCancellation);
           return publicCancelWork;
         },
@@ -625,6 +630,12 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                 replacementTurnId,
                 replacementController.signal,
               );
+            if (replacementController.signal.aborted) {
+              throw new HarnessRuntimeError(
+                "FOLLOW_UP_FAILED",
+                "The replacement follow-up was cancelled before dispatch.",
+              );
+            }
             ensureActiveTurn(followUpRequest.expectedTurnId);
             await performCancellation();
             return {
