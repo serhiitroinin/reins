@@ -172,6 +172,142 @@ describe("harness runtime", () => {
     expect(events.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 
+  test("invalidates an unanswered interaction before sealing its turn", async () => {
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        interactions: { support: "stable", recovery: "live-only" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            yield {
+              kind: "interaction-requested" as const,
+              interaction: { id: "approval-1", kind: "permission", title: "Allow?" },
+            };
+          },
+          async respond() {},
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = await collect(run.events);
+
+    expect(await run.done).toBe("completed");
+    expect(events.map((entry) => entry.payload.kind)).toEqual([
+      "turn-started",
+      "interaction-requested",
+      "interaction-invalidated",
+      "turn-completed",
+    ]);
+    expect(events[2]?.payload).toEqual({
+      kind: "interaction-invalidated",
+      interactionId: "approval-1",
+      reason: "turn-ended",
+    });
+    await expect(run.respond("approval-1", { choiceId: "allow" })).rejects.toMatchObject({
+      code: "INTERACTION_NOT_ACTIVE",
+    });
+  });
+
+  test("does not treat an adapter acknowledgement as durable resolution", async () => {
+    let finish!: () => void;
+    const waiting = new Promise<void>((resolve) => { finish = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        interactions: { support: "stable", recovery: "live-only" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            yield {
+              kind: "interaction-requested" as const,
+              interaction: { id: "approval-1", kind: "permission", title: "Allow?" },
+            };
+            await waiting;
+          },
+          async respond() { finish(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const iterator = run.events[Symbol.asyncIterator]();
+    expect((await iterator.next()).value?.payload.kind).toBe("turn-started");
+    expect((await iterator.next()).value?.payload.kind).toBe("interaction-requested");
+
+    await run.respond("approval-1", { choiceId: "allow" });
+    const tail: HarnessEvent[] = [];
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      tail.push(next.value);
+    }
+
+    expect(tail.map((entry) => entry.payload.kind)).toEqual([
+      "interaction-invalidated",
+      "turn-completed",
+    ]);
+  });
+
+  test("durably invalidates an interaction the provider no longer recognizes", async () => {
+    let finish!: () => void;
+    const waiting = new Promise<void>((resolve) => { finish = resolve; });
+    const persistence = createMemoryPersistence();
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        interactions: { support: "stable", recovery: "live-only" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            yield {
+              kind: "interaction-requested" as const,
+              interaction: { id: "lost", kind: "permission", title: "Allow?" },
+            };
+            await waiting;
+            yield { kind: "interaction-invalidated" as const, interactionId: "lost", reason: "turn-ended" };
+          },
+          async respond() {
+            throw new HarnessAdapterError("INTERACTION_NOT_ACTIVE", "The provider lost this request.");
+          },
+          async cancel() { finish(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const iterator = run.events[Symbol.asyncIterator]();
+    expect((await iterator.next()).value?.payload.kind).toBe("turn-started");
+    expect((await iterator.next()).value?.payload.kind).toBe("interaction-requested");
+
+    await expect(run.respond("lost", { choiceId: "allow" })).rejects.toMatchObject({
+      code: "INTERACTION_NOT_ACTIVE",
+    });
+    expect((await iterator.next()).value?.payload).toEqual({
+      kind: "interaction-invalidated",
+      interactionId: "lost",
+      reason: "provider-lost-request",
+    });
+    expect((await persistence.events.list(request.session, "scripted"))
+      .filter((entry) => entry.payload.kind === "interaction-invalidated")).toHaveLength(1);
+
+    await run.cancel();
+    const tail: HarnessEvent[] = [];
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      tail.push(next.value);
+    }
+    expect(tail.filter((entry) => entry.payload.kind === "interaction-invalidated")).toEqual([]);
+  });
+
   test("retains events an adapter yields while cancellation settles", async () => {
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });

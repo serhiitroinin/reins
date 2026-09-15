@@ -61,7 +61,7 @@ const CHECKPOINT = "incident-terminal:v1";
 const capabilities: HarnessCapabilities = {
   resume: { support: "stable" },
   cancel: { support: "stable" },
-  interactions: { support: "stable" },
+  interactions: { support: "stable", recovery: "live-only" },
   tools: { support: "stable" },
   images: { support: "unsupported" },
   thinking: { support: "stable" },
@@ -338,6 +338,7 @@ function describeEvent(event: HarnessEvent): string {
     case "tool-completed": return `[tool] ${payload.status} ${payload.title}: ${payload.outputAppend ?? payload.error ?? ""}`.trimEnd();
     case "interaction-requested": return `[permission] requested ${payload.interaction.title}`;
     case "interaction-resolved": return `[permission] resolved ${payload.interactionId}`;
+    case "interaction-invalidated": return `[permission] invalidated ${payload.interactionId}: ${payload.reason}`;
     case "usage": return `[usage] ${payload.usage.totalTokens ?? "unknown"} tokens`;
     case "error": return `[error] ${payload.code}: ${payload.message}`;
     case "turn-completed": return `[turn] ${payload.status}`;

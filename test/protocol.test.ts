@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  harnessInteractionRecovery,
   harnessSessionKey,
   isHarnessEvent,
   type HarnessEvent,
@@ -50,5 +51,13 @@ describe("harness protocol", () => {
     };
 
     expect(steering.strategies).not.toContain("wait");
+  });
+
+  test("treats old interaction capabilities as live-process only", () => {
+    expect(harnessInteractionRecovery({ support: "stable" })).toBe("live-only");
+    expect(harnessInteractionRecovery({
+      support: "stable",
+      recovery: "provider-replay",
+    })).toBe("provider-replay");
   });
 });

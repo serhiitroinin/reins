@@ -10,7 +10,7 @@ const unsupported = { support: "unsupported" as const };
 export const conformanceCapabilities: HarnessCapabilities = {
   resume: { support: "stable" },
   cancel: { support: "stable" },
-  interactions: { support: "stable" },
+  interactions: { support: "stable", recovery: "live-only" },
   tools: { support: "stable" },
   images: unsupported,
   thinking: unsupported,

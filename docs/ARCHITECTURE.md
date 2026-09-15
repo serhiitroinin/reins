@@ -235,6 +235,23 @@ adapter then owns `interaction-requested`, `respond`, and
 meaning. This provider execution permission remains separate from any product
 transaction confirmation performed by an application tool.
 
+Interaction durability is deliberately split from callback recovery. The
+event log can prove that a request was shown, answered, invalidated, or left
+open; it cannot recreate a provider callback after a process exits.
+`HarnessInteractionCapability.recovery` therefore declares `live-only` or
+`provider-replay`, with an omitted value interpreted as the conservative
+`live-only` behavior for older v1 documents. A resume checkpoint does not
+change that declaration.
+
+`HarnessInteractionProjector` accepts overlapping replay pages and live events,
+deduplicates their envelopes, and derives one FIFO across permission, question,
+confirmation, and future interaction kinds. It retains explicit resolved and
+invalidated outcomes. A terminal event is final for every unanswered request
+on that exact session, adapter, run, and turn, so an older replay page cannot
+resurrect a dead control. The runtime writes `interaction-invalidated` before
+its terminal seal when an adapter leaves a request open. Invalidation states a
+loss of actionability; it is never encoded as a user answer.
+
 An Agent SDK `system/init` message updates only the opaque resume checkpoint.
 The optional checkpoint hook is awaited before a turn completes. Interrupts
 wait for the provider's terminal boundary so an old result cannot settle the

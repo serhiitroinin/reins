@@ -174,7 +174,7 @@ const unsupported = { support: "unsupported" as const };
 export const CLAUDE_AGENT_SDK_CAPABILITIES: HarnessCapabilities = {
   resume: { support: "stable" },
   cancel: { support: "stable" },
-  interactions: { support: "stable" },
+  interactions: { support: "stable", recovery: "live-only" },
   tools: { support: "stable" },
   images: { support: "stable" },
   thinking: { support: "stable" },
@@ -423,9 +423,9 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           if (turn !== null && value.turn !== turn) continue;
           pending.delete(id);
           value.turn.queue.push({
-            kind: "interaction-resolved",
+            kind: "interaction-invalidated",
             interactionId: id,
-            response: { choiceId: "cancelled" },
+            reason: "turn-ended",
           });
           value.settle({ behavior: "deny", message: "The turn ended before the interaction was answered." });
         }
@@ -806,8 +806,12 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         },
         async respond(interactionId, response) {
           const held = pending.get(interactionId);
-          if (!held) throw new Error("unknown Claude interaction");
-          if (held.resolving) throw new Error("Claude interaction is already being resolved");
+          if (!held || held.resolving) {
+            throw new HarnessAdapterError(
+              "INTERACTION_NOT_ACTIVE",
+              "The Claude interaction is no longer open.",
+            );
+          }
           held.resolving = true;
           let decision: ClaudeAgentSdkToolDecision;
           try {
@@ -820,7 +824,12 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             || active !== held.turn
             || held.turn.finished
             || held.turn.request.signal.aborted
-          ) return;
+          ) {
+            throw new HarnessAdapterError(
+              "INTERACTION_NOT_ACTIVE",
+              "The Claude interaction is no longer open.",
+            );
+          }
           pending.delete(interactionId);
           if (decision.behavior === "deny" && held.request.toolUseId) declined.add(held.request.toolUseId);
           if (decision.behavior === "allow") {

@@ -55,12 +55,22 @@
       },
       "required": ["support", "strategies"]
     },
+    "HarnessInteractionCapability": {
+      "type": "object",
+      "properties": {
+        "support": { "enum": ["stable", "experimental", "unsupported"] },
+        "description": { "type": "string" },
+        "constraints": { "$ref": "#/$defs/JsonObject" },
+        "recovery": { "enum": ["live-only", "provider-replay"] }
+      },
+      "required": ["support"]
+    },
     "HarnessCapabilities": {
       "type": "object",
       "properties": {
         "resume": { "$ref": "#/$defs/HarnessCapability" },
         "cancel": { "$ref": "#/$defs/HarnessCapability" },
-        "interactions": { "$ref": "#/$defs/HarnessCapability" },
+        "interactions": { "$ref": "#/$defs/HarnessInteractionCapability" },
         "tools": { "$ref": "#/$defs/HarnessCapability" },
         "images": { "$ref": "#/$defs/HarnessCapability" },
         "thinking": { "$ref": "#/$defs/HarnessCapability" },
@@ -311,6 +321,16 @@
       },
       "required": ["kind", "interactionId", "response"]
     },
+    "InteractionInvalidatedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "interaction-invalidated" },
+        "interactionId": { "$ref": "#/$defs/Id" },
+        "reason": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" }
+      },
+      "required": ["kind", "interactionId", "reason"]
+    },
     "UsagePayload": {
       "type": "object",
       "properties": { "kind": { "const": "usage" }, "usage": { "$ref": "#/$defs/HarnessUsage" } },
@@ -363,6 +383,7 @@
               "tool-completed",
               "interaction-requested",
               "interaction-resolved",
+              "interaction-invalidated",
               "usage",
               "error",
               "turn-completed",
@@ -384,6 +405,7 @@
         { "$ref": "#/$defs/ToolCompletedPayload" },
         { "$ref": "#/$defs/InteractionRequestedPayload" },
         { "$ref": "#/$defs/InteractionResolvedPayload" },
+        { "$ref": "#/$defs/InteractionInvalidatedPayload" },
         { "$ref": "#/$defs/UsagePayload" },
         { "$ref": "#/$defs/ErrorPayload" },
         { "$ref": "#/$defs/TurnCompletedPayload" },

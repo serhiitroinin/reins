@@ -47,7 +47,7 @@ pub struct Capabilities {
 
     pub images: Cancel,
 
-    pub interactions: Cancel,
+    pub interactions: Interactions,
 
     pub network: Cancel,
 
@@ -103,6 +103,30 @@ pub enum Support {
     Stable,
 
     Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Interactions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<Recovery>,
+
+    pub support: Support,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Recovery {
+    #[serde(rename = "live-only")]
+    LiveOnly,
+
+    #[serde(rename = "provider-replay")]
+    ProviderReplay,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -400,6 +424,9 @@ pub struct Payload {
     pub paths: Option<Vec<String>>,
 
     pub payload: Option<ProtocolSchema>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<Response>,

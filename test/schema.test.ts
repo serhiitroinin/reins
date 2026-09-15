@@ -55,6 +55,7 @@ const payloads: readonly HarnessEventPayload[] = [
     },
   },
   { kind: "interaction-resolved", interactionId: "question-1", response: { text: "custom", labels: ["alpha"] } },
+  { kind: "interaction-invalidated", interactionId: "question-2", reason: "runtime-restarted", message: "Restart the turn." },
   { kind: "usage", usage: { inputTokens: 10, outputTokens: 4, provider: { cached: true } } },
   { kind: "error", code: "PROVIDER_UNAVAILABLE", message: "Try again.", retryable: true },
   { kind: "turn-completed", status: "completed", usage: { totalTokens: 14 } },
@@ -64,7 +65,7 @@ const payloads: readonly HarnessEventPayload[] = [
 const capabilities: HarnessCapabilities = {
   resume: { support: "stable" },
   cancel: { support: "stable" },
-  interactions: { support: "experimental" },
+  interactions: { support: "experimental", recovery: "provider-replay" },
   tools: { support: "stable" },
   images: { support: "stable" },
   thinking: { support: "stable" },

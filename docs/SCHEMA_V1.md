@@ -44,6 +44,14 @@ runtime follow-up operation contains live run state and an `AbortSignal`, so it
 does not cross the JSON wire boundary. Native hosts use the capability data to
 select their own transport-specific follow-up operation.
 
+The interaction capability may include `recovery`. `live-only` means pending
+callbacks die with the provider process; `provider-replay` means the adapter
+can enumerate and rebind them after resume. Omission means `live-only`.
+`interaction-invalidated` is a core event distinct from
+`interaction-resolved`: it says the request can no longer be answered and does
+not invent a choice by the user. The TypeScript interaction projector derives
+the same terminal finality for older event logs that predate this event kind.
+
 ## Compatibility
 
 Version 1 follows these rules:

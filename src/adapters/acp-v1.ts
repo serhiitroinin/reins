@@ -37,7 +37,11 @@ export const ACP_V1_CAPABILITIES: HarnessCapabilities = {
     constraints: { requiresAgentCapability: "loadSession" },
   },
   cancel: { support: "stable" },
-  interactions: { support: "stable" },
+  interactions: {
+    support: "stable",
+    recovery: "live-only",
+    description: "Pending permission callbacks belong to the live ACP connection unless a future adapter explicitly replays them.",
+  },
   tools: {
     support: "stable",
     description: "Normalizes ACP tool lifecycles; tool execution is supplied separately through host-owned MCP servers.",

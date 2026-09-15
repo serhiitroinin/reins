@@ -25,6 +25,28 @@ export interface HarnessCapability {
 }
 
 /**
+ * Whether an interaction callback can be reconstructed after the host process
+ * exits. A provider resume token does not imply that its pending callbacks can
+ * be answered after restart.
+ */
+export type HarnessInteractionRecovery = "live-only" | "provider-replay";
+
+export interface HarnessInteractionCapability extends HarnessCapability {
+  /**
+   * Absent protocol-v1 documents are interpreted as `live-only`. This keeps
+   * old capability snapshots conservative while newer adapters state it.
+   */
+  recovery?: HarnessInteractionRecovery;
+}
+
+/** Conservative recovery mode for old capability documents. */
+export function harnessInteractionRecovery(
+  capability: HarnessInteractionCapability,
+): HarnessInteractionRecovery {
+  return capability.recovery ?? "live-only";
+}
+
+/**
  * How a provider can accept input while a turn is active.
  *
  * Waiting for the current turn is host queue policy, not a provider strategy.
@@ -41,7 +63,7 @@ export interface HarnessSteeringCapability extends HarnessCapability {
 export interface HarnessCapabilities {
   resume: HarnessCapability;
   cancel: HarnessCapability;
-  interactions: HarnessCapability;
+  interactions: HarnessInteractionCapability;
   tools: HarnessCapability;
   images: HarnessCapability;
   thinking: HarnessCapability;
@@ -99,6 +121,14 @@ export interface HarnessInteractionResponse {
   labels?: readonly string[];
 }
 
+/** Why an unanswered interaction can no longer be sent to its provider. */
+export type HarnessInteractionInvalidationReason =
+  | "turn-ended"
+  | "runtime-restarted"
+  | "provider-lost-request"
+  | "expired"
+  | (string & {});
+
 export type HarnessEventPayload =
   | { kind: "turn-started"; model?: string; accountId?: string }
   | { kind: "assistant-text"; text: string }
@@ -142,6 +172,13 @@ export type HarnessEventPayload =
     }
   | { kind: "interaction-requested"; interaction: HarnessInteraction }
   | { kind: "interaction-resolved"; interactionId: string; response: HarnessInteractionResponse }
+  | {
+      kind: "interaction-invalidated";
+      interactionId: string;
+      reason: HarnessInteractionInvalidationReason;
+      /** Safe host-facing guidance. Never a raw provider error. */
+      message?: string;
+    }
   | { kind: "usage"; usage: HarnessUsage }
   | { kind: "error"; code: string; message: string; retryable?: boolean }
   | { kind: "turn-completed"; status: HarnessTurnStatus; usage?: HarnessUsage }
