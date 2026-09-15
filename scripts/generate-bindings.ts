@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +65,7 @@ try {
       }
       if (!generated.equals(current)) throw new Error(`generated binding is stale: ${target.output}`);
     } else {
+      await mkdir(dirname(target.output), { recursive: true });
       await writeFile(target.output, generated);
     }
   }
