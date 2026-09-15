@@ -50,9 +50,9 @@ function fakeConnection(agent: acp.AgentApp, state: AcpV1FixtureState): AcpV1Byt
 function conformanceAgent(
   scenario: AdapterConformanceScenario,
   state: AcpV1FixtureState,
+  nextSteeringPrompt: () => number,
 ): acp.AgentApp {
   const cancelled = deferred<void>();
-  let prompts = 0;
   return acp.agent({ name: "fold-harness-acp-conformance" })
     .onRequest(acp.methods.agent.initialize, () => ({
       protocolVersion: 1,
@@ -67,7 +67,7 @@ function conformanceAgent(
       return {};
     })
     .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
-      prompts += 1;
+      const steeringPrompt = scenario === "steering" ? nextSteeringPrompt() : 0;
       const emitText = (text: string) => client.notify(acp.methods.client.session.update, {
         sessionId: params.sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
@@ -77,7 +77,7 @@ function conformanceAgent(
         await cancelled.promise;
         return { stopReason: "cancelled" };
       }
-      if (scenario === "steering" && prompts === 1) {
+      if (scenario === "steering" && steeringPrompt === 1) {
         await emitText(CONFORMANCE.waitingText);
         await cancelled.promise;
         return { stopReason: "cancelled" };
@@ -118,6 +118,7 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
 } {
   const adapterId = "acp-conformance";
   let scenario: AdapterConformanceScenario = "basic";
+  let steeringPrompts = 0;
   const state: AcpV1FixtureState = {
     connections: 0,
     closes: 0,
@@ -156,7 +157,7 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
       if (scenario === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
       if (scenario === "safe-error") throw new SafeConformanceFailure();
       state.connections += 1;
-      return fakeConnection(conformanceAgent(scenario, state), state);
+      return fakeConnection(conformanceAgent(scenario, state, () => ++steeringPrompts), state);
     },
     async mapPrompt(request) {
       if (scenario === "steering") {
@@ -201,6 +202,7 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
     discovery,
     state,
     useScenario(value) {
+      if (value !== scenario) steeringPrompts = 0;
       scenario = value;
     },
   };

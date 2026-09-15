@@ -452,6 +452,88 @@ describe("ACP v1 adapter", () => {
     await runtime.close();
   });
 
+  test("retires a cancelled transport before a replacement can receive late updates", async () => {
+    const state = fakeState();
+    let prompts = 0;
+    let cancelled!: () => void;
+    const cancellation = new Promise<void>((resolve) => { cancelled = resolve; });
+    let firstPromptStarted!: () => void;
+    const firstPrompt = new Promise<void>((resolve) => { firstPromptStarted = resolve; });
+    const adapter = createAcpV1Adapter({
+      id: "acp-replacement-isolation",
+      cancelTimeoutMs: 100,
+      session: () => ({ cwd: "/tmp/acp-replacement-isolation" }),
+      connect() {
+        const agent = acp.agent({ name: "replacement-isolation" })
+          .onRequest(acp.methods.agent.initialize, () => ({
+            protocolVersion: 1,
+            agentCapabilities: { loadSession: true },
+          }))
+          .onRequest(acp.methods.agent.session.new, () => ({ sessionId: "shared-session" }))
+          .onRequest(acp.methods.agent.session.load, () => ({}))
+          .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
+            prompts += 1;
+            if (prompts === 1) {
+              firstPromptStarted();
+              await client.notify(acp.methods.client.session.update, {
+                sessionId: params.sessionId,
+                update: {
+                  sessionUpdate: "agent_message_chunk",
+                  content: { type: "text", text: "waiting" },
+                },
+              });
+              await cancellation;
+              setTimeout(() => {
+                void client.notify(acp.methods.client.session.update, {
+                  sessionId: params.sessionId,
+                  update: {
+                    sessionUpdate: "agent_message_chunk",
+                    content: { type: "text", text: "late-old-turn" },
+                  },
+                }).catch(() => undefined);
+              }, 5);
+              return { stopReason: "cancelled" };
+            }
+            await client.notify(acp.methods.client.session.update, {
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: { type: "text", text: "replacement" },
+              },
+            });
+            await Bun.sleep(20);
+            return { stopReason: "end_turn" };
+          })
+          .onNotification(acp.methods.agent.session.cancel, () => {
+            state.cancellations += 1;
+            cancelled();
+          });
+        return byteConnection(agent, state);
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start(runRequest(adapter.id), { turnId: "old-turn" });
+    const oldEvents = collect(run.events);
+    await firstPrompt;
+
+    const result = await run.followUp({
+      expectedTurnId: "old-turn",
+      input: [{ type: "text", text: "replace" }],
+    });
+    const replacementEvents = await collect(result.run.events);
+
+    expect(result.strategy).toBe("replacement-turn");
+    expect(await run.done).toBe("interrupted");
+    expect(await result.run.done).toBe("completed");
+    expect(state.cancellations).toBe(1);
+    expect(state.closes).toBeGreaterThanOrEqual(1);
+    expect(replacementEvents.some((event) => event.payload.kind === "assistant-text"
+      && event.payload.text === "replacement")).toBe(true);
+    expect(JSON.stringify(replacementEvents)).not.toContain("late-old-turn");
+    await oldEvents;
+    await runtime.close();
+  });
+
   test("closes promptly while its host connection is still pending", async () => {
     let connectStarted!: () => void;
     const started = new Promise<void>((resolve) => { connectStarted = resolve; });
