@@ -1046,7 +1046,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             try {
               blocks = options.mapPrompt
                 ? await options.mapPrompt(request)
-                : defaultAcpV1Prompt(request.input, request.context);
+                : defaultAcpV1Prompt(request.input, request.context, request.inlineContext);
             } catch (error) {
               if (error instanceof Error && error.message === "ACP_CONTEXT_MAPPING_REQUIRED") {
                 throw new HarnessAdapterError(

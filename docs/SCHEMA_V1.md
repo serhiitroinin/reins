@@ -7,9 +7,9 @@ Fold's daemon to implement a harness UI or service.
 The package contains:
 
 - `schema/v1/protocol.schema.json` for events, capabilities, interactions,
-  JSON-safe run requests, and application tool data;
+  JSON-safe run requests, typed inline context, and application tool data;
 - `schema/v1/discovery.schema.json` for engine profiles, models, permissions,
-  generic controls, limits, and discovery states;
+  generic controls, input policy, limits, and discovery states;
 - `schema/v1/manifest.json` for the stable URI of every supported root;
 - `bindings/swift` and `bindings/rust` as generated data-model consumers.
 
@@ -32,6 +32,14 @@ uses canonical RFC 4648 base64 and carries `encoding: "base64"` explicitly.
 `encodeHarnessRunRequest` and `decodeHarnessRunRequest` bridge those forms.
 They reject cycles, class instances, non-finite numbers, and other values that
 ordinary `JSON.stringify` would silently discard or coerce.
+
+A run request may interleave `context-reference` with text, image, and
+resource inputs. Its optional `inlineContext` table contains only versioned,
+bounded JSON records. A binding names an ordinary image or resource input by
+id; image bytes remain base64 data on the image input and resource URIs remain
+on the resource input. The record kind is an open string. Runtime helpers
+retain valid unknown kinds while refusing malformed records, duplicate ids,
+stale references, invalid JSON values, and exceeded bounds.
 
 `configuration` is JSON-safe but remains an adapter-specific escape hatch. It
 is not a portable picker contract. Models, permissions, effort, and controls
@@ -59,7 +67,8 @@ Version 1 follows these rules:
 - Existing required fields, discriminants, and meanings do not change.
 - New optional fields and new namespaced extension data may be added.
 - Provider, adapter, model, permission, effort, control, limit, posture, scope,
-  and interaction identifiers remain open strings.
+  input modality, context kind, and interaction identifiers remain open
+  strings.
 - A future core event kind is valid when it has a non-empty `kind`. Consumers
   retain it or ignore it safely; they do not reinterpret it as a known event.
 - A known event kind must satisfy its complete known shape.
@@ -91,7 +100,8 @@ swift test --package-path bindings/swift
 
 Both language tests decode and re-encode the same schema-valid fixture. That
 fixture includes a Codex Fast service-tier control, an OpenCode multi-provider
-profile, and Grok-specific model, limit, and extension identifiers. The
+profile, a future context kind with an attachment binding, input policies, and
+Grok-specific model, limit, and extension identifiers. The
 bindings contain no provider SDK or harness runtime and are not yet published
 to crates.io or a Swift registry.
 

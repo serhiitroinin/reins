@@ -7,6 +7,7 @@
 
 import { Buffer } from "node:buffer";
 import type { HarnessPreparedContext } from "../context.js";
+import { harnessContextReferenceText } from "../input.js";
 import type {
   HarnessDiscovery,
   HarnessDiscoveryRequest,
@@ -17,6 +18,7 @@ import type {
 } from "../profile.js";
 import type {
   HarnessCapabilities,
+  HarnessInlineContext,
   HarnessInput,
   HarnessInteraction,
   HarnessInteractionResponse,
@@ -322,6 +324,7 @@ export interface AcpV1AdapterOptions {
 export function defaultAcpV1Prompt(
   input: readonly HarnessInput[],
   context: HarnessPreparedContext<unknown>,
+  inlineContext?: HarnessInlineContext,
 ): readonly AcpV1PromptBlock[] {
   if (context.sources.length > 0) {
     throw new Error("ACP_CONTEXT_MAPPING_REQUIRED");
@@ -335,11 +338,15 @@ export function defaultAcpV1Prompt(
         data: Buffer.from(item.data).toString("base64"),
       };
     }
-    return {
+    if (item.type === "resource") return {
       type: "resource_link",
       uri: item.uri,
       name: item.name ?? item.uri,
       ...(item.mediaType ? { mediaType: item.mediaType } : {}),
+    };
+    return {
+      type: "text",
+      text: harnessContextReferenceText(item, inlineContext) ?? `[Context: ${item.contextId}]`,
     };
   });
 }
@@ -357,6 +364,13 @@ export function defaultAcpV1Profile(id: string): HarnessDiscovery<HarnessEngineP
         defaultModeId: "host",
         modes: [{ id: "host", label: "Managed by host", posture: "restricted" }],
         description: "Process, filesystem, terminal, network, and sandbox policy are supplied by the host.",
+      },
+      inputPolicy: {
+        modalities: {
+          text: { support: "stable" },
+          resource: { support: "stable" },
+          "context-reference": { support: "stable", description: "Mapped to bounded text input." },
+        },
       },
     },
   };

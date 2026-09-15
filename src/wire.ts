@@ -1,9 +1,12 @@
 /** JSON-safe representations of the in-process harness protocol. */
 
 import type {
+  HarnessContextValue,
+  HarnessInlineContext,
   HarnessInput,
   HarnessRunRequest,
 } from "./protocol.js";
+import { validateHarnessInlineContext } from "./input.js";
 import type {
   HarnessControlValue,
   HarnessDiscoveryRequest,
@@ -32,9 +35,13 @@ export type HarnessWireInput =
       /** Binary image bytes encoded as canonical RFC 4648 base64. */
       data: string;
       encoding: "base64";
+      id?: string;
       name?: string;
     }
-  | { type: "resource"; uri: string; mediaType?: string; name?: string };
+  | { type: "resource"; id?: string; uri: string; mediaType?: string; name?: string }
+  | { type: "context-reference"; contextId: string; referenceId?: string };
+
+export type HarnessWireInlineContext = HarnessInlineContext;
 
 export interface HarnessWireRunSettings {
   permission?: HarnessPermissionSelection;
@@ -59,6 +66,7 @@ export interface HarnessWireRunRequest {
   session: HarnessRunRequest["session"];
   adapterId: string;
   input: readonly HarnessWireInput[];
+  inlineContext?: HarnessWireInlineContext;
   model?: string;
   effort?: string;
   accountId?: string;
@@ -174,8 +182,26 @@ function wireSettings(settings: HarnessRunRequest["settings"]): HarnessWireRunSe
   };
 }
 
+function wireInlineContext(context: HarnessInlineContext, path: string): HarnessWireInlineContext {
+  return {
+    version: 1,
+    records: context.records.map((record, index) => ({
+      version: 1,
+      id: record.id,
+      kind: record.kind,
+      label: record.label,
+      payload: jsonValue(record.payload, `${path}.records[${index}].payload`, new Set()) as HarnessContextValue,
+      ...(record.binding ? { binding: { ...record.binding } } : {}),
+    })),
+  };
+}
+
 /** Convert a runtime request into its portable JSON representation. */
 export function encodeHarnessRunRequest(request: HarnessRunRequest): HarnessWireRunRequest {
+  const contextValidation = validateHarnessInlineContext(request.inlineContext, request.input);
+  if (!contextValidation.valid) {
+    throw new TypeError(`${contextValidation.issues[0]?.path ?? "inlineContext"}: ${contextValidation.issues[0]?.message ?? "invalid inline context"}`);
+  }
   const input = request.input.map((part): HarnessWireInput => {
     if (part.type === "image") {
       return {
@@ -183,6 +209,7 @@ export function encodeHarnessRunRequest(request: HarnessRunRequest): HarnessWire
         mediaType: part.mediaType,
         data: encodeBase64(part.data),
         encoding: "base64",
+        ...(part.id !== undefined ? { id: part.id } : {}),
         ...(part.name !== undefined ? { name: part.name } : {}),
       };
     }
@@ -194,6 +221,7 @@ export function encodeHarnessRunRequest(request: HarnessRunRequest): HarnessWire
     session: { ...request.session },
     adapterId: request.adapterId,
     input,
+    ...(request.inlineContext ? { inlineContext: wireInlineContext(request.inlineContext, "inlineContext") } : {}),
     ...(request.model !== undefined ? { model: request.model } : {}),
     ...(request.effort !== undefined ? { effort: request.effort } : {}),
     ...(request.accountId !== undefined ? { accountId: request.accountId } : {}),
@@ -213,13 +241,22 @@ export function decodeHarnessRunRequest(request: HarnessWireRunRequest): Harness
         type: "image",
         mediaType: part.mediaType,
         data: decodeBase64(part.data),
+        ...(part.id !== undefined ? { id: part.id } : {}),
         ...(part.name !== undefined ? { name: part.name } : {}),
       }
     : { ...part });
+  const inlineContext = request.inlineContext
+    ? wireInlineContext(request.inlineContext, "inlineContext")
+    : undefined;
+  const contextValidation = validateHarnessInlineContext(inlineContext, input);
+  if (!contextValidation.valid) {
+    throw new TypeError(`${contextValidation.issues[0]?.path ?? "inlineContext"}: ${contextValidation.issues[0]?.message ?? "invalid inline context"}`);
+  }
   return {
     session: { ...request.session },
     adapterId: request.adapterId,
     input,
+    ...(inlineContext ? { inlineContext } : {}),
     ...(request.model !== undefined ? { model: request.model } : {}),
     ...(request.effort !== undefined ? { effort: request.effort } : {}),
     ...(request.accountId !== undefined ? { accountId: request.accountId } : {}),

@@ -53,6 +53,38 @@ Limits are snapshots, separate from per-turn token and cost usage events. A
 snapshot can represent rolling rate windows, credits, spend, context, or an
 unknown future kind without embedding a provider response type.
 
+Engine and model discovery may also declare input policy. The engine provides
+defaults and a selected model overrides only fields it knows. Support and
+limits are separate: an absent modality, maximum, or media-type list means
+unknown, never an inferred refusal. Modality identifiers are open so an ACP or
+future native adapter can add a shape without provider-name branches in a
+host.
+
+## Inline context
+
+`HarnessRunRequest.input` is the canonical ordered composer value. Text,
+images, resources, and `context-reference` parts can be interleaved without
+parsing Markdown or depending on a web editor. The optional versioned
+`inlineContext` table resolves each reference to an open-kind record with a
+stable id, label, and bounded JSON payload treated as untrusted provider
+content. Unknown kinds survive validation;
+malformed envelopes, duplicates, stale references, cycles, and exceeded
+bounds fail closed with explicit issues.
+
+An attachment or resource binding points to the id of an ordinary image or
+resource input. Bytes and provider resource URIs stay at that input boundary,
+not in the context record. This lets a host persist draft references and
+attachment metadata without persisting binary payloads in the record table.
+The package supplies pure resolution and policy-validation functions, while
+the product owns uploads, record lookup, authorization, freshness, storage,
+and rendering.
+
+Inline context is user input and is distinct from prepared context sources.
+Prepared sources snapshot host-owned domain state and preserve trusted
+instructions separately from untrusted content. An adapter's default input
+mapper renders a validated inline reference as untrusted provider content;
+hosts can replace that mapping when a provider supports a richer native form.
+
 ## Runtime
 
 `createHarness` caches one adapter session per tenant, actor, thread, and

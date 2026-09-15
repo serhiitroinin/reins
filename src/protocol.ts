@@ -79,10 +79,56 @@ export interface HarnessCapabilities {
   extensions?: Readonly<Record<string, HarnessCapability>>;
 }
 
+/** A JSON value carried by a typed context record. Binary data is excluded. */
+export type HarnessContextValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly HarnessContextValue[]
+  | { readonly [key: string]: HarnessContextValue };
+
+export type HarnessContextKind = string & {};
+
+/**
+ * Binds a context record to the ordinary provider input that carries its data.
+ * The referenced input owns image bytes or a resource URI; the record does not.
+ */
+export interface HarnessContextBinding {
+  type: "attachment" | "resource";
+  inputId: string;
+  name?: string;
+  mediaType?: string;
+  sizeBytes?: number;
+}
+
+export interface HarnessContextRecord {
+  version: 1;
+  id: string;
+  /** Open host-owned kind such as `issue`, `mail`, or `acme:incident`. */
+  kind: HarnessContextKind;
+  label: string;
+  /** Bounded JSON-only untrusted provider content. Never place host secrets here. */
+  payload: HarnessContextValue;
+  binding?: HarnessContextBinding;
+}
+
+/** Durable record table referenced by ordered `context-reference` inputs. */
+export interface HarnessInlineContext {
+  version: 1;
+  records: readonly HarnessContextRecord[];
+}
+
 export type HarnessInput =
   | { type: "text"; text: string }
-  | { type: "image"; mediaType: string; data: Uint8Array; name?: string }
-  | { type: "resource"; uri: string; mediaType?: string; name?: string };
+  | { type: "image"; id?: string; mediaType: string; data: Uint8Array; name?: string }
+  | { type: "resource"; id?: string; uri: string; mediaType?: string; name?: string }
+  | {
+      type: "context-reference";
+      contextId: string;
+      /** Optional stable identity for this occurrence of a reusable record. */
+      referenceId?: string;
+    };
 
 export type HarnessToolStatus = "completed" | "failed" | "declined" | "cancelled";
 export type HarnessTurnStatus = "completed" | "error" | "interrupted";
@@ -207,6 +253,8 @@ export interface HarnessRunRequest {
   session: HarnessSessionKey;
   adapterId: string;
   input: readonly HarnessInput[];
+  /** Typed records referenced from `input`; input order is the inline order. */
+  inlineContext?: HarnessInlineContext;
   model?: string;
   /** Open option id from the selected model effort profile. */
   effort?: string;

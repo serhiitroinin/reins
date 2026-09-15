@@ -87,7 +87,14 @@ describe("Claude Agent SDK adapter", () => {
         requests.push(request);
         return scriptedConnection((_request, input, messages) => {
           expect(input).toMatchObject({
-            input: [{ type: "text", text: "hello" }],
+            input: [
+              { type: "text", text: "hello " },
+              { type: "context-reference", contextId: "note-1" },
+            ],
+            inlineContext: {
+              version: 1,
+              records: [{ id: "note-1", kind: "note", label: "Launch" }],
+            },
             configuration: { "anthropic:command": false },
           });
           expect(JSON.stringify(input)).not.toContain("application-only-state");
@@ -112,7 +119,14 @@ describe("Claude Agent SDK adapter", () => {
     const run = runtime.start({
       session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
       adapterId: adapter.id,
-      input: [{ type: "text", text: "hello" }],
+      input: [
+        { type: "text", text: "hello " },
+        { type: "context-reference", contextId: "note-1" },
+      ],
+      inlineContext: {
+        version: 1,
+        records: [{ version: 1, id: "note-1", kind: "note", label: "Launch", payload: { ready: true } }],
+      },
       model: "claude-model",
       effort: "high",
       accountId: "account",

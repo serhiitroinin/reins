@@ -7,6 +7,8 @@
  * has never heard of.
  */
 
+import type { CapabilitySupport } from "./protocol.js";
+
 export type HarnessDiscovery<T> =
   | { status: "available"; value: T; fetchedAt?: string; expiresAt?: string }
   | { status: "unavailable"; message: string; retryable?: boolean }
@@ -90,6 +92,39 @@ export interface HarnessEffortProfile {
   defaultOptionId?: string;
 }
 
+/** Open modality identifiers let future adapters add inputs without a core release. */
+export type HarnessInputModality =
+  | "text"
+  | "image"
+  | "resource"
+  | "context-reference"
+  | (string & {});
+
+export interface HarnessInputConstraint {
+  support: CapabilitySupport;
+  /** Maximum number of parts of this modality in one turn. */
+  maxCount?: number;
+  /** Maximum measurable encoded/provider payload bytes for one part. */
+  maxItemBytes?: number;
+  /** Maximum measurable encoded/provider payload bytes across this modality. */
+  maxTotalBytes?: number;
+  /** Maximum characters for a textual part. */
+  maxTextCharacters?: number;
+  /** Exact accepted media types. Absent means the adapter did not declare a list. */
+  mediaTypes?: readonly string[];
+  description?: string;
+  extensions?: Readonly<Record<string, unknown>>;
+}
+
+export interface HarnessInputPolicy {
+  /** Maximum number of all input parts in one turn. */
+  maxItems?: number;
+  /** Maximum measurable bytes across all input parts in one turn. */
+  maxTotalBytes?: number;
+  modalities?: Readonly<Record<string, HarnessInputConstraint>>;
+  extensions?: Readonly<Record<string, unknown>>;
+}
+
 export interface HarnessModel {
   id: string;
   label: string;
@@ -100,6 +135,8 @@ export interface HarnessModel {
   unavailableReason?: string;
   inputModalities?: readonly string[];
   contextWindowTokens?: number;
+  /** Precise input support and limits; absent fields mean unknown. */
+  inputPolicy?: HarnessInputPolicy;
   effort?: HarnessEffortProfile;
   /** Controls whose values or availability are specific to this model. */
   controls?: readonly HarnessControl[];
@@ -117,6 +154,8 @@ export interface HarnessEngineProfile {
   label: string;
   description?: string;
   permissions: HarnessPermissionProfile;
+  /** Engine defaults. A selected model overrides only the fields it declares. */
+  inputPolicy?: HarnessInputPolicy;
   /** Engine-wide controls. Model controls are merged on top by identifier. */
   controls?: readonly HarnessControl[];
   extensions?: Readonly<Record<string, unknown>>;
@@ -174,6 +213,40 @@ export function harnessControls(
   for (const control of profile.controls ?? []) controls.set(control.id, control);
   for (const control of model?.controls ?? []) controls.set(control.id, control);
   return [...controls.values()];
+}
+
+/** Merge engine and model input policy without inventing absent limits. */
+export function harnessInputPolicy(
+  profile: HarnessEngineProfile,
+  model?: HarnessModel,
+): HarnessInputPolicy | undefined {
+  const engine = profile.inputPolicy;
+  const selected = model?.inputPolicy;
+  if (!engine && !selected) return undefined;
+
+  const modalities: Record<string, HarnessInputConstraint> = {};
+  for (const [id, constraint] of Object.entries(engine?.modalities ?? {})) {
+    modalities[id] = { ...constraint };
+  }
+  for (const [id, constraint] of Object.entries(selected?.modalities ?? {})) {
+    const inherited = modalities[id];
+    modalities[id] = {
+      ...inherited,
+      ...constraint,
+      ...(inherited?.extensions || constraint.extensions ? {
+        extensions: { ...inherited?.extensions, ...constraint.extensions },
+      } : {}),
+    };
+  }
+
+  return {
+    ...engine,
+    ...selected,
+    ...(Object.keys(modalities).length > 0 ? { modalities } : {}),
+    ...(engine?.extensions || selected?.extensions ? {
+      extensions: { ...engine?.extensions, ...selected?.extensions },
+    } : {}),
+  };
 }
 
 /**

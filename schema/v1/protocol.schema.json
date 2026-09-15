@@ -113,6 +113,7 @@
       "type": "object",
       "properties": {
         "type": { "const": "image" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
         "mediaType": { "type": "string", "minLength": 1 },
         "data": {
           "type": "string",
@@ -128,17 +129,63 @@
       "type": "object",
       "properties": {
         "type": { "const": "resource" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
         "uri": { "type": "string", "format": "uri-reference" },
         "mediaType": { "type": "string" },
         "name": { "type": "string" }
       },
       "required": ["type", "uri"]
     },
+    "HarnessContextReferenceInput": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "context-reference" },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "referenceId": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["type", "contextId"]
+    },
+    "HarnessContextBinding": {
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["attachment", "resource"] },
+        "inputId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "sizeBytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["type", "inputId"]
+    },
+    "HarnessContextRecord": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "const": 1 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "payload": { "$ref": "#/$defs/JsonValue" },
+        "binding": { "$ref": "#/$defs/HarnessContextBinding" }
+      },
+      "required": ["version", "id", "kind", "label", "payload"]
+    },
+    "HarnessInlineContext": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "const": 1 },
+        "records": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/HarnessContextRecord" }
+        }
+      },
+      "required": ["version", "records"]
+    },
     "HarnessWireInput": {
       "oneOf": [
         { "$ref": "#/$defs/HarnessTextInput" },
         { "$ref": "#/$defs/HarnessImageInput" },
-        { "$ref": "#/$defs/HarnessResourceInput" }
+        { "$ref": "#/$defs/HarnessResourceInput" },
+        { "$ref": "#/$defs/HarnessContextReferenceInput" }
       ]
     },
     "HarnessPermissionSelection": {
@@ -169,6 +216,7 @@
         "session": { "$ref": "#/$defs/HarnessSessionKey" },
         "adapterId": { "$ref": "#/$defs/Id" },
         "input": { "type": "array", "items": { "$ref": "#/$defs/HarnessWireInput" } },
+        "inlineContext": { "$ref": "#/$defs/HarnessInlineContext" },
         "model": { "type": "string" },
         "effort": { "type": "string" },
         "accountId": { "type": "string" },

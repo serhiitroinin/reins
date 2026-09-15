@@ -97,6 +97,50 @@ const run = harness.start(request, {
 
 Run the complete example with `bun run example`.
 
+## Typed inline context and input policy
+
+Composer references are ordered input parts, not Markdown syntax or UI
+objects. A versioned record table carries the stable label and bounded JSON
+untrusted provider payload. Image bytes and resource URIs stay in ordinary input parts; a record
+binding contains only the input id and optional display metadata.
+
+```ts
+import {
+  harnessInputPolicy,
+  validateHarnessInput,
+} from "@serhiitroinin/fold-harness";
+
+const request = {
+  session: { tenantId: "acme", actorId: "ada", threadId: "launch" },
+  adapterId: "example:agent",
+  input: [
+    { type: "text" as const, text: "Summarize " },
+    { type: "context-reference" as const, contextId: "task-42" },
+  ],
+  inlineContext: {
+    version: 1 as const,
+    records: [{
+      version: 1 as const,
+      id: "task-42",
+      kind: "acme:task",
+      label: "Prepare launch",
+      payload: { status: "in-progress" },
+    }],
+  },
+};
+
+const policy = harnessInputPolicy(engineProfile, selectedModel);
+const validation = validateHarnessInput(request.input, policy, request.inlineContext);
+if (!validation.valid) showInputIssues(validation.issues);
+```
+
+Input policy is discovery data. Engine defaults and selected-model overrides
+declare support and only the count, byte, character, or media limits they
+actually know. An absent modality or limit means unknown, not unsupported.
+Kinds and modality identifiers remain open for future products and adapters.
+Draft storage, uploads, record lookup, authorization, freshness, and chip
+rendering remain host concerns.
+
 ## Follow-up queue
 
 A host may keep accepting follow-ups while a turn runs without pretending its
@@ -231,6 +275,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/wire` — JSON-safe run request encoding for
   transports and native hosts.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
+- `@serhiitroinin/fold-harness/input` — typed inline-context resolution and
+  provider-neutral input-policy validation.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/turn-queue` — bounded host-owned follow-up
   coordination with explicit dispatch boundaries.

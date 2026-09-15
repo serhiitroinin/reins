@@ -15,6 +15,10 @@ pub struct V1 {
 
     pub event: Event,
 
+    pub inline_context: InlineContext,
+
+    pub input_policy: InputPolicy,
+
     pub interaction: Interaction,
 
     pub interaction_response: Response,
@@ -170,6 +174,7 @@ pub struct Discovery {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EngineProfile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub controls: Option<Vec<ControlElement>>,
@@ -181,6 +186,9 @@ pub struct EngineProfile {
     pub extensions: Option<HashMap<String, Option<ExtensionValue>>>,
 
     pub id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_policy: Option<InputPolicy>,
 
     pub label: String,
 
@@ -271,6 +279,49 @@ pub struct OptionElement {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputPolicy {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<HashMap<String, Option<ExtensionValue>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_total_bytes: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modalities: Option<HashMap<String, ModalityValue>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModalityValue {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<HashMap<String, Option<ExtensionValue>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_count: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_item_bytes: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_text_characters: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_total_bytes: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_types: Option<Vec<String>>,
+
+    pub support: Support,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -569,6 +620,55 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InlineContext {
+    pub records: Vec<RecordElement>,
+
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordElement {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding: Option<Binding>,
+
+    pub id: String,
+
+    pub kind: String,
+
+    pub label: String,
+
+    pub payload: Option<ProtocolSchema>,
+
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Binding {
+    #[serde(rename = "type")]
+    pub binding_type: BindingType,
+
+    pub input_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BindingType {
+    Attachment,
+
+    Resource,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LimitSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -676,6 +776,9 @@ pub struct ModelElement {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_modalities: Option<Vec<String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_policy: Option<InputPolicy>,
 
     pub label: String,
 
@@ -788,6 +891,9 @@ pub struct RunRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inline_context: Option<InlineContext>,
+
     pub input: Vec<InputElement>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -808,10 +914,16 @@ pub struct RunRequest {
 #[serde(rename_all = "camelCase")]
 pub struct InputElement {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<Encoding>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<String>,
@@ -820,7 +932,10 @@ pub struct InputElement {
     pub name: Option<String>,
 
     #[serde(rename = "type")]
-    pub protocol_schema_type: Type,
+    pub protocol_schema_type: InputType,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_id: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -836,8 +951,11 @@ pub enum Encoding {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Type {
+#[serde(rename_all = "kebab-case")]
+pub enum InputType {
+    #[serde(rename = "context-reference")]
+    ContextReference,
+
     Image,
 
     Resource,
@@ -901,11 +1019,21 @@ pub struct ContentElement {
     pub media_type: Option<String>,
 
     #[serde(rename = "type")]
-    pub protocol_schema_type: Type,
+    pub protocol_schema_type: ContentType,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentType {
+    Image,
+
+    Resource,
+
+    Text,
 }

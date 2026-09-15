@@ -101,6 +101,14 @@ const profile: HarnessEngineProfile = {
     ],
   },
   controls: [{ id: "opencode:loop-budget", label: "Loop budget", kind: "number", scope: "turn", min: 1, defaultValue: 8 }],
+  inputPolicy: {
+    maxItems: 20,
+    modalities: {
+      text: { support: "stable", maxTextCharacters: 100_000 },
+      image: { support: "experimental", maxCount: 4, mediaTypes: ["image/png"] },
+      resource: { support: "unsupported" },
+    },
+  },
   extensions: { "opencode:transport": "acp" },
 };
 
@@ -111,6 +119,7 @@ const models: HarnessModelCatalog = {
       id: "gpt-5.6-luna",
       label: "GPT-5.6 Luna",
       group: { id: "openai", label: "OpenAI" },
+      inputPolicy: { modalities: { image: { support: "stable", maxItemBytes: 3_000_000 } } },
       controls: [{
         id: "openai:service-tier",
         label: "Speed",
@@ -179,7 +188,21 @@ describe("versioned JSON Schema", () => {
       ["HarnessWireRunRequest", encodeHarnessRunRequest({
         session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
         adapterId: "openai:codex",
-        input: [{ type: "image", mediaType: "image/png", data: new Uint8Array([1, 2, 3]) }],
+        input: [
+          { type: "context-reference", contextId: "future-1" },
+          { type: "image", id: "image-1", mediaType: "image/png", data: new Uint8Array([1, 2, 3]) },
+        ],
+        inlineContext: {
+          version: 1,
+          records: [{
+            version: 1,
+            id: "future-1",
+            kind: "future:record",
+            label: "Future record",
+            payload: { retained: true },
+            binding: { type: "attachment", inputId: "image-1", sizeBytes: 3 },
+          }],
+        },
         settings: { controls: { "openai:service-tier": "fast" } },
       })],
     ];

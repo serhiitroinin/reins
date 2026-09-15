@@ -17,6 +17,7 @@ import type {
 } from "../profile.js";
 import type {
   HarnessCapabilities,
+  HarnessInlineContext,
   HarnessInput,
   HarnessInteraction,
   HarnessInteractionResponse,
@@ -49,6 +50,7 @@ export interface ClaudeAgentSdkTurnInput {
   runId: string;
   turnId: string;
   input: readonly HarnessInput[];
+  inlineContext?: HarnessInlineContext;
   /** Provider-visible context. Application-only source state is removed. */
   context: HarnessPreparedContext<ClaudeAgentSdkContextContribution>;
   configuration?: Readonly<Record<string, unknown>>;
@@ -252,6 +254,14 @@ function defaultProfile(id: string): HarnessDiscovery<HarnessEngineProfile> {
         modes: [{ id: "host", label: "Managed by host", posture: "restricted" }],
         description: "The host application supplies Claude's tool and sandbox policy.",
       },
+      inputPolicy: {
+        modalities: {
+          text: { support: "stable" },
+          image: { support: "stable" },
+          resource: { support: "stable" },
+          "context-reference": { support: "stable" },
+        },
+      },
     },
   };
 }
@@ -261,6 +271,7 @@ function defaultTurnInput(request: HarnessAdapterRunRequest): ClaudeAgentSdkTurn
     runId: request.runId,
     turnId: request.turnId,
     input: request.input,
+    ...(request.inlineContext ? { inlineContext: request.inlineContext } : {}),
     context: {
       sources: request.context.sources.map((source) => ({
         sourceId: source.sourceId,
@@ -283,6 +294,7 @@ function defaultFollowUpInput(
     runId: request.runId,
     turnId: request.turnId,
     input: request.input,
+    ...(request.inlineContext ? { inlineContext: request.inlineContext } : {}),
     // Same-turn follow-ups inherit the context already installed for the
     // active turn. Repeating it would duplicate untrusted workspace data.
     context: { sources: [], unavailable: [] },

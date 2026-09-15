@@ -6,6 +6,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import { harnessContextReferenceText } from "../input.js";
 import type { HarnessInput, HarnessSessionKey } from "../protocol.js";
 import type {
   HarnessCapabilities,
@@ -236,17 +237,23 @@ function dataUrl(mediaType: string, data: Uint8Array): string {
   return `data:${mediaType};base64,${Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString("base64")}`;
 }
 
-function defaultInput(input: HarnessInput): unknown {
+function defaultInput(
+  input: HarnessInput,
+  inlineContext: HarnessAdapterRunRequest["inlineContext"],
+): unknown {
   if (input.type === "text") return { type: "text", text: input.text, text_elements: [] };
   if (input.type === "image") return { type: "image", url: dataUrl(input.mediaType, input.data) };
-  const label = input.name ? `${input.name}: ${input.uri}` : input.uri;
+  const label = input.type === "resource"
+    ? input.name ? `${input.name}: ${input.uri}` : input.uri
+    : harnessContextReferenceText(input, inlineContext) ?? `[Context: ${input.contextId}]`;
   return { type: "text", text: label, text_elements: [] };
 }
 
 function contextText(input: HarnessInput): string {
   if (input.type === "text") return input.text;
   if (input.type === "resource") return input.name ? `${input.name}: ${input.uri}` : input.uri;
-  return `[Image: ${input.name ?? input.mediaType}]`;
+  if (input.type === "image") return `[Image: ${input.name ?? input.mediaType}]`;
+  return `[Context reference: ${input.contextId}]`;
 }
 
 /** Keep trusted source instructions distinct from untrusted source content. */
@@ -304,6 +311,13 @@ function defaultProfile(id: string): HarnessDiscovery<HarnessEngineProfile> {
         defaultModeId: "host",
         modes: [{ id: "host", label: "Managed by host", posture: "restricted" }],
         description: "The host application supplies the Codex sandbox and approval policy.",
+      },
+      inputPolicy: {
+        modalities: {
+          text: { support: "stable" },
+          resource: { support: "stable", description: "Mapped to untrusted text input." },
+          "context-reference": { support: "stable", description: "Mapped to bounded untrusted text input." },
+        },
       },
     },
   };
@@ -488,7 +502,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               current.threadId = threadId;
 
               const input = request.input.flatMap((item) => asArray(
-                options.mapInput?.(item, request) ?? defaultInput(item),
+                options.mapInput?.(item, request) ?? defaultInput(item, request.inlineContext),
               ));
               const turn = await client.startTurn({
                 threadId,
@@ -588,7 +602,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               ...(followUp.metadata ? { metadata: followUp.metadata } : {}),
             };
             const input = followUp.input.flatMap((item) => asArray(
-              options.mapInput?.(item, followUpRequest) ?? defaultInput(item),
+              options.mapInput?.(item, followUpRequest) ?? defaultInput(item, followUpRequest.inlineContext),
             ));
             await current.client.steerTurn(codexTurnSteerParams({
               threadId: current.threadId!,

@@ -123,6 +123,9 @@ export function codexModelCatalog(response: unknown): HarnessModelCatalog {
     const modalities = Array.isArray(rawModalities)
       ? rawModalities.filter((value): value is string => typeof value === "string")
       : [];
+    const modalityPolicy = Object.fromEntries(
+      modalities.map((modality) => [modality, { support: "stable" as const }]),
+    );
     models.push({
       id,
       label: stringValue(field(model, "displayName", "display_name")) ?? id,
@@ -131,6 +134,7 @@ export function codexModelCatalog(response: unknown): HarnessModelCatalog {
         ? { hidden: true }
         : {}),
       ...(modalities.length > 0 ? { inputModalities: modalities } : {}),
+      ...(modalities.length > 0 ? { inputPolicy: { modalities: modalityPolicy } } : {}),
       ...(effortOptions.length > 0 ? {
         effort: {
           options: effortOptions,

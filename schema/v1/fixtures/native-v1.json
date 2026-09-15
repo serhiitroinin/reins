@@ -52,14 +52,47 @@
     "text": "Reviewed",
     "labels": ["safe"]
   },
+  "inlineContext": {
+    "version": 1,
+    "records": [
+      {
+        "version": 1,
+        "id": "incident-42",
+        "kind": "future:incident",
+        "label": "Database latency",
+        "payload": { "severity": "high", "open": true },
+        "binding": {
+          "type": "attachment",
+          "inputId": "image-1",
+          "name": "trace.png",
+          "mediaType": "image/png",
+          "sizeBytes": 3
+        }
+      }
+    ]
+  },
   "runRequest": {
     "schemaVersion": 1,
     "session": { "tenantId": "tenant", "actorId": "actor", "threadId": "thread" },
     "adapterId": "openai:codex",
     "input": [
-      { "type": "text", "text": "Inspect this image" },
-      { "type": "image", "mediaType": "image/png", "data": "AQID", "encoding": "base64", "name": "pixel.png" }
+      { "type": "text", "text": "Inspect " },
+      { "type": "context-reference", "contextId": "incident-42", "referenceId": "mention-1" },
+      { "type": "image", "id": "image-1", "mediaType": "image/png", "data": "AQID", "encoding": "base64", "name": "trace.png" }
     ],
+    "inlineContext": {
+      "version": 1,
+      "records": [
+        {
+          "version": 1,
+          "id": "incident-42",
+          "kind": "future:incident",
+          "label": "Database latency",
+          "payload": { "severity": "high" },
+          "binding": { "type": "attachment", "inputId": "image-1", "sizeBytes": 3 }
+        }
+      ]
+    },
     "model": "gpt-5.6-luna",
     "effort": "high",
     "accountId": "account-1",
@@ -115,6 +148,12 @@
       "defaultModeId": "ask",
       "selectable": true
     },
+    "inputPolicy": {
+      "modalities": {
+        "text": { "support": "stable" },
+        "image": { "support": "experimental", "maxCount": 4 }
+      }
+    },
     "controls": [
       { "id": "opencode:loop-budget", "label": "Loop budget", "kind": "number", "scope": "turn", "min": 1.0, "max": 20.0, "defaultValue": 8.0 }
     ],
@@ -124,6 +163,21 @@
     "status": "unsupported",
     "message": "This adapter uses a static profile."
   },
+  "inputPolicy": {
+    "maxItems": 20,
+    "maxTotalBytes": 12000000,
+    "modalities": {
+      "text": { "support": "stable", "maxTextCharacters": 100000 },
+      "image": {
+        "support": "experimental",
+        "maxCount": 4,
+        "maxItemBytes": 3000000,
+        "mediaTypes": ["image/png", "image/jpeg"]
+      },
+      "context-reference": { "support": "stable", "maxCount": 200 }
+    },
+    "extensions": { "future:remote-uri": true }
+  },
   "modelCatalog": {
     "defaultModelId": "gpt-5.6-luna",
     "models": [
@@ -132,6 +186,11 @@
         "label": "GPT-5.6 Luna",
         "group": { "id": "openai", "label": "OpenAI" },
         "inputModalities": ["text", "image"],
+        "inputPolicy": {
+          "modalities": {
+            "image": { "support": "stable", "maxItemBytes": 3000000 }
+          }
+        },
         "effort": {
           "options": [
             { "id": "low", "label": "Low" },
