@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.12
+
+### Patch Changes
+
+- 262518c: Add a stable ACP v1 adapter with host-injected transport, capability negotiation,
+  session configuration, permissions, normalized events, cancellation, resume,
+  safe presentation boundaries, conformance fixtures, and a live compatibility runner.
+
 ## 0.1.0-next.11
 
 ### Patch Changes
