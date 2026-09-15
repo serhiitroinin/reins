@@ -1,5 +1,12 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.18
+
+### Minor Changes
+
+- b8c41d5: Add a bounded, framework-neutral follow-up queue with held entries, explicit
+  dispatch leases, and generation-safe stop/drain behavior.
+
 ## 0.1.0-next.17
 
 ### Patch Changes
