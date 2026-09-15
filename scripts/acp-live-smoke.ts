@@ -1,9 +1,10 @@
 /**
  * Credential-bearing ACP compatibility smoke test. Not run in CI.
  *
- * The script creates a synthetic workspace and an isolated HOME. Point the
- * provider-specific `ACP_SMOKE_*_HOME` variable at a prepared private account
- * directory, or provide the provider's API-key environment variable.
+ * The script creates a synthetic workspace and an isolated HOME by default.
+ * Point a provider-specific `ACP_SMOKE_*_HOME` variable at a prepared private
+ * account directory, provide an API-key environment variable, or explicitly
+ * set `ACP_SMOKE_HOME` to the login home for keychain-backed authentication.
  */
 
 import { mkdir, mkdtemp, rm } from "node:fs/promises";

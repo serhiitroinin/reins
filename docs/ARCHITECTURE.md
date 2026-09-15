@@ -179,6 +179,31 @@ spawn Claude or infer any of them. Application-only context `state` is removed
 from the default provider input; only trusted instructions and untrusted
 content cross that boundary.
 
+Stable ACP v1 communication uses a host-injected raw byte connection composed
+over the official protocol SDK. `createAcpV1Adapter` owns negotiation,
+new/load-session lifecycle, prompts, permission round trips, cancellation,
+checkpoints, event normalization, and reconnect after process closure. Its
+public types remain SDK-free, and the host owns the process, credentials,
+environment, roots, MCP servers, and transport implementation.
+
+Negotiated ACP modes and config options are exposed to a host controller rather
+than assigned universal meaning. A Claude mode, Codex collaboration mode, and
+OpenCode mode need not represent the same authority. Likewise, live model,
+effort, and Fast options complement rather than replace the package's independent
+profile, catalog, and account-limit discovery calls. ACP v1 has no complete
+portable representation for those product surfaces.
+
+The generic ACP adapter deliberately does not advertise client filesystem or
+terminal capabilities. It normalizes agent-reported tool lifecycles, while
+application tool execution enters through explicit host-owned MCP servers.
+Raw tool/provider data is private unless a host presentation or public-error
+hook maps a bounded safe value.
+
+ACP prompts also have no trusted system/instruction role. The default mapper
+therefore refuses a turn with prepared application context; a host must choose
+an agent-appropriate mapping without silently erasing the trust distinction.
+See `docs/ACP_V1.md` for the measured provider matrix and native-adapter decision.
+
 This division is also the stack boundary. The protocol, discovery contracts,
 and wire formats do not assume React, Electron, HTTP, or a particular database.
 JavaScript hosts can use the runtime directly. Other language and native hosts

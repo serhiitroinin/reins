@@ -26,15 +26,22 @@
   retains its process policy and frozen product projection.
 - Versioned JSON Schema 2020-12 protocol and discovery contracts with a
   JSON-safe request codec and generated Swift and Rust data bindings.
+- A stable ACP v1 adapter with host-injected byte transport, negotiated optional
+  behavior, live session controls, exact permission round trips, bounded safe
+  presentation, cancellation, reconnect, and conformance coverage.
+- Live ACP verification against Claude Agent ACP, Codex ACP (including Fast),
+  and OpenCode across repeated turns and fresh-process resume.
+- A measured adapter strategy: retain native Claude/Codex adapters for enhanced
+  provider behavior and use ACP as the generic interoperability path.
 
 ## Next
 
-1. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
-2. Decide from measured parity which native adapters remain necessary.
-3. Move the generic MCP tool bridge behind `HarnessToolHost`.
-4. Migrate Fold's complete context assembly onto runtime contributions.
-5. Implement durable Fold stores behind the runtime interfaces.
-6. Build a non-Fold domain example with a browser, terminal, or native UI.
+1. Move the generic MCP tool bridge behind `HarnessToolHost`.
+2. Migrate Fold's complete context assembly onto runtime contributions.
+3. Implement durable Fold stores behind the runtime interfaces.
+4. Build a non-Fold domain example with a browser, terminal, or native UI.
+5. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
+   test credential are available; keep it experimental until then.
 
 ## Deliberately outside the first release
 
