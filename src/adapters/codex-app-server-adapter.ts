@@ -32,6 +32,7 @@ import {
   codexThreadResumeParams,
   codexThreadStartParams,
   codexTurnSettingOverrides,
+  codexTurnSteerParams,
   createCodexAppServerClient,
   type CodexAppServerClient,
   type CodexAppServerClientInfo,
@@ -112,6 +113,12 @@ export const CODEX_APP_SERVER_CAPABILITIES: HarnessCapabilities = {
   shell: unsupported,
   filesystem: unsupported,
   network: unsupported,
+  steering: {
+    support: "stable",
+    strategies: ["same-turn"],
+    preferred: "same-turn",
+    description: "Uses Codex App Server turn/steer with an expected provider turn id.",
+  },
   extensions: {
     "openai:app-server": { support: "stable" },
     "openai:dynamic-tools": { support: "stable" },
@@ -305,14 +312,18 @@ function defaultProfile(id: string): HarnessDiscovery<HarnessEngineProfile> {
 interface ActiveTurn {
   client: CodexAppServerClient;
   connection: CodexAppServerConnection;
+  request: HarnessAdapterRunRequest;
   threadId: string | null;
   turnId: string | null;
+  accepting: boolean;
+  steering: Promise<void>;
   closed: boolean;
 }
 
 async function closeActive(active: ActiveTurn): Promise<void> {
   if (active.closed) return;
   active.closed = true;
+  active.accepting = false;
   await active.connection.close();
 }
 
@@ -402,8 +413,11 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
             const current: ActiveTurn = {
               client,
               connection,
+              request,
               threadId: null,
               turnId: null,
+              accepting: true,
+              steering: Promise.resolve(),
               closed: false,
             };
             active = current;
@@ -417,6 +431,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               onTurnEnded(outcome) {
                 if (terminal) return;
                 terminal = true;
+                current.accepting = false;
                 settled.resolve({ kind: "terminal", outcome });
               },
               onLimits(snapshot) {
@@ -536,9 +551,59 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
           if (executionFailure !== undefined) throw executionFailure;
         },
 
+        async steer(followUp) {
+          const current = active;
+          if (
+            current === null
+            || current.closed
+            || !current.accepting
+            || current.threadId === null
+            || current.turnId === null
+            || current.request.signal.aborted
+          ) {
+            throw new HarnessAdapterError(
+              "CODEX_TURN_NOT_STEERABLE",
+              "Codex is not ready to accept a follow-up for this turn.",
+              true,
+            );
+          }
+          if (
+            followUp.expectedTurnId !== current.request.turnId
+            || followUp.turnId !== current.request.turnId
+            || followUp.runId !== current.request.runId
+          ) {
+            throw new HarnessAdapterError("CODEX_STALE_TURN", "The active Codex turn changed before the follow-up was sent.");
+          }
+          const steering = current.steering.then(async () => {
+            if (active !== current || current.closed || !current.accepting || followUp.signal.aborted) {
+              throw new HarnessAdapterError(
+                "CODEX_TURN_NOT_STEERABLE",
+                "Codex is not ready to accept a follow-up for this turn.",
+                true,
+              );
+            }
+            const followUpRequest: HarnessAdapterRunRequest = {
+              ...current.request,
+              input: followUp.input,
+              ...(followUp.metadata ? { metadata: followUp.metadata } : {}),
+            };
+            const input = followUp.input.flatMap((item) => asArray(
+              options.mapInput?.(item, followUpRequest) ?? defaultInput(item),
+            ));
+            await current.client.steerTurn(codexTurnSteerParams({
+              threadId: current.threadId!,
+              expectedTurnId: current.turnId!,
+              input,
+            }));
+          });
+          current.steering = steering.catch(() => undefined);
+          await steering;
+        },
+
         async cancel() {
           const current = active;
           if (current === null) return;
+          current.accepting = false;
           try {
             if (current.threadId !== null && current.turnId !== null) {
               await current.client.interruptTurn({

@@ -138,6 +138,67 @@ describe("Claude Agent SDK adapter", () => {
     expect(state.closes).toBe(1);
   });
 
+  test("injects a follow-up into the active stream without repeating prepared context", async () => {
+    const sends: unknown[] = [];
+    let firstAccepted = false;
+    const adapter = createClaudeAgentSdkAdapter({
+      connect(request) {
+        return scriptedConnection((_request, input, messages) => {
+          sends.push(input);
+          if (sends.length === 1) {
+            firstAccepted = true;
+            messages.push({ type: "assistant", message: { content: [{ type: "text", text: "before" }] } });
+            return;
+          }
+          messages.push({ type: "assistant", message: { content: [{ type: "text", text: "after" }] } });
+          messages.push({ type: "result", subtype: "success", is_error: false });
+        }, request, { interrupts: 0, closes: 0, stops: [] });
+      },
+    });
+    const runtime = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "test:workspace",
+        failureMode: "required",
+        prepare: () => ({ content: [{ type: "text", text: "untrusted workspace snapshot" }] }),
+      }],
+    });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "steering" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "first" }],
+    }, { runId: "harness-run", turnId: "harness-turn" });
+    const events = collect(run.events);
+    while (!firstAccepted) await Bun.sleep(0);
+
+    const result = await run.followUp({
+      expectedTurnId: "harness-turn",
+      input: [{ type: "text", text: "follow up" }],
+    });
+
+    expect(result).toEqual({ strategy: "same-turn", run });
+    expect(sends).toHaveLength(2);
+    expect(sends[0]).toMatchObject({
+      runId: "harness-run",
+      turnId: "harness-turn",
+      input: [{ type: "text", text: "first" }],
+      context: { sources: [{ sourceId: "test:workspace" }] },
+    });
+    expect(sends[1]).toEqual({
+      runId: "harness-run",
+      turnId: "harness-turn",
+      input: [{ type: "text", text: "follow up" }],
+      context: { sources: [], unavailable: [] },
+    });
+    expect(await run.done).toBe("completed");
+    const payloads = (await events).map((event) => event.payload);
+    expect(payloads.filter(({ kind }) => kind === "turn-started")).toHaveLength(1);
+    expect(payloads.filter(({ kind }) => kind === "turn-completed")).toHaveLength(1);
+    expect(payloads).toContainEqual({ kind: "assistant-text", text: "beforeafter" });
+    await runtime.close();
+  });
+
   test("awaits checkpoint persistence and exposes observed limits independently", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });

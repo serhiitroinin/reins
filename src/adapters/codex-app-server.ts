@@ -38,6 +38,7 @@ export interface CodexAppServerClient {
   startThread(params: unknown): Promise<Record<string, unknown>>;
   resumeThread(params: unknown): Promise<Record<string, unknown>>;
   startTurn(params: unknown): Promise<Record<string, unknown>>;
+  steerTurn(params: unknown): Promise<Record<string, unknown>>;
   interruptTurn(params: unknown): Promise<Record<string, unknown>>;
 }
 
@@ -273,6 +274,23 @@ export function codexTurnStartParams(options: CodexTurnOptions): Record<string, 
   };
 }
 
+export interface CodexTurnSteerOptions {
+  threadId: string;
+  expectedTurnId: string;
+  input: readonly unknown[];
+  clientUserMessageId?: string;
+}
+
+/** Serialize an expected-turn-preconditioned Codex follow-up. */
+export function codexTurnSteerParams(options: CodexTurnSteerOptions): Record<string, unknown> {
+  return {
+    threadId: options.threadId,
+    expectedTurnId: options.expectedTurnId,
+    input: options.input,
+    ...(options.clientUserMessageId ? { clientUserMessageId: options.clientUserMessageId } : {}),
+  };
+}
+
 export function createCodexAppServerClient(options: CodexAppServerClientOptions): CodexAppServerClient {
   const peer: JsonRpcPeer = createJsonRpcPeer({
     write: options.write,
@@ -300,6 +318,7 @@ export function createCodexAppServerClient(options: CodexAppServerClientOptions)
     startThread: (params) => request("thread/start", params),
     resumeThread: (params) => request("thread/resume", params),
     startTurn: (params) => request("turn/start", params),
+    steerTurn: (params) => request("turn/steer", params),
     interruptTurn: (params) => request("turn/interrupt", params),
   };
 }

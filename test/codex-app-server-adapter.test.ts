@@ -59,6 +59,50 @@ function checkpointConnection(
   };
 }
 
+function steeringConnection(
+  requests: Array<{ method: string; params: Record<string, unknown> }>,
+) {
+  const output = createPushableAsyncIterable<string>();
+  let closed = false;
+  const send = (message: unknown): void => output.push(`${JSON.stringify(message)}\n`);
+  return {
+    write(line: string): void {
+      const message = JSON.parse(line) as {
+        id: string | number;
+        method: string;
+        params?: Record<string, unknown>;
+      };
+      const params = message.params ?? {};
+      requests.push({ method: message.method, params });
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else if (message.method === "thread/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "provider-thread" } } });
+      } else if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "provider-turn" } } });
+      } else if (message.method === "turn/steer") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        send({
+          jsonrpc: "2.0",
+          method: "item/agentMessage/delta",
+          params: { itemId: "message-steered", delta: "steered" },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "turn/completed",
+          params: { turn: { status: "completed" } },
+        });
+      }
+    },
+    output,
+    close(): void {
+      if (closed) return;
+      closed = true;
+      output.close();
+    },
+  };
+}
+
 describe("Codex App Server adapter", () => {
   test("passes the provider-neutral adapter contract through real JSON-RPC", async () => {
     const fixture = createCodexAppServerConformanceFixture();
@@ -208,6 +252,44 @@ describe("Codex App Server adapter", () => {
         },
       }),
     });
+    await runtime.close();
+  });
+
+  test("steers the accepted provider turn without opening a second runtime turn", async () => {
+    const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "steering-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => steeringConnection(requests),
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "steering" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "first" }],
+    }, { runId: "harness-run", turnId: "harness-turn" });
+    const events = collect(run.events);
+    while (!requests.some(({ method }) => method === "turn/start")) await Bun.sleep(0);
+
+    const result = await run.followUp({
+      expectedTurnId: "harness-turn",
+      input: [{ type: "text", text: "follow up" }],
+    });
+
+    expect(result).toEqual({ strategy: "same-turn", run });
+    expect(requests).toContainEqual({
+      method: "turn/steer",
+      params: {
+        threadId: "provider-thread",
+        expectedTurnId: "provider-turn",
+        input: [{ type: "text", text: "follow up", text_elements: [] }],
+      },
+    });
+    expect(await run.done).toBe("completed");
+    const payloads = (await events).map((event) => event.payload);
+    expect(payloads.filter(({ kind }) => kind === "turn-started")).toHaveLength(1);
+    expect(payloads.filter(({ kind }) => kind === "turn-completed")).toHaveLength(1);
+    expect(payloads).toContainEqual({ kind: "assistant-text", text: "steered" });
     await runtime.close();
   });
 
