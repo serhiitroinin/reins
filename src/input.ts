@@ -15,6 +15,8 @@ import type {
 export const HARNESS_CONTEXT_ID_MAX_LENGTH = 128;
 export const HARNESS_CONTEXT_KIND_MAX_LENGTH = 64;
 export const HARNESS_CONTEXT_LABEL_MAX_LENGTH = 200;
+export const HARNESS_CONTEXT_BINDING_NAME_MAX_LENGTH = 200;
+export const HARNESS_CONTEXT_MEDIA_TYPE_MAX_LENGTH = 256;
 export const HARNESS_CONTEXT_MAX_RECORDS = 200;
 export const HARNESS_CONTEXT_MAX_PAYLOAD_CHARACTERS = 64_000;
 export const HARNESS_CONTEXT_MAX_SERIALIZED_CHARACTERS = 16_000_000;
@@ -255,8 +257,12 @@ export function validateHarnessInlineContext(
             !binding
             || (binding.type !== "attachment" && binding.type !== "resource")
             || !boundedString(binding.inputId, HARNESS_CONTEXT_ID_MAX_LENGTH)
-            || (binding.name !== undefined && typeof binding.name !== "string")
-            || (binding.mediaType !== undefined && typeof binding.mediaType !== "string")
+            || (binding.name !== undefined
+              && (typeof binding.name !== "string" || binding.name.length > HARNESS_CONTEXT_BINDING_NAME_MAX_LENGTH))
+            || (binding.mediaType !== undefined
+              && (typeof binding.mediaType !== "string"
+                || binding.mediaType.length === 0
+                || binding.mediaType.length > HARNESS_CONTEXT_MEDIA_TYPE_MAX_LENGTH))
             || (binding.sizeBytes !== undefined
               && (!Number.isSafeInteger(binding.sizeBytes) || (binding.sizeBytes as number) < 0))
           ) {

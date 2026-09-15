@@ -150,8 +150,8 @@
       "properties": {
         "type": { "enum": ["attachment", "resource"] },
         "inputId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "name": { "type": "string" },
-        "mediaType": { "type": "string" },
+        "name": { "type": "string", "maxLength": 200 },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 256 },
         "sizeBytes": { "type": "integer", "minimum": 0 }
       },
       "required": ["type", "inputId"]
