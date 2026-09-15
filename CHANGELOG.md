@@ -1,5 +1,15 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.19
+
+### Minor Changes
+
+- 0802c6e: Add provider-declared active-turn follow-ups with same-turn and replacement
+  strategies, expected-turn preconditions, serialized cancellation/drain
+  boundaries, native Claude message injection, Codex `turn/steer`, ACP
+  replacement behavior, portable capability schema updates, and conformance
+  coverage.
+
 ## 0.1.0-next.18
 
 ### Minor Changes
