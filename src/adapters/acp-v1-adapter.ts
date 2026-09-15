@@ -324,6 +324,26 @@ function bounded(value: string, limit: number): { value: string; truncated: bool
     : { value: `${value.slice(0, Math.max(0, limit - 1))}…`, truncated: true };
 }
 
+function boundedExtensions(
+  value: Readonly<Record<string, unknown>> | undefined,
+  limit: number,
+): { value?: Readonly<Record<string, unknown>>; truncated: boolean } {
+  if (!value) return { truncated: false };
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined || new TextEncoder().encode(encoded).byteLength > limit) {
+      return { truncated: true };
+    }
+    const decoded: unknown = JSON.parse(encoded);
+    if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+      return { truncated: true };
+    }
+    return { value: decoded as Readonly<Record<string, unknown>>, truncated: false };
+  } catch {
+    return { truncated: true };
+  }
+}
+
 interface ToolState {
   title: string;
   kind: string;
@@ -400,6 +420,7 @@ function toolPresentation(
   const output = value.outputAppend ? bounded(value.outputAppend, limit) : undefined;
   const error = value.error ? bounded(value.error, limit) : undefined;
   const paths = value.paths?.slice(0, 32).map((path) => bounded(path, limit).value);
+  const extensions = boundedExtensions(value.extensions, limit);
   return {
     ...(detail ? { detail: detail.value } : {}),
     ...(command ? { command: command.value } : {}),
@@ -408,9 +429,10 @@ function toolPresentation(
     ...(error ? { error: error.value } : {}),
     ...(value.exitCode !== undefined ? { exitCode: value.exitCode } : {}),
     ...(value.truncated || detail?.truncated || command?.truncated || output?.truncated || error?.truncated
+      || extensions.truncated
       ? { truncated: true }
       : {}),
-    ...(value.extensions ? { extensions: value.extensions } : {}),
+    ...(extensions.value ? { extensions: extensions.value } : {}),
   };
 }
 
