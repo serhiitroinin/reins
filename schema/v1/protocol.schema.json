@@ -1,0 +1,452 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fold-harness:schema:protocol:v1",
+  "title": "Fold Harness protocol v1",
+  "description": "Provider-neutral, JSON-safe Fold Harness protocol contracts. Runtime callbacks, provider SDK values, AbortSignal instances, and application-only context state are intentionally excluded.",
+  "$ref": "#/$defs/HarnessEvent",
+  "$defs": {
+    "JsonValue": {
+      "description": "A value representable by RFC 8259 JSON without coercion.",
+      "anyOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/JsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" } }
+      ]
+    },
+    "JsonObject": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/JsonValue" }
+    },
+    "Id": { "type": "string", "minLength": 1 },
+    "Timestamp": { "type": "string", "format": "date-time" },
+    "HarnessSessionKey": {
+      "type": "object",
+      "properties": {
+        "tenantId": { "$ref": "#/$defs/Id" },
+        "actorId": { "$ref": "#/$defs/Id" },
+        "threadId": { "$ref": "#/$defs/Id" }
+      },
+      "required": ["tenantId", "actorId", "threadId"]
+    },
+    "HarnessCapability": {
+      "type": "object",
+      "properties": {
+        "support": { "enum": ["stable", "experimental", "unsupported"] },
+        "description": { "type": "string" },
+        "constraints": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["support"]
+    },
+    "HarnessCapabilities": {
+      "type": "object",
+      "properties": {
+        "resume": { "$ref": "#/$defs/HarnessCapability" },
+        "cancel": { "$ref": "#/$defs/HarnessCapability" },
+        "interactions": { "$ref": "#/$defs/HarnessCapability" },
+        "tools": { "$ref": "#/$defs/HarnessCapability" },
+        "images": { "$ref": "#/$defs/HarnessCapability" },
+        "thinking": { "$ref": "#/$defs/HarnessCapability" },
+        "plans": { "$ref": "#/$defs/HarnessCapability" },
+        "usage": { "$ref": "#/$defs/HarnessCapability" },
+        "subagents": { "$ref": "#/$defs/HarnessCapability" },
+        "shell": { "$ref": "#/$defs/HarnessCapability" },
+        "filesystem": { "$ref": "#/$defs/HarnessCapability" },
+        "network": { "$ref": "#/$defs/HarnessCapability" },
+        "extensions": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/HarnessCapability" }
+        }
+      },
+      "required": [
+        "resume",
+        "cancel",
+        "interactions",
+        "tools",
+        "images",
+        "thinking",
+        "plans",
+        "usage",
+        "subagents",
+        "shell",
+        "filesystem",
+        "network"
+      ]
+    },
+    "HarnessTextInput": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "type": "string" }
+      },
+      "required": ["type", "text"]
+    },
+    "HarnessImageInput": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "image" },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "encoding": { "const": "base64" },
+        "name": { "type": "string" }
+      },
+      "required": ["type", "mediaType", "data", "encoding"]
+    },
+    "HarnessResourceInput": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "resource" },
+        "uri": { "type": "string", "format": "uri-reference" },
+        "mediaType": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["type", "uri"]
+    },
+    "HarnessWireInput": {
+      "oneOf": [
+        { "$ref": "#/$defs/HarnessTextInput" },
+        { "$ref": "#/$defs/HarnessImageInput" },
+        { "$ref": "#/$defs/HarnessResourceInput" }
+      ]
+    },
+    "HarnessPermissionSelection": {
+      "type": "object",
+      "properties": {
+        "modeId": { "$ref": "#/$defs/Id" },
+        "consentVersion": { "type": "string", "minLength": 1 }
+      },
+      "required": ["modeId"]
+    },
+    "HarnessControlValue": {
+      "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
+    },
+    "HarnessWireRunSettings": {
+      "type": "object",
+      "properties": {
+        "permission": { "$ref": "#/$defs/HarnessPermissionSelection" },
+        "controls": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/HarnessControlValue" }
+        }
+      }
+    },
+    "HarnessWireRunRequest": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "session": { "$ref": "#/$defs/HarnessSessionKey" },
+        "adapterId": { "$ref": "#/$defs/Id" },
+        "input": { "type": "array", "items": { "$ref": "#/$defs/HarnessWireInput" } },
+        "model": { "type": "string" },
+        "effort": { "type": "string" },
+        "accountId": { "type": "string" },
+        "settings": { "$ref": "#/$defs/HarnessWireRunSettings" },
+        "configuration": {
+          "description": "JSON-safe adapter-specific configuration. This escape hatch is not a portable UI contract.",
+          "$ref": "#/$defs/JsonObject"
+        },
+        "metadata": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["schemaVersion", "session", "adapterId", "input"]
+    },
+    "HarnessInteractionChoice": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "allow": { "type": "boolean" }
+      },
+      "required": ["id", "label"]
+    },
+    "HarnessInteraction": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "kind": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "choices": { "type": "array", "items": { "$ref": "#/$defs/HarnessInteractionChoice" } },
+        "acceptsText": { "type": "boolean" },
+        "expiresAt": { "$ref": "#/$defs/Timestamp" },
+        "metadata": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["id", "kind", "title"]
+    },
+    "HarnessInteractionResponse": {
+      "type": "object",
+      "properties": {
+        "choiceId": { "type": "string" },
+        "text": { "type": "string" },
+        "labels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "HarnessUsage": {
+      "type": "object",
+      "properties": {
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "cachedInputTokens": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "costUsd": { "type": "number", "minimum": 0 },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "provider": { "$ref": "#/$defs/JsonObject" }
+      }
+    },
+    "HarnessPlanStep": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["text", "status"]
+    },
+    "TurnStartedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "turn-started" },
+        "model": { "type": "string" },
+        "accountId": { "type": "string" }
+      },
+      "required": ["kind"]
+    },
+    "AssistantTextPayload": {
+      "type": "object",
+      "properties": { "kind": { "const": "assistant-text" }, "text": { "type": "string" } },
+      "required": ["kind", "text"]
+    },
+    "ThinkingPayload": {
+      "type": "object",
+      "properties": { "kind": { "const": "thinking" }, "text": { "type": "string" } },
+      "required": ["kind", "text"]
+    },
+    "PlanUpdatedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "plan-updated" },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/HarnessPlanStep" } }
+      },
+      "required": ["kind", "steps"]
+    },
+    "ToolStartedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "tool-started" },
+        "toolId": { "$ref": "#/$defs/Id" },
+        "toolKind": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "command": { "type": "string" },
+        "paths": { "type": "array", "items": { "type": "string" } },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["kind", "toolId", "toolKind", "title"]
+    },
+    "ToolUpdatedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "tool-updated" },
+        "toolId": { "$ref": "#/$defs/Id" },
+        "toolKind": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "outputAppend": { "type": "string" },
+        "detail": { "type": "string" },
+        "truncated": { "type": "boolean" },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["kind", "toolId", "toolKind", "title"]
+    },
+    "ToolCompletedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "tool-completed" },
+        "toolId": { "$ref": "#/$defs/Id" },
+        "status": { "enum": ["completed", "failed", "declined", "cancelled"] },
+        "toolKind": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "outputAppend": { "type": "string" },
+        "error": { "type": "string" },
+        "exitCode": { "type": "integer" },
+        "truncated": { "type": "boolean" },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["kind", "toolId", "status", "toolKind", "title"]
+    },
+    "InteractionRequestedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "interaction-requested" },
+        "interaction": { "$ref": "#/$defs/HarnessInteraction" }
+      },
+      "required": ["kind", "interaction"]
+    },
+    "InteractionResolvedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "interaction-resolved" },
+        "interactionId": { "$ref": "#/$defs/Id" },
+        "response": { "$ref": "#/$defs/HarnessInteractionResponse" }
+      },
+      "required": ["kind", "interactionId", "response"]
+    },
+    "UsagePayload": {
+      "type": "object",
+      "properties": { "kind": { "const": "usage" }, "usage": { "$ref": "#/$defs/HarnessUsage" } },
+      "required": ["kind", "usage"]
+    },
+    "ErrorPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "error" },
+        "code": { "$ref": "#/$defs/Id" },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      },
+      "required": ["kind", "code", "message"]
+    },
+    "TurnCompletedPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "turn-completed" },
+        "status": { "enum": ["completed", "error", "interrupted"] },
+        "usage": { "$ref": "#/$defs/HarnessUsage" }
+      },
+      "required": ["kind", "status"]
+    },
+    "ExtensionPayload": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "extension" },
+        "namespace": { "$ref": "#/$defs/Id" },
+        "name": { "$ref": "#/$defs/Id" },
+        "payload": { "$ref": "#/$defs/JsonValue" }
+      },
+      "required": ["kind", "namespace", "name", "payload"]
+    },
+    "UnknownEventPayload": {
+      "description": "A future additive core payload. Consumers must retain or safely ignore it.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "enum": [
+              "turn-started",
+              "assistant-text",
+              "thinking",
+              "plan-updated",
+              "tool-started",
+              "tool-updated",
+              "tool-completed",
+              "interaction-requested",
+              "interaction-resolved",
+              "usage",
+              "error",
+              "turn-completed",
+              "extension"
+            ]
+          }
+        }
+      },
+      "required": ["kind"]
+    },
+    "HarnessEventPayload": {
+      "oneOf": [
+        { "$ref": "#/$defs/TurnStartedPayload" },
+        { "$ref": "#/$defs/AssistantTextPayload" },
+        { "$ref": "#/$defs/ThinkingPayload" },
+        { "$ref": "#/$defs/PlanUpdatedPayload" },
+        { "$ref": "#/$defs/ToolStartedPayload" },
+        { "$ref": "#/$defs/ToolUpdatedPayload" },
+        { "$ref": "#/$defs/ToolCompletedPayload" },
+        { "$ref": "#/$defs/InteractionRequestedPayload" },
+        { "$ref": "#/$defs/InteractionResolvedPayload" },
+        { "$ref": "#/$defs/UsagePayload" },
+        { "$ref": "#/$defs/ErrorPayload" },
+        { "$ref": "#/$defs/TurnCompletedPayload" },
+        { "$ref": "#/$defs/ExtensionPayload" },
+        { "$ref": "#/$defs/UnknownEventPayload" }
+      ]
+    },
+    "HarnessEvent": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "eventId": { "$ref": "#/$defs/Id" },
+        "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "timestamp": { "$ref": "#/$defs/Timestamp" },
+        "session": { "$ref": "#/$defs/HarnessSessionKey" },
+        "runId": { "$ref": "#/$defs/Id" },
+        "turnId": { "$ref": "#/$defs/Id" },
+        "adapterId": { "$ref": "#/$defs/Id" },
+        "payload": { "$ref": "#/$defs/HarnessEventPayload" }
+      },
+      "required": [
+        "schemaVersion",
+        "eventId",
+        "sequence",
+        "timestamp",
+        "session",
+        "runId",
+        "turnId",
+        "adapterId",
+        "payload"
+      ]
+    },
+    "HarnessToolContent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "type": { "const": "text" }, "text": { "type": "string" } },
+          "required": ["type", "text"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "image" },
+            "mediaType": { "type": "string" },
+            "data": { "type": "string", "contentEncoding": "base64" }
+          },
+          "required": ["type", "mediaType", "data"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "resource" },
+            "uri": { "type": "string", "format": "uri-reference" },
+            "mediaType": { "type": "string" },
+            "text": { "type": "string" }
+          },
+          "required": ["type", "uri"]
+        }
+      ]
+    },
+    "HarnessToolDescriptor": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/Id" },
+        "description": { "type": "string" },
+        "inputSchema": { "$ref": "#/$defs/JsonObject" },
+        "metadata": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["name", "description", "inputSchema"]
+    },
+    "HarnessToolResult": {
+      "type": "object",
+      "properties": {
+        "content": { "type": "array", "items": { "$ref": "#/$defs/HarnessToolContent" } },
+        "isError": { "type": "boolean" },
+        "code": { "type": "string" },
+        "metadata": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["content"]
+    }
+  }
+}

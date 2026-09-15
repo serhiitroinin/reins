@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "documents": {
+    "protocol": "./protocol.schema.json",
+    "discovery": "./discovery.schema.json"
+  },
+  "roots": {
+    "capabilities": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessCapabilities",
+    "event": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessEvent",
+    "interaction": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessInteraction",
+    "interactionResponse": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessInteractionResponse",
+    "runRequest": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessWireRunRequest",
+    "toolDescriptor": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessToolDescriptor",
+    "toolResult": "urn:fold-harness:schema:protocol:v1#/$defs/HarnessToolResult",
+    "discoveryRequest": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessWireDiscoveryRequest",
+    "engineProfile": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessEngineProfile",
+    "engineProfileDiscovery": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessEngineProfileDiscovery",
+    "modelCatalog": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessModelCatalog",
+    "modelCatalogDiscovery": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessModelCatalogDiscovery",
+    "limitSnapshot": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessLimitSnapshot",
+    "limitSnapshotDiscovery": "urn:fold-harness:schema:discovery:v1#/$defs/HarnessLimitSnapshotDiscovery",
+    "resolvedConfiguration": "urn:fold-harness:schema:discovery:v1#/$defs/ResolvedHarnessConfiguration"
+  }
+}
