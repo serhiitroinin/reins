@@ -547,7 +547,13 @@ describe("ACP v1 adapter", () => {
     }
     expect(await run.done).toBe("interrupted");
     expect(outcomes).toEqual([{ outcome: { outcome: "cancelled" } }]);
-    expect(tail.filter((event) => event.payload.kind === "interaction-resolved")).toHaveLength(0);
+    const resolved = tail.filter((event) => event.payload.kind === "interaction-resolved");
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]?.payload).toEqual({
+      kind: "interaction-resolved",
+      interactionId: "permission-race",
+      response: {},
+    });
     await runtime.close();
   });
 
