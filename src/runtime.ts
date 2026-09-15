@@ -383,13 +383,6 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
 
     start(request, startOptions = {}) {
       if (closed) throw new HarnessRuntimeError("RUNTIME_CLOSED", "The harness runtime is closed.");
-      const inputValidation = validateHarnessInlineContext(request.inlineContext, request.input);
-      if (!inputValidation.valid) {
-        throw new HarnessRuntimeError(
-          "INVALID_INPUT",
-          inputValidation.issues[0]?.message ?? "The harness input is invalid.",
-        );
-      }
       if (startOptions.runId !== undefined && startOptions.runId.length === 0) {
         throw new Error("a host-supplied runId cannot be empty");
       }
@@ -397,6 +390,13 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         throw new Error("a host-supplied turnId cannot be empty");
       }
       const adapter = adapterFor(request.adapterId);
+      const inputValidation = validateHarnessInlineContext(request.inlineContext, request.input);
+      if (!inputValidation.valid) {
+        throw new HarnessRuntimeError(
+          "INVALID_INPUT",
+          inputValidation.issues[0]?.message ?? "The harness input is invalid.",
+        );
+      }
       const sessionId = harnessSessionKey(request.session, adapter.id);
       const runId = startOptions.runId ?? createId();
       const turnId = startOptions.turnId ?? createId();
@@ -632,6 +632,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         },
         followUp(followUpRequest, followUpOptions = {}) {
           return serializeControl(async () => {
+            ensureActiveTurn(followUpRequest.expectedTurnId);
             const inputValidation = validateHarnessInlineContext(
               followUpRequest.inlineContext,
               followUpRequest.input,
@@ -642,7 +643,6 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                 inputValidation.issues[0]?.message ?? "The harness input is invalid.",
               );
             }
-            ensureActiveTurn(followUpRequest.expectedTurnId);
             let capabilities: HarnessCapabilities;
             try {
               capabilities = await adapter.capabilities();

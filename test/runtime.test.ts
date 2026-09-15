@@ -410,6 +410,29 @@ describe("harness runtime", () => {
   test("rejects unknown adapters before starting work", () => {
     const harness = createHarness({ adapters: [], persistence: createMemoryPersistence() });
     expect(() => harness.start({ ...request, adapterId: "missing" })).toThrow(HarnessRuntimeError);
+    expect(() => harness.start({
+      ...request,
+      adapterId: "missing",
+      input: [{ type: "context-reference", contextId: "stale" }],
+    })).toThrow("Unknown harness adapter");
+  });
+
+  test("rejects invalid inline context before opening a provider", () => {
+    let opened = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opened = true;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    expect(() => harness.start({
+      ...request,
+      input: [{ type: "context-reference", contextId: "stale" }],
+    })).toThrow("has no valid record");
+    expect(opened).toBe(false);
   });
 
   test("does not persist an arbitrary adapter error message", async () => {
