@@ -445,13 +445,14 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
 
             try {
               const dynamicTools = codexDynamicTools(request.tools.list());
+              const additionalContext = codexAdditionalContext(request);
               await client.initialize(codexInitializeParams({
                 clientInfo: options.clientInfo,
                 ...options.initialize,
-                // Dynamic tools are an experimental App Server surface. A
-                // host opts into it by exposing tools for this run; keep the
-                // capability off when the catalog is empty.
+                // Dynamic tools and additional context are experimental App
+                // Server surfaces. Opt in when either is present.
                 experimentalApi: dynamicTools.length > 0
+                  || Object.keys(additionalContext).length > 0
                   || options.initialize?.experimentalApi === true,
               }));
               client.initialized();
@@ -474,7 +475,6 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               const input = request.input.flatMap((item) => asArray(
                 options.mapInput?.(item, request) ?? defaultInput(item),
               ));
-              const additionalContext = codexAdditionalContext(request);
               const turn = await client.startTurn({
                 threadId,
                 input,
