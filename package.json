@@ -33,6 +33,7 @@
     "bindings/swift/Package.swift",
     "bindings/swift/Sources",
     "bindings/swift/Tests",
+    "docs/SCHEMA_V1.md",
     "README.md",
     "LICENSE"
   ],

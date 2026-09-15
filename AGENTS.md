@@ -11,6 +11,8 @@ bun install
 bun run check
 bun run example
 npm pack --dry-run
+cargo test --locked --manifest-path bindings/rust/Cargo.toml
+swift test --package-path bindings/swift
 ```
 
 ## Boundaries
@@ -37,4 +39,3 @@ Use atomic Conventional Commits. Add tests for public behavior, update the
 architecture when a boundary moves, and add a Changeset after the first npm
 baseline exists. A provider adapter must pass the conformance suite before it
 is documented as supported.
-
