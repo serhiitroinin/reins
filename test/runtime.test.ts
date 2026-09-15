@@ -254,6 +254,60 @@ describe("harness runtime", () => {
     ]);
   });
 
+  test("durably invalidates an interaction the provider no longer recognizes", async () => {
+    let finish!: () => void;
+    const waiting = new Promise<void>((resolve) => { finish = resolve; });
+    const persistence = createMemoryPersistence();
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        interactions: { support: "stable", recovery: "live-only" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            yield {
+              kind: "interaction-requested" as const,
+              interaction: { id: "lost", kind: "permission", title: "Allow?" },
+            };
+            await waiting;
+            yield { kind: "interaction-invalidated" as const, interactionId: "lost", reason: "turn-ended" };
+          },
+          async respond() {
+            throw new HarnessAdapterError("INTERACTION_NOT_ACTIVE", "The provider lost this request.");
+          },
+          async cancel() { finish(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const iterator = run.events[Symbol.asyncIterator]();
+    expect((await iterator.next()).value?.payload.kind).toBe("turn-started");
+    expect((await iterator.next()).value?.payload.kind).toBe("interaction-requested");
+
+    await expect(run.respond("lost", { choiceId: "allow" })).rejects.toMatchObject({
+      code: "INTERACTION_NOT_ACTIVE",
+    });
+    expect((await iterator.next()).value?.payload).toEqual({
+      kind: "interaction-invalidated",
+      interactionId: "lost",
+      reason: "provider-lost-request",
+    });
+    expect((await persistence.events.list(request.session, "scripted"))
+      .filter((entry) => entry.payload.kind === "interaction-invalidated")).toHaveLength(1);
+
+    await run.cancel();
+    const tail: HarnessEvent[] = [];
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      tail.push(next.value);
+    }
+    expect(tail.filter((entry) => entry.payload.kind === "interaction-invalidated")).toEqual([]);
+  });
+
   test("retains events an adapter yields while cancellation settles", async () => {
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });

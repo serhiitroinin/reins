@@ -404,6 +404,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       /** Interactions the durable event stream still says this turn can answer. */
       const openInteractions = new Set<string>();
       const respondingInteractions = new Set<string>();
+      let eventTail: Promise<void> = Promise.resolve();
 
       const serializeControl = <T>(operation: () => Promise<T>): Promise<T> => {
         const result = controlTail.then(operation, operation);
@@ -442,25 +443,33 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         return managed;
       };
 
-      const emit = async (payload: HarnessEventPayload): Promise<void> => {
-        const event = await options.persistence.events.append({
-          schemaVersion: 1,
-          session: request.session,
-          runId,
-          turnId,
-          adapterId: adapter.id,
-          payload,
+      const emit = (payload: HarnessEventPayload): Promise<void> => {
+        const operation = eventTail.then(async () => {
+          if (
+            (payload.kind === "interaction-resolved" || payload.kind === "interaction-invalidated")
+            && !openInteractions.has(payload.interactionId)
+          ) return;
+          const event = await options.persistence.events.append({
+            schemaVersion: 1,
+            session: request.session,
+            runId,
+            turnId,
+            adapterId: adapter.id,
+            payload,
+          });
+          if (payload.kind === "interaction-requested") {
+            openInteractions.add(payload.interaction.id);
+          } else if (
+            payload.kind === "interaction-resolved"
+            || payload.kind === "interaction-invalidated"
+          ) {
+            openInteractions.delete(payload.interactionId);
+            respondingInteractions.delete(payload.interactionId);
+          }
+          queue.push(event);
         });
-        if (payload.kind === "interaction-requested") {
-          openInteractions.add(payload.interaction.id);
-        } else if (
-          payload.kind === "interaction-resolved"
-          || payload.kind === "interaction-invalidated"
-        ) {
-          openInteractions.delete(payload.interactionId);
-          respondingInteractions.delete(payload.interactionId);
-        }
-        queue.push(event);
+        eventTail = operation.then(() => undefined, () => undefined);
+        return operation;
       };
 
       const done = (async (): Promise<HarnessTurnStatus> => {
@@ -753,8 +762,15 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               if (
                 error instanceof HarnessAdapterError
                 && error.code === "INTERACTION_NOT_ACTIVE"
+                && !controller.signal.aborted
+                && !stopping
+                && openInteractions.has(interactionId)
               ) {
-                openInteractions.delete(interactionId);
+                await emit({
+                  kind: "interaction-invalidated",
+                  interactionId,
+                  reason: "provider-lost-request",
+                });
               }
               throw error;
             }
