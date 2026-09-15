@@ -12,8 +12,10 @@ import {
   type HarnessEventInput,
   type HarnessEventPayload,
   type HarnessInteractionResponse,
+  type HarnessInput,
   type HarnessRunRequest,
   type HarnessSessionKey,
+  type HarnessSteeringStrategy,
   type HarnessTurnStatus,
 } from "./protocol.js";
 import {
@@ -47,6 +49,16 @@ export interface HarnessAdapterRunRequest extends HarnessRunRequest {
   context: HarnessPreparedContext<HarnessContextContribution>;
 }
 
+export interface HarnessAdapterFollowUpRequest {
+  /** Harness-owned active turn precondition, not a provider turn id. */
+  expectedTurnId: string;
+  runId: string;
+  turnId: string;
+  input: readonly HarnessInput[];
+  metadata?: Readonly<Record<string, unknown>>;
+  signal: AbortSignal;
+}
+
 export interface HarnessAdapterSession {
   /**
    * Yield only events owned by this invocation's `runId` and `turnId`.
@@ -54,6 +66,8 @@ export interface HarnessAdapterSession {
    * this turn through a later invocation.
    */
   run(request: HarnessAdapterRunRequest): AsyncIterable<HarnessAdapterEvent>;
+  /** Accept more input into the active provider turn without ending it. */
+  steer?(request: HarnessAdapterFollowUpRequest): Promise<void>;
   respond?(interactionId: string, response: HarnessInteractionResponse): Promise<void>;
   /**
    * Dispatch cancellation and resolve only after the active `run()` iterable
@@ -108,7 +122,28 @@ export interface HarnessRun {
   readonly events: AsyncIterable<HarnessEvent>;
   readonly done: Promise<HarnessTurnStatus>;
   cancel(): Promise<void>;
+  followUp(request: HarnessFollowUpRequest, options?: HarnessFollowUpOptions): Promise<HarnessFollowUpResult>;
   respond(interactionId: string, response: HarnessInteractionResponse): Promise<void>;
+}
+
+export interface HarnessFollowUpRequest {
+  /** Refuse rather than mutating a turn that changed under the caller. */
+  expectedTurnId: string;
+  input: readonly HarnessInput[];
+  metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface HarnessFollowUpOptions {
+  /** Omit to use the adapter-declared preferred strategy. */
+  strategy?: HarnessSteeringStrategy;
+  /** Host identity and prepared context for a replacement turn. */
+  replacement?: HarnessStartOptions;
+}
+
+export interface HarnessFollowUpResult {
+  strategy: HarnessSteeringStrategy;
+  /** Same run for same-turn steering; a fresh run for replacement steering. */
+  run: HarnessRun;
 }
 
 /**
@@ -145,7 +180,18 @@ export interface HarnessRuntimeOptions {
 }
 
 export class HarnessRuntimeError extends Error {
-  constructor(readonly code: "UNKNOWN_ADAPTER" | "SESSION_BUSY" | "INTERACTION_UNSUPPORTED" | "RUNTIME_CLOSED", message: string) {
+  constructor(
+    readonly code:
+      | "UNKNOWN_ADAPTER"
+      | "SESSION_BUSY"
+      | "INTERACTION_UNSUPPORTED"
+      | "FOLLOW_UP_UNSUPPORTED"
+      | "FOLLOW_UP_FAILED"
+      | "STALE_TURN"
+      | "TURN_NOT_ACTIVE"
+      | "RUNTIME_CLOSED",
+    message: string,
+  ) {
     super(message);
     this.name = "HarnessRuntimeError";
   }
@@ -290,7 +336,26 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     });
   };
 
-  return {
+  const prepareContext = (
+    request: HarnessRunRequest,
+    runId: string,
+    turnId: string,
+    signal: AbortSignal,
+  ): Promise<HarnessPreparedContext<HarnessContextContribution>> => {
+    const contextRequest: HarnessContextPrepareRequest = {
+      ...request,
+      runId,
+      turnId,
+      signal,
+    };
+    const contextOptions: HarnessContextPreparationOptions<
+      HarnessContextContribution,
+      HarnessContextPrepareRequest
+    > = options.onContextError ? { onError: options.onContextError } : {};
+    return prepareHarnessContext(contextSources, contextRequest, contextOptions);
+  };
+
+  const runtime: HarnessRuntime = {
     async capabilities(adapterId) {
       return adapterFor(adapterId).capabilities();
     },
@@ -327,9 +392,18 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       let managed: ManagedSession | null = null;
       let opening: Promise<ManagedSession> | null = null;
       let ownsReservation = false;
+      let phase: "opening" | "running" | "sealing" | "sealed" = "opening";
       let stopping = false;
-      let cancelWork: Promise<void> | null = null;
+      let cancellationWork: Promise<void> | null = null;
+      let publicCancelWork: Promise<void> | null = null;
       let cancellationDispatch: Promise<void> | null = null;
+      let controlTail: Promise<void> = Promise.resolve();
+
+      const serializeControl = <T>(operation: () => Promise<T>): Promise<T> => {
+        const result = controlTail.then(operation, operation);
+        controlTail = result.then(() => undefined, () => undefined);
+        return result;
+      };
 
       const dispatchCancellation = (): Promise<void> => {
         cancellationDispatch ??= (async () => {
@@ -348,6 +422,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       };
       controller.signal.addEventListener("abort", onAbort, { once: true });
       if (controller.signal.aborted) onAbort();
+
+      const ensureActiveTurn = (expectedTurnId: string): ManagedSession => {
+        if (expectedTurnId !== turnId) {
+          throw new HarnessRuntimeError("STALE_TURN", "The active harness turn changed before the follow-up was sent.");
+        }
+        if (phase !== "running" || !managed?.active || controller.signal.aborted || stopping) {
+          throw new HarnessRuntimeError("TURN_NOT_ACTIVE", "This harness turn is no longer accepting follow-ups.");
+        }
+        return managed;
+      };
 
       const emit = async (payload: HarnessEventPayload): Promise<void> => {
         const event = await options.persistence.events.append({
@@ -389,19 +473,8 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          const context = startOptions.context ?? await (async () => {
-            const contextRequest: HarnessContextPrepareRequest = {
-              ...request,
-              runId,
-              turnId,
-              signal: controller.signal,
-            };
-            const contextOptions: HarnessContextPreparationOptions<
-              HarnessContextContribution,
-              HarnessContextPrepareRequest
-            > = options.onContextError ? { onError: options.onContextError } : {};
-            return prepareHarnessContext(contextSources, contextRequest, contextOptions);
-          })();
+          const context = startOptions.context
+            ?? await prepareContext(request, runId, turnId, controller.signal);
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           const toolContext = {
             session: request.session,
@@ -411,6 +484,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             signal: controller.signal,
             context,
           };
+          phase = "running";
           for await (const payload of managed.session.run({
             ...request,
             runId,
@@ -438,6 +512,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             await emit({ kind: "error", ...failure });
           }
         } finally {
+          phase = "sealing";
           try {
             await emit({
               kind: "turn-completed",
@@ -451,33 +526,117 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             if (managed) managed.active = false;
             if (ownsReservation) reserved.delete(sessionId);
             controller.signal.removeEventListener("abort", onAbort);
+            phase = "sealed";
           }
         }
         return status;
       })();
 
-      return {
+      const performCancellation = (): Promise<void> => {
+        cancellationWork ??= (async () => {
+          stopping = true;
+          if (!controller.signal.aborted) controller.abort();
+          let cancellationError: unknown;
+          try {
+            await dispatchCancellation();
+          } catch (error) {
+            cancellationError = error;
+          }
+          // A cancellation dispatch failure cannot release the session
+          // early. Wait for the provider iterable and terminal event to
+          // drain before surfacing it to the caller.
+          await done;
+          if (cancellationError !== undefined) throw cancellationError;
+        })();
+        return cancellationWork;
+      };
+
+      const publicRun: HarnessRun = {
         runId,
         turnId,
         events: queue,
         done,
         cancel() {
-          cancelWork ??= (async () => {
-            stopping = true;
-            if (!controller.signal.aborted) controller.abort();
-            let cancellationError: unknown;
+          publicCancelWork ??= serializeControl(performCancellation);
+          return publicCancelWork;
+        },
+        followUp(followUpRequest, followUpOptions = {}) {
+          return serializeControl(async () => {
+            ensureActiveTurn(followUpRequest.expectedTurnId);
+            let capabilities: HarnessCapabilities;
             try {
-              await dispatchCancellation();
-            } catch (error) {
-              cancellationError = error;
+              capabilities = await adapter.capabilities();
+            } catch {
+              throw new HarnessRuntimeError("FOLLOW_UP_FAILED", "The adapter could not describe follow-up support.");
             }
-            // A cancellation dispatch failure cannot release the session
-            // early. Wait for the provider iterable and terminal event to
-            // drain before surfacing it to the caller.
-            await done;
-            if (cancellationError !== undefined) throw cancellationError;
-          })();
-          return cancelWork;
+            ensureActiveTurn(followUpRequest.expectedTurnId);
+            const steering = capabilities.steering;
+            const supported = steering?.support !== "unsupported" ? steering?.strategies ?? [] : [];
+            const strategy = followUpOptions.strategy
+              ?? (steering?.preferred && supported.includes(steering.preferred)
+                ? steering.preferred
+                : supported[0]);
+            if (!strategy || !supported.includes(strategy)) {
+              throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept an active-turn follow-up.");
+            }
+
+            if (strategy === "same-turn") {
+              const target = ensureActiveTurn(followUpRequest.expectedTurnId);
+              if (!target.session.steer) {
+                throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept a same-turn follow-up.");
+              }
+              try {
+                await target.session.steer({
+                  expectedTurnId: followUpRequest.expectedTurnId,
+                  runId,
+                  turnId,
+                  input: followUpRequest.input,
+                  ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
+                  signal: controller.signal,
+                });
+              } catch (error) {
+                if (error instanceof HarnessRuntimeError || error instanceof HarnessAdapterError) throw error;
+                throw new HarnessRuntimeError("FOLLOW_UP_FAILED", "The adapter could not accept the follow-up.");
+              }
+              return { strategy, run: publicRun };
+            }
+
+            const replacement = followUpOptions.replacement ?? {};
+            if (replacement.runId !== undefined && replacement.runId.length === 0) {
+              throw new Error("a host-supplied replacement runId cannot be empty");
+            }
+            if (replacement.turnId !== undefined && replacement.turnId.length === 0) {
+              throw new Error("a host-supplied replacement turnId cannot be empty");
+            }
+            const replacementRunId = replacement.runId ?? createId();
+            const replacementTurnId = replacement.turnId ?? createId();
+            const replacementController = replacement.controller ?? new AbortController();
+            const replacementRequest: HarnessRunRequest = {
+              ...request,
+              input: followUpRequest.input,
+              ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
+            };
+            // Prepare first so a context failure leaves the active provider
+            // turn untouched. Admission is rechecked after async preparation.
+            const replacementContext = replacement.context
+              ?? await prepareContext(
+                replacementRequest,
+                replacementRunId,
+                replacementTurnId,
+                replacementController.signal,
+              );
+            ensureActiveTurn(followUpRequest.expectedTurnId);
+            await performCancellation();
+            return {
+              strategy,
+              run: runtime.start(replacementRequest, {
+                runId: replacementRunId,
+                turnId: replacementTurnId,
+                controller: replacementController,
+                context: replacementContext,
+              }),
+            };
+          });
         },
         async respond(interactionId, response) {
           const target = managed ?? await open(request.session, adapter);
@@ -487,6 +646,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           await target.session.respond(interactionId, response);
         },
       };
+      return publicRun;
     },
 
     async close() {
@@ -498,4 +658,5 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       opened.clear();
     },
   };
+  return runtime;
 }
