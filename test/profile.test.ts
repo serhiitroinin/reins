@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   harnessControls,
+  harnessInputPolicy,
   resolveHarnessConfiguration,
   type HarnessEngineProfile,
   type HarnessModel,
@@ -61,6 +62,38 @@ describe("engine profiles", () => {
     ]);
   });
 
+  test("merges model input limits over engine defaults without inventing support", () => {
+    expect(harnessInputPolicy({
+      ...profile,
+      inputPolicy: {
+        maxItems: 8,
+        modalities: {
+          text: { support: "stable", maxTextCharacters: 10_000 },
+          image: { support: "experimental", maxCount: 4, mediaTypes: ["image/png"] },
+        },
+      },
+    }, {
+      ...model,
+      inputPolicy: {
+        modalities: {
+          image: { support: "stable", maxItemBytes: 2_000_000 },
+        },
+      },
+    })).toEqual({
+      maxItems: 8,
+      modalities: {
+        text: { support: "stable", maxTextCharacters: 10_000 },
+        image: {
+          support: "stable",
+          maxCount: 4,
+          maxItemBytes: 2_000_000,
+          mediaTypes: ["image/png"],
+        },
+      },
+    });
+    expect(harnessInputPolicy(profile, model)).toBeUndefined();
+  });
+
   test("keeps an acknowledged elevated permission and arbitrary adapter controls", () => {
     expect(resolveHarnessConfiguration(profile, {
       permission: { modeId: "workspace-write", consentVersion: "shell-grant-2" },
@@ -118,4 +151,3 @@ describe("engine profiles", () => {
     })).toThrow("cannot require consent");
   });
 });
-

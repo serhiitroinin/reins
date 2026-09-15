@@ -14,13 +14,26 @@ describe("JSON wire protocol", () => {
       adapterId: "openai:codex",
       input: [
         { type: "text", text: "inspect this" },
+        { type: "context-reference", contextId: "note-1", referenceId: "mention-1" },
         {
           type: "image",
+          id: "image-1",
           mediaType: "image/png",
           data: new Uint8Array([0, 1, 2, 253, 254, 255]),
           name: "",
         },
       ],
+      inlineContext: {
+        version: 1,
+        records: [{
+          version: 1,
+          id: "note-1",
+          kind: "future:note",
+          label: "Launch notes",
+          payload: { excerpt: "Ready", rank: 1 },
+          binding: { type: "attachment", inputId: "image-1", sizeBytes: 6 },
+        }],
+      },
       model: "",
       settings: {
         permission: { modeId: "workspace-write", consentVersion: "shell-v3" },
@@ -34,7 +47,11 @@ describe("JSON wire protocol", () => {
     expect(wire).toMatchObject({
       schemaVersion: HARNESS_WIRE_SCHEMA_VERSION,
       model: "",
-      input: [{ type: "text" }, { type: "image", data: "AAEC/f7/", encoding: "base64", name: "" }],
+      input: [
+        { type: "text" },
+        { type: "context-reference", contextId: "note-1" },
+        { type: "image", id: "image-1", data: "AAEC/f7/", encoding: "base64", name: "" },
+      ],
     });
     expect(JSON.parse(JSON.stringify(wire))).toEqual(wire);
     expect(decodeHarnessRunRequest(wire)).toEqual(request);

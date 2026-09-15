@@ -255,6 +255,45 @@ describe("Codex App Server adapter", () => {
     await runtime.close();
   });
 
+  test("maps a validated typed context reference to bounded untrusted text", async () => {
+    const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "context-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => checkpointConnection(requests),
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "typed-context" },
+      adapterId: adapter.id,
+      input: [{ type: "context-reference", contextId: "task-1" }],
+      inlineContext: {
+        version: 1,
+        records: [{
+          version: 1,
+          id: "task-1",
+          kind: "task",
+          label: "Ship parity",
+          payload: { status: "active" },
+        }],
+      },
+    });
+    await collect(run.events);
+    expect(await run.done).toBe("completed");
+    expect(requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "durable-thread",
+        input: [{
+          type: "text",
+          text: "[task: Ship parity]\n{\"status\":\"active\"}",
+          text_elements: [],
+        }],
+      },
+    });
+    await runtime.close();
+  });
+
   test("steers the accepted provider turn without opening a second runtime turn", async () => {
     const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
     const adapter = createCodexAppServerAdapter({

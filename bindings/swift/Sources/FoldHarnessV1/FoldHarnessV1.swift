@@ -13,6 +13,8 @@ public struct FHV1: Codable {
     public let engineProfile: FHEngineProfile
     public let engineProfileDiscovery: FHEngineProfileDiscovery
     public let event: FHEvent
+    public let inlineContext: FHInlineContext
+    public let inputPolicy: FHInputPolicy
     public let interaction: FHInteraction
     public let interactionResponse: FHResponse
     public let limitSnapshot: FHLimitSnapshot
@@ -30,6 +32,8 @@ public struct FHV1: Codable {
         case engineProfile = "engineProfile"
         case engineProfileDiscovery = "engineProfileDiscovery"
         case event = "event"
+        case inlineContext = "inlineContext"
+        case inputPolicy = "inputPolicy"
         case interaction = "interaction"
         case interactionResponse = "interactionResponse"
         case limitSnapshot = "limitSnapshot"
@@ -42,12 +46,14 @@ public struct FHV1: Codable {
         case toolResult = "toolResult"
     }
 
-    public init(capabilities: FHCapabilities, discoveryRequest: FHDiscovery, engineProfile: FHEngineProfile, engineProfileDiscovery: FHEngineProfileDiscovery, event: FHEvent, interaction: FHInteraction, interactionResponse: FHResponse, limitSnapshot: FHLimitSnapshot, limitSnapshotDiscovery: FHLimitSnapshotDiscovery, modelCatalog: FHModelCatalog, modelCatalogDiscovery: FHModelCatalogDiscovery, resolvedConfiguration: FHResolvedConfiguration, runRequest: FHRunRequest, toolDescriptor: FHToolDescriptor, toolResult: FHToolResult) {
+    public init(capabilities: FHCapabilities, discoveryRequest: FHDiscovery, engineProfile: FHEngineProfile, engineProfileDiscovery: FHEngineProfileDiscovery, event: FHEvent, inlineContext: FHInlineContext, inputPolicy: FHInputPolicy, interaction: FHInteraction, interactionResponse: FHResponse, limitSnapshot: FHLimitSnapshot, limitSnapshotDiscovery: FHLimitSnapshotDiscovery, modelCatalog: FHModelCatalog, modelCatalogDiscovery: FHModelCatalogDiscovery, resolvedConfiguration: FHResolvedConfiguration, runRequest: FHRunRequest, toolDescriptor: FHToolDescriptor, toolResult: FHToolResult) {
         self.capabilities = capabilities
         self.discoveryRequest = discoveryRequest
         self.engineProfile = engineProfile
         self.engineProfileDiscovery = engineProfileDiscovery
         self.event = event
+        self.inlineContext = inlineContext
+        self.inputPolicy = inputPolicy
         self.interaction = interaction
         self.interactionResponse = interactionResponse
         self.limitSnapshot = limitSnapshot
@@ -280,6 +286,7 @@ public struct FHEngineProfile: Codable {
     public let description: String?
     public let extensions: [String: FHExtensionValue]?
     public let id: String
+    public let inputPolicy: FHInputPolicy?
     public let label: String
     public let permissions: FHPermissions
 
@@ -288,15 +295,17 @@ public struct FHEngineProfile: Codable {
         case description = "description"
         case extensions = "extensions"
         case id = "id"
+        case inputPolicy = "inputPolicy"
         case label = "label"
         case permissions = "permissions"
     }
 
-    public init(controls: [FHControlElement]?, description: String?, extensions: [String: FHExtensionValue]?, id: String, label: String, permissions: FHPermissions) {
+    public init(controls: [FHControlElement]?, description: String?, extensions: [String: FHExtensionValue]?, id: String, inputPolicy: FHInputPolicy?, label: String, permissions: FHPermissions) {
         self.controls = controls
         self.description = description
         self.extensions = extensions
         self.id = id
+        self.inputPolicy = inputPolicy
         self.label = label
         self.permissions = permissions
     }
@@ -467,6 +476,62 @@ public struct FHOptionElement: Codable {
         self.id = id
         self.label = label
         self.unavailableReason = unavailableReason
+    }
+}
+
+// MARK: - FHInputPolicy
+public struct FHInputPolicy: Codable {
+    public let extensions: [String: FHExtensionValue]?
+    public let maxItems: Int?
+    public let maxTotalBytes: Int?
+    public let modalities: [String: FHModalityValue]?
+
+    public enum CodingKeys: String, CodingKey {
+        case extensions = "extensions"
+        case maxItems = "maxItems"
+        case maxTotalBytes = "maxTotalBytes"
+        case modalities = "modalities"
+    }
+
+    public init(extensions: [String: FHExtensionValue]?, maxItems: Int?, maxTotalBytes: Int?, modalities: [String: FHModalityValue]?) {
+        self.extensions = extensions
+        self.maxItems = maxItems
+        self.maxTotalBytes = maxTotalBytes
+        self.modalities = modalities
+    }
+}
+
+// MARK: - FHModalityValue
+public struct FHModalityValue: Codable {
+    public let description: String?
+    public let extensions: [String: FHExtensionValue]?
+    public let maxCount: Int?
+    public let maxItemBytes: Int?
+    public let maxTextCharacters: Int?
+    public let maxTotalBytes: Int?
+    public let mediaTypes: [String]?
+    public let support: FHSupport
+
+    public enum CodingKeys: String, CodingKey {
+        case description = "description"
+        case extensions = "extensions"
+        case maxCount = "maxCount"
+        case maxItemBytes = "maxItemBytes"
+        case maxTextCharacters = "maxTextCharacters"
+        case maxTotalBytes = "maxTotalBytes"
+        case mediaTypes = "mediaTypes"
+        case support = "support"
+    }
+
+    public init(description: String?, extensions: [String: FHExtensionValue]?, maxCount: Int?, maxItemBytes: Int?, maxTextCharacters: Int?, maxTotalBytes: Int?, mediaTypes: [String]?, support: FHSupport) {
+        self.description = description
+        self.extensions = extensions
+        self.maxCount = maxCount
+        self.maxItemBytes = maxItemBytes
+        self.maxTextCharacters = maxTextCharacters
+        self.maxTotalBytes = maxTotalBytes
+        self.mediaTypes = mediaTypes
+        self.support = support
     }
 }
 
@@ -861,6 +926,80 @@ public struct FHSession: Codable {
     }
 }
 
+// MARK: - FHInlineContext
+public struct FHInlineContext: Codable {
+    public let records: [FHRecordElement]
+    public let version: Int
+
+    public enum CodingKeys: String, CodingKey {
+        case records = "records"
+        case version = "version"
+    }
+
+    public init(records: [FHRecordElement], version: Int) {
+        self.records = records
+        self.version = version
+    }
+}
+
+// MARK: - FHRecordElement
+public struct FHRecordElement: Codable {
+    public let binding: FHBinding?
+    public let id: String
+    public let kind: String
+    public let label: String
+    public let payload: FHProtocolSchema
+    public let version: Int
+
+    public enum CodingKeys: String, CodingKey {
+        case binding = "binding"
+        case id = "id"
+        case kind = "kind"
+        case label = "label"
+        case payload = "payload"
+        case version = "version"
+    }
+
+    public init(binding: FHBinding?, id: String, kind: String, label: String, payload: FHProtocolSchema, version: Int) {
+        self.binding = binding
+        self.id = id
+        self.kind = kind
+        self.label = label
+        self.payload = payload
+        self.version = version
+    }
+}
+
+// MARK: - FHBinding
+public struct FHBinding: Codable {
+    public let inputID: String
+    public let mediaType: String?
+    public let name: String?
+    public let sizeBytes: Int?
+    public let type: FHBindingType
+
+    public enum CodingKeys: String, CodingKey {
+        case inputID = "inputId"
+        case mediaType = "mediaType"
+        case name = "name"
+        case sizeBytes = "sizeBytes"
+        case type = "type"
+    }
+
+    public init(inputID: String, mediaType: String?, name: String?, sizeBytes: Int?, type: FHBindingType) {
+        self.inputID = inputID
+        self.mediaType = mediaType
+        self.name = name
+        self.sizeBytes = sizeBytes
+        self.type = type
+    }
+}
+
+public enum FHBindingType: String, Codable {
+    case attachment = "attachment"
+    case resource = "resource"
+}
+
 // MARK: - FHLimitSnapshot
 public struct FHLimitSnapshot: Codable {
     public let extensions: [String: FHExtensionValue]?
@@ -984,6 +1123,7 @@ public struct FHModelElement: Codable {
     public let hidden: Bool?
     public let id: String
     public let inputModalities: [String]?
+    public let inputPolicy: FHInputPolicy?
     public let label: String
     public let unavailableReason: String?
 
@@ -997,11 +1137,12 @@ public struct FHModelElement: Codable {
         case hidden = "hidden"
         case id = "id"
         case inputModalities = "inputModalities"
+        case inputPolicy = "inputPolicy"
         case label = "label"
         case unavailableReason = "unavailableReason"
     }
 
-    public init(contextWindowTokens: Int?, controls: [FHControlElement]?, description: String?, effort: FHEffort?, extensions: [String: FHExtensionValue]?, group: FHGroup?, hidden: Bool?, id: String, inputModalities: [String]?, label: String, unavailableReason: String?) {
+    public init(contextWindowTokens: Int?, controls: [FHControlElement]?, description: String?, effort: FHEffort?, extensions: [String: FHExtensionValue]?, group: FHGroup?, hidden: Bool?, id: String, inputModalities: [String]?, inputPolicy: FHInputPolicy?, label: String, unavailableReason: String?) {
         self.contextWindowTokens = contextWindowTokens
         self.controls = controls
         self.description = description
@@ -1011,6 +1152,7 @@ public struct FHModelElement: Codable {
         self.hidden = hidden
         self.id = id
         self.inputModalities = inputModalities
+        self.inputPolicy = inputPolicy
         self.label = label
         self.unavailableReason = unavailableReason
     }
@@ -1144,6 +1286,7 @@ public struct FHRunRequest: Codable {
     /// JSON-safe adapter-specific configuration. This escape hatch is not a portable UI contract.
     public let configuration: [String: FHProtocolSchema]?
     public let effort: String?
+    public let inlineContext: FHInlineContext?
     public let input: [FHInputElement]
     public let metadata: [String: FHProtocolSchema]?
     public let model: String?
@@ -1156,6 +1299,7 @@ public struct FHRunRequest: Codable {
         case adapterID = "adapterId"
         case configuration = "configuration"
         case effort = "effort"
+        case inlineContext = "inlineContext"
         case input = "input"
         case metadata = "metadata"
         case model = "model"
@@ -1164,11 +1308,12 @@ public struct FHRunRequest: Codable {
         case settings = "settings"
     }
 
-    public init(accountID: String?, adapterID: String, configuration: [String: FHProtocolSchema]?, effort: String?, input: [FHInputElement], metadata: [String: FHProtocolSchema]?, model: String?, schemaVersion: Int, session: FHSession, settings: FHSettings?) {
+    public init(accountID: String?, adapterID: String, configuration: [String: FHProtocolSchema]?, effort: String?, inlineContext: FHInlineContext?, input: [FHInputElement], metadata: [String: FHProtocolSchema]?, model: String?, schemaVersion: Int, session: FHSession, settings: FHSettings?) {
         self.accountID = accountID
         self.adapterID = adapterID
         self.configuration = configuration
         self.effort = effort
+        self.inlineContext = inlineContext
         self.input = input
         self.metadata = metadata
         self.model = model
@@ -1180,29 +1325,38 @@ public struct FHRunRequest: Codable {
 
 // MARK: - FHInputElement
 public struct FHInputElement: Codable {
+    public let contextID: String?
     public let data: String?
     public let encoding: FHEncoding?
+    public let id: String?
     public let mediaType: String?
     public let name: String?
+    public let referenceID: String?
     public let text: String?
-    public let type: FHType
+    public let type: FHInputType
     public let uri: String?
 
     public enum CodingKeys: String, CodingKey {
+        case contextID = "contextId"
         case data = "data"
         case encoding = "encoding"
+        case id = "id"
         case mediaType = "mediaType"
         case name = "name"
+        case referenceID = "referenceId"
         case text = "text"
         case type = "type"
         case uri = "uri"
     }
 
-    public init(data: String?, encoding: FHEncoding?, mediaType: String?, name: String?, text: String?, type: FHType, uri: String?) {
+    public init(contextID: String?, data: String?, encoding: FHEncoding?, id: String?, mediaType: String?, name: String?, referenceID: String?, text: String?, type: FHInputType, uri: String?) {
+        self.contextID = contextID
         self.data = data
         self.encoding = encoding
+        self.id = id
         self.mediaType = mediaType
         self.name = name
+        self.referenceID = referenceID
         self.text = text
         self.type = type
         self.uri = uri
@@ -1213,7 +1367,8 @@ public enum FHEncoding: String, Codable {
     case base64 = "base64"
 }
 
-public enum FHType: String, Codable {
+public enum FHInputType: String, Codable {
+    case contextReference = "context-reference"
     case image = "image"
     case resource = "resource"
     case text = "text"
@@ -1300,7 +1455,7 @@ public struct FHContentElement: Codable {
     public let data: String?
     public let mediaType: String?
     public let text: String?
-    public let type: FHType
+    public let type: FHContentType
     public let uri: String?
 
     public enum CodingKeys: String, CodingKey {
@@ -1311,11 +1466,17 @@ public struct FHContentElement: Codable {
         case uri = "uri"
     }
 
-    public init(data: String?, mediaType: String?, text: String?, type: FHType, uri: String?) {
+    public init(data: String?, mediaType: String?, text: String?, type: FHContentType, uri: String?) {
         self.data = data
         self.mediaType = mediaType
         self.text = text
         self.type = type
         self.uri = uri
     }
+}
+
+public enum FHContentType: String, Codable {
+    case image = "image"
+    case resource = "resource"
+    case text = "text"
 }

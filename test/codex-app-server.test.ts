@@ -169,6 +169,12 @@ describe("Codex App Server client", () => {
         label: "GPT-5.4",
         description: "General purpose",
         inputModalities: ["text", "image"],
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable" },
+            image: { support: "stable" },
+          },
+        },
         effort: {
           options: [
             { id: "medium", label: "Medium", description: "Balanced" },

@@ -855,6 +855,32 @@ describe("ACP v1 adapter", () => {
     expect(contextState.prompts).toHaveLength(0);
     await contextRuntime.close();
 
+    const inlineState = fakeState();
+    const inlineAdapter = createAcpV1Adapter({
+      id: "acp-inline-context",
+      session: () => ({ cwd: "/tmp/acp-inline-context" }),
+      connect: () => byteConnection(basicAgent(inlineState), inlineState),
+    });
+    const inlineRuntime = createHarness({ adapters: [inlineAdapter], persistence: createMemoryPersistence() });
+    const inlineResult = await finish(inlineRuntime, runRequest(inlineAdapter.id, {
+      input: [{ type: "context-reference", contextId: "note-1" }],
+      inlineContext: {
+        version: 1,
+        records: [{
+          version: 1,
+          id: "note-1",
+          kind: "note",
+          label: "Launch",
+          payload: { ready: true },
+        }],
+      },
+    }));
+    expect(inlineResult.status).toBe("completed");
+    expect(inlineState.prompts[0]).toMatchObject({
+      prompt: [{ type: "text", text: "[note: Launch]\n{\"ready\":true}" }],
+    });
+    await inlineRuntime.close();
+
     const pathState = fakeState();
     const pathAdapter = createAcpV1Adapter({
       id: "acp-path",

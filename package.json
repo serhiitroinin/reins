@@ -65,6 +65,11 @@
       "bun": "./src/profile.ts",
       "import": "./dist/profile.js"
     },
+    "./input": {
+      "types": "./src/input.ts",
+      "bun": "./src/input.ts",
+      "import": "./dist/input.js"
+    },
     "./runtime": {
       "types": "./src/runtime.ts",
       "bun": "./src/runtime.ts",

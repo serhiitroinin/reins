@@ -13,11 +13,13 @@ import {
   type HarnessEventPayload,
   type HarnessInteractionResponse,
   type HarnessInput,
+  type HarnessInlineContext,
   type HarnessRunRequest,
   type HarnessSessionKey,
   type HarnessSteeringStrategy,
   type HarnessTurnStatus,
 } from "./protocol.js";
+import { validateHarnessInlineContext } from "./input.js";
 import {
   HarnessContextPreparationError,
   prepareHarnessContext,
@@ -55,6 +57,7 @@ export interface HarnessAdapterFollowUpRequest {
   runId: string;
   turnId: string;
   input: readonly HarnessInput[];
+  inlineContext?: HarnessInlineContext;
   metadata?: Readonly<Record<string, unknown>>;
   signal: AbortSignal;
 }
@@ -130,6 +133,7 @@ export interface HarnessFollowUpRequest {
   /** Refuse rather than mutating a turn that changed under the caller. */
   expectedTurnId: string;
   input: readonly HarnessInput[];
+  inlineContext?: HarnessInlineContext;
   metadata?: Readonly<Record<string, unknown>>;
 }
 
@@ -190,6 +194,7 @@ export class HarnessRuntimeError extends Error {
       | "FOLLOW_UP_FAILED"
       | "STALE_TURN"
       | "TURN_NOT_ACTIVE"
+      | "INVALID_INPUT"
       | "RUNTIME_CLOSED",
     message: string,
   ) {
@@ -378,6 +383,13 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
 
     start(request, startOptions = {}) {
       if (closed) throw new HarnessRuntimeError("RUNTIME_CLOSED", "The harness runtime is closed.");
+      const inputValidation = validateHarnessInlineContext(request.inlineContext, request.input);
+      if (!inputValidation.valid) {
+        throw new HarnessRuntimeError(
+          "INVALID_INPUT",
+          inputValidation.issues[0]?.message ?? "The harness input is invalid.",
+        );
+      }
       if (startOptions.runId !== undefined && startOptions.runId.length === 0) {
         throw new Error("a host-supplied runId cannot be empty");
       }
@@ -620,6 +632,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         },
         followUp(followUpRequest, followUpOptions = {}) {
           return serializeControl(async () => {
+            const inputValidation = validateHarnessInlineContext(
+              followUpRequest.inlineContext,
+              followUpRequest.input,
+            );
+            if (!inputValidation.valid) {
+              throw new HarnessRuntimeError(
+                "INVALID_INPUT",
+                inputValidation.issues[0]?.message ?? "The harness input is invalid.",
+              );
+            }
             ensureActiveTurn(followUpRequest.expectedTurnId);
             let capabilities: HarnessCapabilities;
             try {
@@ -649,6 +671,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                   runId,
                   turnId,
                   input: followUpRequest.input,
+                  ...(followUpRequest.inlineContext ? { inlineContext: followUpRequest.inlineContext } : {}),
                   ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
                   signal: controller.signal,
                 });
@@ -678,9 +701,11 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             const replacementRunId = replacement.runId ?? createId();
             const replacementTurnId = replacement.turnId ?? createId();
             const replacementController = replacement.controller ?? new AbortController();
+            const { inlineContext: _previousInlineContext, ...replacementBase } = request;
             const replacementRequest: HarnessRunRequest = {
-              ...request,
+              ...replacementBase,
               input: followUpRequest.input,
+              ...(followUpRequest.inlineContext ? { inlineContext: followUpRequest.inlineContext } : {}),
               ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
             };
             // Prepare first so a context failure leaves the active provider

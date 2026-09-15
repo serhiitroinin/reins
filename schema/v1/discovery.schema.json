@@ -144,6 +144,36 @@
       },
       "required": ["id", "label"]
     },
+    "HarnessInputConstraint": {
+      "type": "object",
+      "properties": {
+        "support": { "enum": ["stable", "experimental", "unsupported"] },
+        "maxCount": { "type": "integer", "minimum": 0 },
+        "maxItemBytes": { "type": "integer", "minimum": 0 },
+        "maxTotalBytes": { "type": "integer", "minimum": 0 },
+        "maxTextCharacters": { "type": "integer", "minimum": 0 },
+        "mediaTypes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "description": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["support"]
+    },
+    "HarnessInputPolicy": {
+      "type": "object",
+      "properties": {
+        "maxItems": { "type": "integer", "minimum": 0 },
+        "maxTotalBytes": { "type": "integer", "minimum": 0 },
+        "modalities": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/HarnessInputConstraint" }
+        },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      }
+    },
     "HarnessModel": {
       "type": "object",
       "properties": {
@@ -155,6 +185,7 @@
         "unavailableReason": { "type": "string" },
         "inputModalities": { "type": "array", "items": { "type": "string" } },
         "contextWindowTokens": { "type": "integer" },
+        "inputPolicy": { "$ref": "#/$defs/HarnessInputPolicy" },
         "effort": { "$ref": "#/$defs/HarnessEffortProfile" },
         "controls": { "type": "array", "items": { "$ref": "#/$defs/HarnessControl" } },
         "extensions": { "$ref": "#/$defs/JsonObject" }
@@ -176,6 +207,7 @@
         "label": { "type": "string" },
         "description": { "type": "string" },
         "permissions": { "$ref": "#/$defs/HarnessPermissionProfile" },
+        "inputPolicy": { "$ref": "#/$defs/HarnessInputPolicy" },
         "controls": { "type": "array", "items": { "$ref": "#/$defs/HarnessControl" } },
         "extensions": { "$ref": "#/$defs/JsonObject" }
       },
