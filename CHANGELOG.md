@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.11
+
+### Patch Changes
+
+- f8fd308: Publish immutable JSON Schema 2020-12 documents for the v1 protocol and
+  discovery contracts, plus JSON-safe run request encoding with canonical base64
+  images for native and non-JavaScript hosts.
+
 ## 0.1.0-next.10
 
 ### Patch Changes

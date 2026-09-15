@@ -13,6 +13,7 @@
     "fresh-codex-adapter",
     "fuzzy-hounds-discover",
     "safe-claude-lifecycle",
-    "tidy-codex-caches"
+    "tidy-codex-caches",
+    "wise-native-schema"
   ]
 }
