@@ -133,6 +133,7 @@ input. It emits no second runtime start or intermediate completion.
 Replacement steering prepares the fresh turn context before touching the old
 provider turn, rechecks admission, then crosses the full cancellation, drain,
 and terminal boundary before calling `start` with new run and turn ids. A
+replacement must not reuse the old run id, turn id, or abort controller. A
 failed preparation leaves the original turn alive. Follow-up and Stop
 operations are serialized per run, and unknown provider failures become safe
 runtime errors.
@@ -270,7 +271,9 @@ environment, roots, MCP servers, and transport implementation.
 ACP v1 has no portable active-prompt steer operation. Its declared strategy is
 therefore `replacement-turn`: the core runtime prepares the replacement, asks
 the adapter to cancel and settle permissions, drains the prompt, seals the old
-envelope, and only then begins the next prompt. A native OpenCode, Grok, or
+envelope, retires the transport, and only then reloads the session for the next
+prompt. The capability is conditional on negotiated `session/load` support,
+because ACP v1 update frames have session identity but no prompt identity. A native OpenCode, Grok, or
 future adapter may declare stronger behavior after its own conformance tests;
 the ACP label alone never implies it.
 

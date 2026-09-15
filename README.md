@@ -139,7 +139,9 @@ message into its live SDK stream and native Codex uses App Server
 `turn/steer(expectedTurnId)`. `replacement-turn` prepares a new context first,
 then cancels, drains, and durably seals the old turn before starting a fresh
 run. ACP v1 declares that replacement strategy because the protocol has no
-portable native steer method. Waiting remains queue policy, never a fabricated
+portable native steer method; its capability is constrained to peers that
+advertise `session/load`, and it retires the cancelled transport before reload
+so late updates cannot cross turn boundaries. Waiting remains queue policy, never a fabricated
 provider capability. Stale, unsupported, and already-stopping turns fail with
 safe typed runtime errors and do not mutate provider state.
 

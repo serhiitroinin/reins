@@ -26,7 +26,11 @@ The adapter owns:
 ACP v1 does not define a native active-prompt steer request. The adapter
 therefore advertises `replacement-turn`: Fold Harness prepares the replacement
 context, cancels and drains the current ACP prompt (including pending
-permissions), seals its terminal event, and then starts a new runtime turn.
+permissions), seals its terminal event, retires that transport, and then
+reloads the session into a new runtime turn. This strategy therefore carries
+the `requiresAgentCapability: "loadSession"` constraint; a peer without
+`session/load` cannot safely replace an active prompt because ACP updates have
+session identity but no prompt identity.
 Host-side waiting remains available through the separate turn queue.
 
 The host owns:
