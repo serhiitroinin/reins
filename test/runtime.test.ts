@@ -172,6 +172,50 @@ describe("harness runtime", () => {
     expect(events.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 
+  test("retains events an adapter yields while cancellation settles", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            await waiting;
+            yield { kind: "assistant-text", text: "partial" } as const;
+            yield {
+              kind: "tool-completed",
+              toolId: "tool-1",
+              toolKind: "shell",
+              title: "Run command",
+              status: "cancelled",
+            } as const;
+          },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const persistence = createMemoryPersistence();
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const eventsPromise = collect(run.events);
+    await Bun.sleep(0);
+
+    await run.cancel();
+    const events = await eventsPromise;
+
+    expect(await run.done).toBe("interrupted");
+    expect(events.map((event) => event.payload.kind)).toEqual([
+      "turn-started",
+      "assistant-text",
+      "tool-completed",
+      "turn-completed",
+    ]);
+    expect(events[1]?.payload).toEqual({ kind: "assistant-text", text: "partial" });
+    expect(events[2]?.payload).toMatchObject({ kind: "tool-completed", status: "cancelled" });
+    expect(events[3]?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
   test("seals a provider-owned interruption without inventing an error", async () => {
     const adapter: HarnessAdapter = {
       id: "scripted",
