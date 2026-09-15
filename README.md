@@ -97,6 +97,34 @@ const run = harness.start(request, {
 
 Run the complete example with `bun run example`.
 
+## Follow-up queue
+
+A host may keep accepting follow-ups while a turn runs without pretending its
+provider supports steering. The optional queue stores opaque host snapshots in
+memory and lets the host dispatch one at each boundary it declares safe.
+
+```ts
+import { createHarnessTurnQueue } from "@serhiitroinin/fold-harness/turn-queue";
+
+const followUps = createHarnessTurnQueue<{ request: typeof request }>({ maxDepth: 8 });
+const binding = { session: request.session, adapterId: request.adapterId };
+
+followUps.enqueue(binding, { request });
+
+const lease = followUps.takeNext(binding, `turn-ended:${completedTurnId}`);
+if (lease) {
+  // Finish uploads or other fallible preparation while observing lease.signal.
+  const entry = followUps.complete(lease);
+  if (entry) harness.start(entry.payload.request);
+}
+```
+
+Holding or draining invalidates an unsettled lease, so Stop cannot race a
+prepared follow-up into a new turn. Held heads preserve FIFO order until the
+host explicitly releases them. The queue imports no UI framework and persists
+nothing; durable drafts and provider-native steering remain separate product
+and adapter decisions.
+
 ## Non-Fold terminal host
 
 The [incident terminal example](examples/incident-terminal/README.md) is a
@@ -183,6 +211,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
   transports and native hosts.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
+- `@serhiitroinin/fold-harness/turn-queue` — bounded host-owned follow-up
+  coordination with explicit dispatch boundaries.
 - `@serhiitroinin/fold-harness/context` — turn-scoped application context sources.
 - `@serhiitroinin/fold-harness/mcp` — a bounded, byte-transport-neutral MCP
   server over one turn-scoped tool host.

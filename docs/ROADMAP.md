@@ -42,10 +42,15 @@
   persistence interfaces, with the frozen product projection kept separate.
 - A non-Fold incident-triage terminal reference host covering generic
   discovery, context, tools, two consent boundaries, resume, and cancellation.
+- A bounded, framework-neutral host follow-up queue with FIFO ordering, held
+  intents, explicit dispatch boundaries, and stop-race invalidation.
 
 ## Next
 
-1. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
+1. Add adapter-declared same-turn and replacement steering only after the
+   cancellation dispatch/drain contract is portable across native adapters and
+   ACP.
+2. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
    test credential are available; keep it experimental until then.
 
 ## Deliberately outside the first release
