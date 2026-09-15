@@ -71,6 +71,11 @@ state and is passed by identity to the adapter and tool boundary without being
 persisted. These values are not part of `HarnessRunRequest` or its JSON-safe
 wire representation.
 
+Cancellation changes the terminal status to `interrupted` and asks the
+adapter to settle. Events the adapter yields while settling are still durable:
+partial text and terminal tool states describe work that already happened and
+must precede the runtime-owned `turn-completed` event.
+
 ## Context sources
 
 Context sources are application-owned, turn-scoped snapshots. The runtime
