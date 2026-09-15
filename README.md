@@ -99,7 +99,9 @@ const server = createHarnessMcpServer({
   host: tools,
   context: toolContext,
   serverInfo: { name: "acme-work", version: "1.0.0" },
-  write: (frame) => transport.write(frame),
+  // This adapter must synchronously accept or buffer every byte. A socket
+  // whose write can be partial needs a draining queue here.
+  write: (frame) => frameWriter.writeFully(frame),
 });
 
 transport.onBytes((chunk) => server.receive(chunk));
@@ -107,9 +109,12 @@ transport.onClose(() => server.end());
 ```
 
 The bounded newline JSON-RPC surface implements MCP initialization, ping,
-tool listing, tool calls, and cancellation. Application policy and validation
-still run in `HarnessToolHost`; identity, context, and authority are never read
-from MCP arguments. Metadata stays host-private by default.
+cursor-paginated tool listing, bounded concurrent tool calls, and cancellation.
+Application policy and validation still run in `HarnessToolHost`; identity,
+context, and authority are never read from MCP arguments. Metadata stays
+host-private by default. The write callback is an ownership boundary: it must
+synchronously retain the complete frame or throw, while the package remains
+independent of any runtime's backpressure API.
 
 ## Adapter conformance
 

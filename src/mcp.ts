@@ -32,9 +32,15 @@ export interface HarnessMcpServerOptions {
   /** Captured by the host. A caller on the wire cannot replace this scope. */
   context: HarnessToolContext;
   serverInfo: HarnessMcpServerInfo;
-  /** Receives exactly one UTF-8 JSON-RPC frame, including its newline. */
+  /**
+   * Synchronously accept or buffer one COMPLETE frame, including its newline.
+   * A partial or asynchronous transport needs its own draining queue here and
+   * must throw if the frame cannot be retained whole.
+   */
   write(frame: Uint8Array): void;
   maxFrameBytes?: number;
+  maxConcurrentCalls?: number;
+  maxToolsPerPage?: number;
   protocolVersions?: readonly string[];
 }
 
@@ -53,6 +59,9 @@ type JsonRecord = Record<string, unknown>;
 const encoder = new TextEncoder();
 const JSON_RPC_VERSION = "2.0";
 const ID_MAX_CHARS = 256;
+const DEFAULT_MAX_CONCURRENT_CALLS = 16;
+const DEFAULT_MAX_TOOLS_PER_PAGE = 100;
+const TOOL_CURSOR_PREFIX = "fold-harness:v1:";
 
 const isRecord = (value: unknown): value is JsonRecord => (
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -65,12 +74,6 @@ const requestId = (value: unknown): JsonRpcId | null => {
 };
 
 const requestKey = (id: JsonRpcId): string => `${typeof id}:${id}`;
-
-const cancelledResult = (name: string): HarnessToolResult => ({
-  content: [{ type: "text", text: `Tool cancelled: ${name}` }],
-  isError: true,
-  code: "TOOL_CANCELLED",
-});
 
 const failedResult = (name: string): HarnessToolResult => ({
   content: [{ type: "text", text: `Tool failed: ${name}` }],
@@ -90,6 +93,14 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
   if (options.serverInfo.name.trim() === "" || options.serverInfo.version.trim() === "") {
     throw new Error("MCP server name and version cannot be empty");
   }
+  const maximumCalls = options.maxConcurrentCalls ?? DEFAULT_MAX_CONCURRENT_CALLS;
+  if (!Number.isSafeInteger(maximumCalls) || maximumCalls < 1) {
+    throw new Error("maxConcurrentCalls must be a positive integer");
+  }
+  const maximumTools = options.maxToolsPerPage ?? DEFAULT_MAX_TOOLS_PER_PAGE;
+  if (!Number.isSafeInteger(maximumTools) || maximumTools < 1) {
+    throw new Error("maxToolsPerPage must be a positive integer");
+  }
   const versions = [...(options.protocolVersions ?? HARNESS_MCP_PROTOCOL_VERSIONS)];
   if (versions.length === 0 || versions.some((version) => version.trim() === "")) {
     throw new Error("at least one non-empty MCP protocol version is required");
@@ -100,6 +111,7 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
   let buffered = 0;
   let phase: "new" | "initializing" | "initialized" = "new";
   let closed = false;
+  let toolCatalog: readonly JsonRecord[] | null = null;
   const active = new Map<string, AbortController>();
 
   const end = (_reason = "the MCP server ended"): void => {
@@ -114,15 +126,19 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
   if (options.context.signal.aborted) endOnContextAbort();
   else options.context.signal.addEventListener("abort", endOnContextAbort, { once: true });
 
+  const encodeValue = (value: unknown): Uint8Array | null => {
+    try {
+      const frame = encoder.encode(`${JSON.stringify(value)}\n`);
+      return frame.byteLength <= maximum ? frame : null;
+    } catch {
+      return null;
+    }
+  };
+
   const writeValue = (value: unknown): boolean => {
     if (closed) return false;
-    let frame: Uint8Array;
-    try {
-      frame = encoder.encode(`${JSON.stringify(value)}\n`);
-    } catch {
-      return false;
-    }
-    if (frame.byteLength > maximum) return false;
+    const frame = encodeValue(value);
+    if (frame === null) return false;
     try {
       options.write(frame);
       return true;
@@ -173,25 +189,42 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
     });
   };
 
-  const listTools = (id: JsonRpcId): void => {
+  const listTools = (id: JsonRpcId, params: unknown): void => {
     if (!requireInitialized(id)) return;
-    let tools: readonly HarnessToolDescriptor[];
+    const cursor = listCursor(params);
+    if (cursor === null) {
+      sendError(id, -32602, "Invalid tools/list cursor.");
+      return;
+    }
     try {
-      tools = options.host.list(options.context);
+      toolCatalog ??= options.host.list(options.context).map((tool: HarnessToolDescriptor) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        }));
     } catch {
       sendError(id, -32603, "The tool catalog is unavailable.");
       return;
     }
-    try {
-      sendResult(id, {
-        tools: tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        })),
-      });
-    } catch {
-      sendError(id, -32603, "The tool catalog is unavailable.");
+    if (cursor > toolCatalog.length) {
+      sendError(id, -32602, "Invalid tools/list cursor.");
+      return;
+    }
+    let end = Math.min(toolCatalog.length, cursor + maximumTools);
+    for (;;) {
+      if (end === cursor && cursor < toolCatalog.length) {
+        sendError(id, -32603, "A tool descriptor exceeded the MCP frame limit.");
+        return;
+      }
+      const result = {
+        tools: toolCatalog.slice(cursor, end),
+        ...(end < toolCatalog.length ? { nextCursor: toolCursor(end) } : {}),
+      };
+      if (encodeValue({ jsonrpc: JSON_RPC_VERSION, id, result }) !== null) {
+        sendResult(id, result);
+        return;
+      }
+      end -= 1;
     }
   };
 
@@ -211,21 +244,23 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
       sendError(id, -32600, "A request with this id is already active.");
       return;
     }
+    if (active.size >= maximumCalls) {
+      sendError(id, -32000, "Too many tool calls are active.");
+      return;
+    }
     const controller = new AbortController();
     active.set(key, controller);
     const context: HarnessToolContext = { ...options.context, signal: controller.signal };
     let result: HarnessToolResult;
     try {
       result = await options.host.call(params.name, input, context);
-      if (controller.signal.aborted && result.code !== "TOOL_CANCELLED") {
-        result = cancelledResult(params.name);
-      }
     } catch {
-      result = controller.signal.aborted ? cancelledResult(params.name) : failedResult(params.name);
+      if (controller.signal.aborted) return;
+      result = failedResult(params.name);
     } finally {
       active.delete(key);
     }
-    if (closed) return;
+    if (closed || controller.signal.aborted) return;
     try {
       sendResult(id, mcpToolResult(result));
     } catch {
@@ -242,7 +277,7 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
         if (requireInitialized(id)) sendResult(id, {});
         return;
       case "tools/list":
-        listTools(id);
+        listTools(id, params);
         return;
       case "tools/call":
         void callTool(id, params);
@@ -333,6 +368,21 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions): Harnes
       return phase === "initialized";
     },
   };
+}
+
+function toolCursor(offset: number): string {
+  return `${TOOL_CURSOR_PREFIX}${offset}`;
+}
+
+function listCursor(params: unknown): number | null {
+  if (params === undefined) return 0;
+  if (!isRecord(params)) return null;
+  if (params.cursor === undefined) return 0;
+  if (typeof params.cursor !== "string" || !params.cursor.startsWith(TOOL_CURSOR_PREFIX)) return null;
+  const offset = Number(params.cursor.slice(TOOL_CURSOR_PREFIX.length));
+  return Number.isSafeInteger(offset) && offset >= 0 && toolCursor(offset) === params.cursor
+    ? offset
+    : null;
 }
 
 function mcpToolResult(result: HarnessToolResult): JsonRecord {
