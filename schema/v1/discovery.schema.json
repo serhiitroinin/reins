@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:fold-harness:schema:discovery:v1",
+  "$id": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json",
   "title": "Fold Harness discovery v1",
   "description": "Provider-neutral engine, model, permission, control, and limit discovery contracts.",
   "$ref": "#/$defs/HarnessEngineProfile",
@@ -24,7 +24,7 @@
     "HarnessWireDiscoveryRequest": {
       "type": "object",
       "properties": {
-        "schemaVersion": { "const": 1 },
+        "schemaVersion": { "type": "integer", "const": 1 },
         "adapterId": { "$ref": "#/$defs/Id" },
         "accountId": { "type": "string" },
         "modelId": { "type": "string" }
@@ -244,19 +244,27 @@
       "properties": {
         "status": { "const": "unavailable" },
         "message": { "type": "string" },
-        "retryable": { "type": "boolean" },
-        "value": false
+        "retryable": { "type": "boolean" }
       },
-      "required": ["status", "message"]
+      "required": ["status", "message"],
+      "not": {
+        "type": "object",
+        "properties": { "value": {} },
+        "required": ["value"]
+      }
     },
     "UnsupportedDiscovery": {
       "type": "object",
       "properties": {
         "status": { "const": "unsupported" },
-        "message": { "type": "string" },
-        "value": false
+        "message": { "type": "string" }
       },
-      "required": ["status"]
+      "required": ["status"],
+      "not": {
+        "type": "object",
+        "properties": { "value": {} },
+        "required": ["value"]
+      }
     },
     "HarnessEngineProfileDiscovery": {
       "oneOf": [
