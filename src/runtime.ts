@@ -370,7 +370,11 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             context,
             tools: bindToolHost(tools, toolContext),
           })) {
-            if (controller.signal.aborted) break;
+            // Cancellation asks the adapter to settle; it does not revoke
+            // events the adapter has already produced. In particular, an
+            // adapter may flush partial text and close an in-flight tool as
+            // cancelled while unwinding. Persist those facts before sealing
+            // the runtime turn as interrupted.
             await emit(payload);
           }
           if (controller.signal.aborted) status = "interrupted";
