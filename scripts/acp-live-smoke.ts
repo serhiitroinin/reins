@@ -42,6 +42,7 @@ function selectedProvider(): Provider {
 function inheritedEnvironment(): Record<string, string> {
   const allowed = [
     "PATH",
+    "USER",
     "TMPDIR",
     "LANG",
     "LC_ALL",
@@ -76,7 +77,8 @@ function providerEnvironment(provider: Provider, isolatedHome: string): Record<s
     environment.CODEX_HOME = process.env.ACP_SMOKE_CODEX_HOME ?? join(isolatedHome, ".codex");
   }
   if (provider === "claude") {
-    environment.CLAUDE_CONFIG_DIR = process.env.ACP_SMOKE_CLAUDE_HOME ?? join(isolatedHome, ".claude");
+    const configDirectory = process.env.ACP_SMOKE_CLAUDE_HOME;
+    if (configDirectory) environment.CLAUDE_CONFIG_DIR = configDirectory;
   }
   if (provider === "opencode") {
     environment.XDG_CONFIG_HOME = process.env.ACP_SMOKE_OPENCODE_CONFIG_HOME ?? join(isolatedHome, ".config");
@@ -187,6 +189,7 @@ await mkdir(isolatedHome, { recursive: true, mode: 0o700 });
 await mkdir(workspace, { recursive: true, mode: 0o700 });
 
 const diagnostics: Array<{ stderrBytes: number; exitCode?: number }> = [];
+const errors: Array<{ type: string; numericCode?: number; hasData: boolean }> = [];
 const negotiated: AcpV1NegotiatedAgent[] = [];
 const sessionOptions: unknown[] = [];
 const persistence = createMemoryPersistence();
@@ -201,6 +204,16 @@ const makeAdapter = () => createAcpV1Adapter({
     return launch(commands[provider], workspace, providerEnvironment(provider, isolatedHome), processDiagnostics);
   },
   onNegotiated(value) { negotiated.push(value); },
+  publicError(error) {
+    const record = typeof error === "object" && error !== null ? error as Record<string, unknown> : {};
+    const type = error instanceof Error ? error.constructor.name : typeof error;
+    const numericCode = typeof record.code === "number" ? record.code : undefined;
+    errors.push({ type, ...(numericCode !== undefined ? { numericCode } : {}), hasData: record.data !== undefined });
+    return {
+      code: `ACP_LIVE_${type.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase()}${numericCode !== undefined ? `_${numericCode}` : ""}`,
+      message: "The live ACP peer returned an error; provider-authored details were redacted.",
+    };
+  },
   async configureSession(controller) {
     sessionOptions.push(summarizeOptions(controller.configOptions));
     const model = process.env.ACP_SMOKE_MODEL;
@@ -258,6 +271,7 @@ try {
     negotiated,
     sessionOptions,
     diagnostics,
+    errors,
   }, null, 2));
 } catch (error) {
   console.error(JSON.stringify({
@@ -268,6 +282,7 @@ try {
     negotiated,
     sessionOptions,
     diagnostics,
+    errors,
   }, null, 2));
   process.exitCode = 1;
 } finally {
