@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.14
+
+### Patch Changes
+
+- 3178516: Enable the Codex App Server experimental capability when a turn includes additional context.
+
 ## 0.1.0-next.13
 
 ### Patch Changes
