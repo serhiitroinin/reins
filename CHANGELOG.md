@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.13
+
+### Patch Changes
+
+- 36176fb: Expose a bounded, byte-transport-neutral MCP server over `HarnessToolHost`,
+  with trusted turn context captured outside the wire and safe tool-result
+  projection.
+
 ## 0.1.0-next.12
 
 ### Patch Changes
