@@ -139,13 +139,19 @@ async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
   return values;
 }
 
+class SmokeFailure extends Error {
+  constructor(readonly code: string) {
+    super(code);
+  }
+}
+
 async function runTurn(runtime: ReturnType<typeof createHarness>, request: HarnessRunRequest): Promise<HarnessEvent[]> {
   const run = runtime.start(request);
   const events = await collect(run.events);
   const status = await run.done;
   if (status !== "completed") {
     const error = events.find((event) => event.payload.kind === "error");
-    throw new Error(error?.payload.kind === "error" ? `${error.payload.code}: ${error.payload.message}` : `turn ${status}`);
+    throw new SmokeFailure(error?.payload.kind === "error" ? error.payload.code : `TURN_${status.toUpperCase()}`);
   }
   return events;
 }
@@ -212,27 +218,37 @@ const baseRequest = {
   adapterId: `acp-live:${provider}`,
 } as const;
 
+let stage = "create-first-runtime";
+let activeRuntime: ReturnType<typeof createHarness> | undefined;
 try {
-  const firstRuntime = createHarness({ adapters: [makeAdapter()], persistence });
-  const first = await runTurn(firstRuntime, {
+  activeRuntime = createHarness({ adapters: [makeAdapter()], persistence });
+  stage = "first-turn";
+  const first = await runTurn(activeRuntime, {
     ...baseRequest,
     input: [{ type: "text", text: "Reply with exactly ACP_SMOKE_ONE_OK" }],
   });
-  if (!text(first).includes("ACP_SMOKE_ONE_OK")) throw new Error("first marker missing");
-  const second = await runTurn(firstRuntime, {
+  if (!text(first).includes("ACP_SMOKE_ONE_OK")) throw new SmokeFailure("FIRST_MARKER_MISSING");
+  stage = "second-turn";
+  const second = await runTurn(activeRuntime, {
     ...baseRequest,
     input: [{ type: "text", text: "Reply with exactly ACP_SMOKE_TWO_OK" }],
   });
-  if (!text(second).includes("ACP_SMOKE_TWO_OK")) throw new Error("second marker missing");
-  await firstRuntime.close();
+  if (!text(second).includes("ACP_SMOKE_TWO_OK")) throw new SmokeFailure("SECOND_MARKER_MISSING");
+  stage = "close-first-runtime";
+  await activeRuntime.close();
+  activeRuntime = undefined;
 
-  const resumedRuntime = createHarness({ adapters: [makeAdapter()], persistence });
-  const resumed = await runTurn(resumedRuntime, {
+  stage = "create-resumed-runtime";
+  activeRuntime = createHarness({ adapters: [makeAdapter()], persistence });
+  stage = "resumed-turn";
+  const resumed = await runTurn(activeRuntime, {
     ...baseRequest,
     input: [{ type: "text", text: "Reply with exactly ACP_SMOKE_RESUME_OK" }],
   });
-  if (!text(resumed).includes("ACP_SMOKE_RESUME_OK")) throw new Error("resume marker missing");
-  await resumedRuntime.close();
+  if (!text(resumed).includes("ACP_SMOKE_RESUME_OK")) throw new SmokeFailure("RESUME_MARKER_MISSING");
+  stage = "close-resumed-runtime";
+  await activeRuntime.close();
+  activeRuntime = undefined;
 
   console.log(JSON.stringify({
     provider,
@@ -243,6 +259,18 @@ try {
     sessionOptions,
     diagnostics,
   }, null, 2));
+} catch (error) {
+  console.error(JSON.stringify({
+    provider,
+    status: "failed",
+    stage,
+    code: error instanceof SmokeFailure ? error.code : "UNEXPECTED_FAILURE",
+    negotiated,
+    sessionOptions,
+    diagnostics,
+  }, null, 2));
+  process.exitCode = 1;
 } finally {
+  await activeRuntime?.close().catch(() => undefined);
   if (!process.env.ACP_SMOKE_KEEP) await rm(smokeRoot, { recursive: true, force: true });
 }
