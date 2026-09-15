@@ -111,6 +111,16 @@
       "bun": "./src/adapters/claude-agent-sdk-events.ts",
       "import": "./dist/adapters/claude-agent-sdk-events.js"
     },
+    "./adapters/acp-v1": {
+      "types": "./src/adapters/acp-v1.ts",
+      "bun": "./src/adapters/acp-v1.ts",
+      "import": "./dist/adapters/acp-v1.js"
+    },
+    "./adapters/acp-v1-adapter": {
+      "types": "./src/adapters/acp-v1-adapter.ts",
+      "bun": "./src/adapters/acp-v1-adapter.ts",
+      "import": "./dist/adapters/acp-v1-adapter.js"
+    },
     "./testing": {
       "types": "./src/testing/index.ts",
       "bun": "./src/testing/index.ts",
