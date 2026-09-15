@@ -138,6 +138,7 @@
     "check:bindings": "bun run scripts/generate-bindings.ts --check",
     "test": "bun test",
     "example": "bun run examples/minimal/index.ts",
+    "smoke:acp": "bun run scripts/acp-live-smoke.ts",
     "check": "bun run typecheck && bun run check:bindings && bun test && bun run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
