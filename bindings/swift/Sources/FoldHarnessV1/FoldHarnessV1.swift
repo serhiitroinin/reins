@@ -72,6 +72,7 @@ public struct FHCapabilities: Codable {
     public let plans: FHCancel
     public let resume: FHCancel
     public let shell: FHCancel
+    public let steering: FHSteering?
     public let subagents: FHCancel
     public let thinking: FHCancel
     public let tools: FHCancel
@@ -87,13 +88,14 @@ public struct FHCapabilities: Codable {
         case plans = "plans"
         case resume = "resume"
         case shell = "shell"
+        case steering = "steering"
         case subagents = "subagents"
         case thinking = "thinking"
         case tools = "tools"
         case usage = "usage"
     }
 
-    public init(cancel: FHCancel, extensions: [String: FHCancel]?, filesystem: FHCancel, images: FHCancel, interactions: FHCancel, network: FHCancel, plans: FHCancel, resume: FHCancel, shell: FHCancel, subagents: FHCancel, thinking: FHCancel, tools: FHCancel, usage: FHCancel) {
+    public init(cancel: FHCancel, extensions: [String: FHCancel]?, filesystem: FHCancel, images: FHCancel, interactions: FHCancel, network: FHCancel, plans: FHCancel, resume: FHCancel, shell: FHCancel, steering: FHSteering?, subagents: FHCancel, thinking: FHCancel, tools: FHCancel, usage: FHCancel) {
         self.cancel = cancel
         self.extensions = extensions
         self.filesystem = filesystem
@@ -103,6 +105,7 @@ public struct FHCapabilities: Codable {
         self.plans = plans
         self.resume = resume
         self.shell = shell
+        self.steering = steering
         self.subagents = subagents
         self.thinking = thinking
         self.tools = tools
@@ -190,6 +193,36 @@ public enum FHSupport: String, Codable {
     case experimental = "experimental"
     case stable = "stable"
     case unsupported = "unsupported"
+}
+
+// MARK: - FHSteering
+public struct FHSteering: Codable {
+    public let constraints: [String: FHProtocolSchema]?
+    public let description: String?
+    public let preferred: FHPreferred?
+    public let strategies: [FHPreferred]
+    public let support: FHSupport
+
+    public enum CodingKeys: String, CodingKey {
+        case constraints = "constraints"
+        case description = "description"
+        case preferred = "preferred"
+        case strategies = "strategies"
+        case support = "support"
+    }
+
+    public init(constraints: [String: FHProtocolSchema]?, description: String?, preferred: FHPreferred?, strategies: [FHPreferred], support: FHSupport) {
+        self.constraints = constraints
+        self.description = description
+        self.preferred = preferred
+        self.strategies = strategies
+        self.support = support
+    }
+}
+
+public enum FHPreferred: String, Codable {
+    case replacementTurn = "replacement-turn"
+    case sameTurn = "same-turn"
 }
 
 // MARK: - FHDiscovery

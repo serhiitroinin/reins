@@ -24,6 +24,20 @@ export interface HarnessCapability {
   constraints?: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * How a provider can accept input while a turn is active.
+ *
+ * Waiting for the current turn is host queue policy, not a provider strategy.
+ */
+export type HarnessSteeringStrategy = "same-turn" | "replacement-turn";
+
+export interface HarnessSteeringCapability extends HarnessCapability {
+  /** Empty means the adapter cannot accept an active-turn follow-up. */
+  strategies: readonly HarnessSteeringStrategy[];
+  /** The strategy a generic host should choose when it does not override it. */
+  preferred?: HarnessSteeringStrategy;
+}
+
 export interface HarnessCapabilities {
   resume: HarnessCapability;
   cancel: HarnessCapability;
@@ -37,6 +51,8 @@ export interface HarnessCapabilities {
   shell: HarnessCapability;
   filesystem: HarnessCapability;
   network: HarnessCapability;
+  /** Optional because protocol-v1 capability documents are additive. */
+  steering?: HarnessSteeringCapability;
   /** Adapter-specific capabilities use namespaced keys such as `acme:review`. */
   extensions?: Readonly<Record<string, HarnessCapability>>;
 }

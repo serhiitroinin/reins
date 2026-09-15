@@ -74,6 +74,11 @@ const capabilities: HarnessCapabilities = {
   shell: { support: "unsupported" },
   filesystem: { support: "unsupported" },
   network: { support: "unsupported" },
+  steering: {
+    support: "stable",
+    strategies: ["same-turn", "replacement-turn"],
+    preferred: "same-turn",
+  },
   extensions: { "opencode:multi-provider": { support: "stable", constraints: { count: 3 } } },
 };
 
@@ -188,6 +193,14 @@ describe("versioned JSON Schema", () => {
       session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
       adapterId: "example",
       input: [{ type: "image", mediaType: "image/png", data: "AB==", encoding: "base64" }],
+    })).toBe(false);
+    const validateCapabilities = validator(
+      protocolSchema,
+      "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessCapabilities",
+    );
+    expect(validateCapabilities({
+      ...capabilities,
+      steering: { support: "stable", strategies: ["wait"] },
     })).toBe(false);
   });
 
