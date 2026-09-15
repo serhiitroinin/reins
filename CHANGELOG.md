@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.20
+
+### Minor Changes
+
+- 04fe5bb: Add typed interaction recovery capabilities, explicit invalidation events, a replay-safe pending-interaction projector, and consistent stale-response errors.
+
 ## 0.1.0-next.19
 
 ### Minor Changes

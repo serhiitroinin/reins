@@ -7,6 +7,7 @@
   "changesets": [
     "blue-acp-streams",
     "bright-codex-events",
+    "bright-interactions-recover",
     "brisk-claude-sessions",
     "calm-birds-queue",
     "calm-codex-checkpoints",
