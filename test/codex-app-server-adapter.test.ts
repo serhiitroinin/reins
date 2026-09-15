@@ -173,6 +173,44 @@ describe("Codex App Server adapter", () => {
     await runtime.close();
   });
 
+  test("enables experimental API for context-only turns", async () => {
+    const fixture = createCodexAppServerConformanceFixture();
+    fixture.useScenario("basic");
+    const runtime = createHarness({
+      adapters: [fixture.adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "mail:selected",
+        failureMode: "required",
+        prepare: () => ({ content: [{ type: "text", text: "A message body" }] }),
+      }],
+    });
+
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "context-only" },
+      adapterId: fixture.adapterId,
+      input: [{ type: "text", text: "Summarize it." }],
+    });
+    await collect(run.events);
+    expect(await run.done).toBe("completed");
+
+    expect(fixture.state.requests).toContainEqual({
+      method: "initialize",
+      params: expect.objectContaining({
+        capabilities: expect.objectContaining({ experimentalApi: true }),
+      }),
+    });
+    expect(fixture.state.requests).toContainEqual({
+      method: "turn/start",
+      params: expect.objectContaining({
+        additionalContext: {
+          "mail:selected:content": { kind: "untrusted", value: "A message body" },
+        },
+      }),
+    });
+    await runtime.close();
+  });
+
   test("cancels a pending connection and closes it if it arrives late", async () => {
     let startConnection!: () => void;
     const connecting = new Promise<void>((resolve) => { startConnection = resolve; });
