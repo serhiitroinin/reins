@@ -353,6 +353,41 @@ defer it as a generic interaction that any UI can render and answer through
 `HarnessRun.respond`. Application transaction confirmation remains a separate
 tool concern.
 
+## Interaction recovery
+
+Interaction requests are durable events, but the provider callback behind one
+is usually process memory. Capability discovery exposes that distinction as
+
+- `live-only`: a restart makes every old unanswered request non-actionable;
+- `provider-replay`: the adapter can enumerate and rebind provider requests
+  after resuming the session.
+
+Missing recovery metadata is interpreted as `live-only`, so old capability
+documents fail conservative. The built-in Claude and ACP adapters currently
+declare `live-only`; a resume token alone never upgrades that claim.
+
+Use the framework-neutral projector to build one ordered interaction queue
+from replay pages and live events:
+
+```ts
+import { HarnessInteractionProjector } from "@serhiitroinin/fold-harness/interactions";
+
+const interactions = new HarnessInteractionProjector();
+interactions.pushAll(replayedEvents);
+interactions.push(liveEvent);
+
+for (const request of interactions.pending()) {
+  console.log(request.interaction.title);
+}
+```
+
+`interaction-invalidated` records that a request became impossible to answer
+without pretending the person declined it. A terminal turn also invalidates
+every still-open request in the projection, including events written by older
+adapters. Products remain responsible for enumerating their durable sessions
+at startup and for deciding whether to render invalidated requests as history
+or restart guidance.
+
 The host still chooses the explicit environment, login, private provider home,
 working directory, built-in tool allowlist, MCP servers, settings sources,
 plugins, hooks, sandbox, and approval rules. The package never inherits the
