@@ -330,6 +330,128 @@ describe("harness runtime", () => {
     }]);
   });
 
+  test("binds host turn identity, cancellation, and prepared context exactly", async () => {
+    const controller = new AbortController();
+    const context = {
+      sources: [{
+        sourceId: "app:bound",
+        value: { content: [{ type: "text" as const, text: "bound context" }], state: { revision: 7 } },
+      }],
+      unavailable: [],
+    };
+    let observed: HarnessAdapterRunRequest | undefined;
+    let toolContext: HarnessAdapterRunRequest["context"] | undefined;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run(runRequest) {
+            observed = runRequest;
+            await runRequest.tools.call("inspect", {});
+            yield { kind: "assistant-text", text: "done" };
+          },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "app:must-not-run",
+        failureMode: "required",
+        prepare: () => { throw new Error("prepared context should bypass sources"); },
+      }],
+      tools: {
+        list: () => [{ name: "inspect", description: "Inspect context", inputSchema: {} }],
+        async call(_name, _input, bound) {
+          toolContext = bound.context;
+          return { content: [] };
+        },
+      },
+    });
+
+    const run = harness.start(request, {
+      runId: "host-run",
+      turnId: "host-turn",
+      controller,
+      context,
+    });
+    const events = await collect(run.events);
+
+    expect(run.runId).toBe("host-run");
+    expect(run.turnId).toBe("host-turn");
+    expect(events.every((event) => event.runId === "host-run" && event.turnId === "host-turn")).toBe(true);
+    expect(observed?.signal).toBe(controller.signal);
+    expect(observed?.context).toBe(context);
+    expect(toolContext).toBe(context);
+    expect(await run.done).toBe("completed");
+  });
+
+  test("does not open a provider for a pre-aborted host turn", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let opened = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opened = true;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { controller });
+    const events = await collect(run.events);
+
+    expect(await run.done).toBe("interrupted");
+    expect(opened).toBe(false);
+    expect(events.map((event) => event.payload.kind)).toEqual(["turn-started", "turn-completed"]);
+    expect(events.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+    await run.cancel();
+  });
+
+  test("cancel owns a supplied controller and remains idempotent", async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run(runRequest) {
+            yield { kind: "assistant-text", text: "waiting" };
+            await waiting;
+            expect(runRequest.signal).toBe(controller.signal);
+          },
+          async cancel() {
+            cancellations += 1;
+            release();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { controller });
+    const events = collect(run.events);
+    await Bun.sleep(0);
+
+    await Promise.all([run.cancel(), run.cancel()]);
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(cancellations).toBe(1);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
+  test("rejects empty host turn identifiers synchronously", () => {
+    const harness = createHarness({ adapters: [], persistence: createMemoryPersistence() });
+    expect(() => harness.start(request, { runId: "" })).toThrow("a host-supplied runId cannot be empty");
+    expect(() => harness.start(request, { turnId: "" })).toThrow("a host-supplied turnId cannot be empty");
+  });
+
   test("seals a missing required context source as a safe error", async () => {
     let adapterRan = false;
     const adapter: HarnessAdapter = {

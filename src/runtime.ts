@@ -101,12 +101,26 @@ export interface HarnessRun {
   respond(interactionId: string, response: HarnessInteractionResponse): Promise<void>;
 }
 
+/**
+ * Runtime-only values an application may bind to an already-admitted turn.
+ *
+ * These values deliberately stay outside `HarnessRunRequest`: they contain
+ * live objects and host identity that do not belong in the JSON wire contract.
+ * A supplied controller becomes the run's controller; `cancel()` aborts it.
+ */
+export interface HarnessStartOptions {
+  runId?: string;
+  turnId?: string;
+  controller?: AbortController;
+  context?: HarnessPreparedContext<HarnessContextContribution>;
+}
+
 export interface HarnessRuntime {
   capabilities(adapterId: string): Promise<HarnessCapabilities>;
   profile(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessEngineProfile>>;
   models(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>>;
   limits(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessLimitSnapshot>>;
-  start(request: HarnessRunRequest): HarnessRun;
+  start(request: HarnessRunRequest, options?: HarnessStartOptions): HarnessRun;
   close(): Promise<void>;
 }
 
@@ -285,15 +299,22 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       return discover(adapterId, adapter.limits?.bind(adapter), request);
     },
 
-    start(request) {
+    start(request, startOptions = {}) {
       if (closed) throw new HarnessRuntimeError("RUNTIME_CLOSED", "The harness runtime is closed.");
+      if (startOptions.runId !== undefined && startOptions.runId.length === 0) {
+        throw new Error("a host-supplied runId cannot be empty");
+      }
+      if (startOptions.turnId !== undefined && startOptions.turnId.length === 0) {
+        throw new Error("a host-supplied turnId cannot be empty");
+      }
       const adapter = adapterFor(request.adapterId);
-      const runId = createId();
-      const turnId = createId();
-      const controller = new AbortController();
+      const runId = startOptions.runId ?? createId();
+      const turnId = startOptions.turnId ?? createId();
+      const controller = startOptions.controller ?? new AbortController();
       const queue = new AsyncQueue<HarnessEvent>();
       let managed: ManagedSession | null = null;
       let stopping = false;
+      let cancelWork: Promise<void> | null = null;
 
       const emit = async (payload: HarnessEventPayload): Promise<void> => {
         const event = await options.persistence.events.append({
@@ -316,20 +337,23 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             ...(request.model ? { model: request.model } : {}),
             ...(request.accountId ? { accountId: request.accountId } : {}),
           });
+          if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           managed = await open(request.session, adapter);
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          const contextRequest: HarnessContextPrepareRequest = {
-            ...request,
-            runId,
-            turnId,
-            signal: controller.signal,
-          };
-          const contextOptions: HarnessContextPreparationOptions<
-            HarnessContextContribution,
-            HarnessContextPrepareRequest
-          > = options.onContextError ? { onError: options.onContextError } : {};
-          const context = await prepareHarnessContext(contextSources, contextRequest, contextOptions);
+          const context = startOptions.context ?? await (async () => {
+            const contextRequest: HarnessContextPrepareRequest = {
+              ...request,
+              runId,
+              turnId,
+              signal: controller.signal,
+            };
+            const contextOptions: HarnessContextPreparationOptions<
+              HarnessContextContribution,
+              HarnessContextPrepareRequest
+            > = options.onContextError ? { onError: options.onContextError } : {};
+            return prepareHarnessContext(contextSources, contextRequest, contextOptions);
+          })();
           const toolContext = {
             session: request.session,
             adapterId: adapter.id,
@@ -382,12 +406,14 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         turnId,
         events: queue,
         done,
-        async cancel() {
-          if (controller.signal.aborted) return;
-          stopping = true;
-          controller.abort();
-          if (managed?.session.cancel) await managed.session.cancel();
-          await done;
+        cancel() {
+          cancelWork ??= (async () => {
+            stopping = true;
+            if (!controller.signal.aborted) controller.abort();
+            if (managed?.session.cancel) await managed.session.cancel();
+            await done;
+          })();
+          return cancelWork;
         },
         async respond(interactionId, response) {
           const target = managed ?? await open(request.session, adapter);
