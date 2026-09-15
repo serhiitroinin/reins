@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.16
+
+### Patch Changes
+
+- 777efb8: Retain normalized events yielded by an adapter while a cancelled turn settles.
+
 ## 0.1.0-next.15
 
 ### Patch Changes
