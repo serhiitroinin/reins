@@ -5,7 +5,7 @@ domain-specific products on top of agent harnesses such as Claude Code, Codex,
 OpenCode, and ACP-compatible agents.
 
 The project is being extracted from [Fold](https://github.com/serhiitroinin/fold).
-Its first releases focus on five boundaries:
+Its first releases focus on these boundaries:
 
 - an extensible event protocol for any UI;
 - explicit provider capability negotiation;
@@ -81,6 +81,36 @@ for await (const event of run.events) console.log(event.payload);
 
 Run the complete example with `bun run example`.
 
+## MCP tool bridge
+
+A host can expose the same `HarnessToolHost` to any MCP-capable agent without
+giving the package ownership of a process, credential, filesystem, socket, or
+HTTP stack. The server captures the trusted turn context outside the wire and
+accepts raw bytes from whatever transport the product selects.
+
+```ts
+import {
+  createHarnessMcpServer,
+  type HarnessToolContext,
+} from "@serhiitroinin/fold-harness";
+
+const toolContext: HarnessToolContext = /* the host's current turn */;
+const server = createHarnessMcpServer({
+  host: tools,
+  context: toolContext,
+  serverInfo: { name: "acme-work", version: "1.0.0" },
+  write: (frame) => transport.write(frame),
+});
+
+transport.onBytes((chunk) => server.receive(chunk));
+transport.onClose(() => server.end());
+```
+
+The bounded newline JSON-RPC surface implements MCP initialization, ping,
+tool listing, tool calls, and cancellation. Application policy and validation
+still run in `HarnessToolHost`; identity, context, and authority are never read
+from MCP arguments. Metadata stays host-private by default.
+
 ## Adapter conformance
 
 Adapter packages can run the framework-neutral contract suite from
@@ -116,6 +146,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/context` — turn-scoped application context sources.
+- `@serhiitroinin/fold-harness/mcp` — a bounded, byte-transport-neutral MCP
+  server over one turn-scoped tool host.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-adapter` — a complete, provider-injected Codex adapter.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.

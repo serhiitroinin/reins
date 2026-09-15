@@ -96,6 +96,24 @@ different interactions. An adapter may ask whether provider execution can
 continue; a domain tool may separately hold a proposed write for product
 review.
 
+`createHarnessMcpServer` is the portable MCP projection of that boundary. It
+captures one trusted `HarnessToolContext`, publishes the host's JSON Schema
+catalog, and routes calls back through the same policy and validator. The MCP
+caller supplies only a tool name and arguments; it cannot choose the actor,
+tenant, turn, context snapshot, or policy.
+
+The server owns bounded newline JSON-RPC framing and the MCP initialize,
+ping, list, call, and cancellation methods. It consumes and emits
+`Uint8Array`, so the product can place it behind stdio, a Unix socket, a web
+stream, a native bridge, or a remote transport. The product still owns that
+transport and all authentication, origin, confidentiality, lifecycle, and
+backpressure decisions. The package imports no MCP/provider SDK and performs
+no process, filesystem, environment, credential, or network access.
+
+Tool descriptor and result metadata remain private instead of becoming MCP
+`_meta` implicitly. A product can add an explicit, reviewed projection later
+without accidentally exposing application state through a new transport.
+
 ## Adapters
 
 An adapter opens or resumes a provider session and exposes an `AsyncIterable`
