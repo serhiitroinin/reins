@@ -44,13 +44,14 @@
   discovery, context, tools, two consent boundaries, resume, and cancellation.
 - A bounded, framework-neutral host follow-up queue with FIFO ordering, held
   intents, explicit dispatch boundaries, and stop-race invalidation.
+- Adapter-declared same-turn and replacement steering with expected-turn
+  preconditions, serialized Stop/follow-up control, portable cancellation
+  dispatch/drain/terminal sealing, native Claude injection, Codex
+  `turn/steer`, ACP replacement behavior, and shared conformance coverage.
 
 ## Next
 
-1. Add adapter-declared same-turn and replacement steering only after the
-   cancellation dispatch/drain contract is portable across native adapters and
-   ACP.
-2. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
+1. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
    test credential are available; keep it experimental until then.
 
 ## Deliberately outside the first release

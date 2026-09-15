@@ -122,8 +122,26 @@ if (lease) {
 Holding or draining invalidates an unsettled lease, so Stop cannot race a
 prepared follow-up into a new turn. Held heads preserve FIFO order until the
 host explicitly releases them. The queue imports no UI framework and persists
-nothing; durable drafts and provider-native steering remain separate product
-and adapter decisions.
+nothing; durable drafts remain a product decision.
+
+An adapter may separately declare `capabilities.steering`. A host can then pass
+the leased input to the active run with an exact turn precondition:
+
+```ts
+const result = await activeRun.followUp({
+  expectedTurnId: activeRun.turnId,
+  input: [{ type: "text", text: "Also compare the previous quarter." }],
+});
+```
+
+`same-turn` keeps the original run and turn envelope; native Claude injects a
+message into its live SDK stream and native Codex uses App Server
+`turn/steer(expectedTurnId)`. `replacement-turn` prepares a new context first,
+then cancels, drains, and durably seals the old turn before starting a fresh
+run. ACP v1 declares that replacement strategy because the protocol has no
+portable native steer method. Waiting remains queue policy, never a fabricated
+provider capability. Stale, unsupported, and already-stopping turns fail with
+safe typed runtime errors and do not mutate provider state.
 
 ## Non-Fold terminal host
 
@@ -200,7 +218,8 @@ if (!report.passed) throw new Error(JSON.stringify(report.cases));
 
 Real adapters supply their own fixture backed by recorded or scripted provider
 traffic. The common suite covers event framing, lifecycle, safe errors, tools,
-context, discovery, cancellation, interactions, and resume. Provider wire
+context, discovery, cancellation, declared follow-up steering, interactions,
+and resume. Provider wire
 parsing and operating-system security posture stay in adapter-specific tests.
 
 ## Package entry points

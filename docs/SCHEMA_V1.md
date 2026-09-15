@@ -37,6 +37,13 @@ ordinary `JSON.stringify` would silently discard or coerce.
 is not a portable picker contract. Models, permissions, effort, and controls
 should use discovery data and `settings` whenever possible.
 
+Capabilities may include an optional steering profile. Its closed strategy
+values are `same-turn` and `replacement-turn`; waiting is deliberately absent
+because a host can queue without claiming provider support. The TypeScript
+runtime follow-up operation contains live run state and an `AbortSignal`, so it
+does not cross the JSON wire boundary. Native hosts use the capability data to
+select their own transport-specific follow-up operation.
+
 ## Compatibility
 
 Version 1 follows these rules:

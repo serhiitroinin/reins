@@ -23,6 +23,12 @@ The adapter owns:
 - exact permission-option round trips and stale-answer rejection;
 - checkpoint delivery and safe negotiated-capability projection.
 
+ACP v1 does not define a native active-prompt steer request. The adapter
+therefore advertises `replacement-turn`: Fold Harness prepares the replacement
+context, cancels and drains the current ACP prompt (including pending
+permissions), seals its terminal event, and then starts a new runtime turn.
+Host-side waiting remains available through the separate turn queue.
+
 The host owns:
 
 - process or sidecar creation, environment allowlists, credentials, and updates;

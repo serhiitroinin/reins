@@ -76,6 +76,12 @@ adapter to settle. Events the adapter yields while settling are still durable:
 partial text and terminal tool states describe work that already happened and
 must precede the runtime-owned `turn-completed` event.
 
+Cancellation has three ordered boundaries: dispatch to the adapter, drain the
+provider turn, then persist and close the runtime terminal envelope. A session
+remains reserved through all three. External aborts use the same dispatch path,
+cancellation failures do not bypass the drain, and a session that finishes
+opening after cancellation is closed without running.
+
 ## Context sources
 
 Context sources are application-owned, turn-scoped snapshots. The runtime
@@ -118,6 +124,18 @@ generic payload. Products decide whether an intent is a transient follow-up, a
 durable draft, or a domain record. Provider-native same-turn steering,
 replacement turns, and compaction remain separately negotiated lifecycle
 features; queueing a message never implies that an adapter can steer.
+
+`HarnessCapabilities.steering` declares `same-turn` and/or
+`replacement-turn`; it never declares waiting. `HarnessRun.followUp` requires
+the caller's expected active turn id. Same-turn steering reuses the original
+run, turn, signal, context, and tool host and sends only the new untrusted
+input. It emits no second runtime start or intermediate completion.
+Replacement steering prepares the fresh turn context before touching the old
+provider turn, rechecks admission, then crosses the full cancellation, drain,
+and terminal boundary before calling `start` with new run and turn ids. A
+failed preparation leaves the original turn alive. Follow-up and Stop
+operations are serialized per run, and unknown provider failures become safe
+runtime errors.
 
 ## Tools
 
@@ -168,6 +186,9 @@ behavior can be added as namespaced controls without changing the runtime.
 The low-level module serializes initialize, thread, resume, and turn requests,
 but only from host-supplied product identity, sandbox, approval, model, effort,
 image, and generic control decisions.
+It also exposes App Server's explicit `turn/steer` request. The complete
+adapter keeps the provider turn id private and applies it as
+`expectedTurnId`, while the runtime preconditions the public harness turn id.
 Its turn-scoped event consumer translates App Server notifications into
 `HarnessAdapterEvent`, `HarnessLimitSnapshot`, and terminal turn outcomes. It
 reconciles streamed message deltas with the authoritative completed message,
@@ -220,6 +241,9 @@ next turn. A provider that does not reach that boundary within the configured
 grace period has its connection retired rather than reused. A rejected turn
 send retires the stream immediately too, because provider work may already
 have started and its delayed output cannot be attributed to another turn.
+Same-turn follow-ups are serialized behind the initial send, contain no repeat
+of the prepared application context, and are refused while a provider
+interaction is pending.
 
 A long-lived connection is pinned to the account, model, effort, run settings,
 and provider configuration from its first turn. A later turn that changes that
@@ -242,6 +266,13 @@ new/load-session lifecycle, prompts, permission round trips, cancellation,
 checkpoints, event normalization, and reconnect after process closure. Its
 public types remain SDK-free, and the host owns the process, credentials,
 environment, roots, MCP servers, and transport implementation.
+
+ACP v1 has no portable active-prompt steer operation. Its declared strategy is
+therefore `replacement-turn`: the core runtime prepares the replacement, asks
+the adapter to cancel and settle permissions, drains the prompt, seals the old
+envelope, and only then begins the next prompt. A native OpenCode, Grok, or
+future adapter may declare stronger behavior after its own conformance tests;
+the ACP label alone never implies it.
 
 Negotiated ACP modes and config options are exposed to a host controller rather
 than assigned universal meaning. A Claude mode, Codex collaboration mode, and
