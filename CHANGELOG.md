@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.17
+
+### Patch Changes
+
+- 1ebe32e: Add a non-Fold incident-triage terminal reference host covering discovery,
+  domain context, validated tools, separate consent boundaries, resume, and
+  cancellation.
+
 ## 0.1.0-next.16
 
 ### Patch Changes
