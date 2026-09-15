@@ -490,6 +490,161 @@ describe("harness runtime", () => {
     expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 
+  test("closes a session that finishes opening after cancellation without starting it", async () => {
+    let finishOpening!: () => void;
+    const opening = new Promise<void>((resolve) => { finishOpening = resolve; });
+    let opened = false;
+    let ran = false;
+    let closed = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opened = true;
+        await opening;
+        return {
+          async *run() { ran = true; },
+          async close() { closed = true; },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    while (!opened) await Bun.sleep(0);
+
+    let cancellationSettled = false;
+    const cancellation = run.cancel().finally(() => { cancellationSettled = true; });
+    await Bun.sleep(0);
+    expect(cancellationSettled).toBe(false);
+
+    finishOpening();
+    await cancellation;
+
+    expect(ran).toBe(false);
+    expect(closed).toBe(true);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).map((event) => event.payload.kind)).toEqual(["turn-started", "turn-completed"]);
+  });
+
+  test("dispatches adapter cancellation when a supplied controller aborts externally", async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            yield { kind: "assistant-text", text: "waiting" };
+            await waiting;
+          },
+          async cancel() {
+            cancellations += 1;
+            release();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { controller });
+    const events = collect(run.events);
+    await Bun.sleep(0);
+
+    controller.abort();
+
+    expect(await run.done).toBe("interrupted");
+    expect(cancellations).toBe(1);
+    expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
+  test("waits for provider drain when adapter cancellation rejects", async () => {
+    let releaseDrain!: () => void;
+    const draining = new Promise<void>((resolve) => { releaseDrain = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() { await draining; },
+          async cancel() { throw new Error("provider cancellation failed"); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await Bun.sleep(0);
+
+    let cancellationSettled = false;
+    const cancellation = run.cancel()
+      .finally(() => { cancellationSettled = true; });
+    await Bun.sleep(0);
+    expect(cancellationSettled).toBe(false);
+
+    releaseDrain();
+    await expect(cancellation).rejects.toThrow("provider cancellation failed");
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
+  test("keeps a cancelled session reserved until its terminal event is persisted", async () => {
+    let releaseProvider!: () => void;
+    const providerWaiting = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    let terminalReached!: () => void;
+    const terminalStarted = new Promise<void>((resolve) => { terminalReached = resolve; });
+    let persistTerminal!: () => void;
+    const terminalWaiting = new Promise<void>((resolve) => { persistTerminal = resolve; });
+    let invocations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            invocations += 1;
+            if (invocations === 1) await providerWaiting;
+          },
+          async cancel() { releaseProvider(); },
+        };
+      },
+    };
+    const persistence = createMemoryPersistence();
+    const append = persistence.events.append.bind(persistence.events);
+    persistence.events.append = async (event) => {
+      if (event.runId === "first-run" && event.payload.kind === "turn-completed") {
+        terminalReached();
+        await terminalWaiting;
+      }
+      return append(event);
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const first = harness.start(request, { runId: "first-run", turnId: "first-turn" });
+    const firstEvents = collect(first.events);
+    await Bun.sleep(0);
+    const cancellation = first.cancel();
+    await terminalStarted;
+
+    const overlapping = harness.start(request, { runId: "overlap-run", turnId: "overlap-turn" });
+    const overlappingEvents = await collect(overlapping.events);
+    expect(await overlapping.done).toBe("error");
+    expect(overlappingEvents.find((event) => event.payload.kind === "error")?.payload).toMatchObject({
+      kind: "error",
+      code: "SESSION_BUSY",
+    });
+
+    persistTerminal();
+    await cancellation;
+    await firstEvents;
+
+    const next = harness.start(request, { runId: "next-run", turnId: "next-turn" });
+    await collect(next.events);
+    expect(await next.done).toBe("completed");
+    expect(invocations).toBe(2);
+  });
+
   test("rejects empty host turn identifiers synchronously", () => {
     const harness = createHarness({ adapters: [], persistence: createMemoryPersistence() });
     expect(() => harness.start(request, { runId: "" })).toThrow("a host-supplied runId cannot be empty");

@@ -48,8 +48,18 @@ export interface HarnessAdapterRunRequest extends HarnessRunRequest {
 }
 
 export interface HarnessAdapterSession {
+  /**
+   * Yield only events owned by this invocation's `runId` and `turnId`.
+   * Once the iterable settles, the adapter must not surface late events from
+   * this turn through a later invocation.
+   */
   run(request: HarnessAdapterRunRequest): AsyncIterable<HarnessAdapterEvent>;
   respond?(interactionId: string, response: HarnessInteractionResponse): Promise<void>;
+  /**
+   * Dispatch cancellation and resolve only after the active `run()` iterable
+   * has drained. An adapter that cannot isolate late events must retire its
+   * provider session before resolving.
+   */
   cancel?(): Promise<void>;
   checkpoint?(): Promise<string | null> | string | null;
   close?(): Promise<void>;
@@ -226,6 +236,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const tools = options.tools ?? emptyToolHost;
   const contextSources = options.contextSources ?? [];
   const opened = new Map<string, Promise<ManagedSession>>();
+  const reserved = new Set<string>();
   let closed = false;
 
   const adapterFor = (id: string): HarnessAdapter => {
@@ -308,13 +319,35 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         throw new Error("a host-supplied turnId cannot be empty");
       }
       const adapter = adapterFor(request.adapterId);
+      const sessionId = harnessSessionKey(request.session, adapter.id);
       const runId = startOptions.runId ?? createId();
       const turnId = startOptions.turnId ?? createId();
       const controller = startOptions.controller ?? new AbortController();
       const queue = new AsyncQueue<HarnessEvent>();
       let managed: ManagedSession | null = null;
+      let opening: Promise<ManagedSession> | null = null;
+      let ownsReservation = false;
       let stopping = false;
       let cancelWork: Promise<void> | null = null;
+      let cancellationDispatch: Promise<void> | null = null;
+
+      const dispatchCancellation = (): Promise<void> => {
+        cancellationDispatch ??= (async () => {
+          if (managed?.session.cancel) await managed.session.cancel();
+        })();
+        return cancellationDispatch;
+      };
+
+      const onAbort = (): void => {
+        stopping = true;
+        // An externally-owned controller follows the exact same adapter
+        // cancellation path as `run.cancel()`. The public cancel method can
+        // still observe a dispatch failure; the listener itself must not
+        // create an unhandled rejection.
+        void dispatchCancellation().catch(() => undefined);
+      };
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      if (controller.signal.aborted) onAbort();
 
       const emit = async (payload: HarnessEventPayload): Promise<void> => {
         const event = await options.persistence.events.append({
@@ -338,7 +371,22 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             ...(request.accountId ? { accountId: request.accountId } : {}),
           });
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
-          managed = await open(request.session, adapter);
+          if (reserved.has(sessionId)) {
+            throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
+          }
+          reserved.add(sessionId);
+          ownsReservation = true;
+          opening = open(request.session, adapter);
+          managed = await opening;
+          if (controller.signal.aborted) {
+            if (opened.get(sessionId) === opening) opened.delete(sessionId);
+            try {
+              await managed.session.close?.();
+            } finally {
+              managed = null;
+            }
+            throw new HarnessAdapterInterruptedError();
+          }
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
           const context = startOptions.context ?? await (async () => {
@@ -354,6 +402,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             > = options.onContextError ? { onError: options.onContextError } : {};
             return prepareHarnessContext(contextSources, contextRequest, contextOptions);
           })();
+          if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           const toolContext = {
             session: request.session,
             adapterId: adapter.id,
@@ -389,7 +438,6 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             await emit({ kind: "error", ...failure });
           }
         } finally {
-          if (managed) managed.active = false;
           try {
             await emit({
               kind: "turn-completed",
@@ -400,6 +448,9 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             // A failed event store must reject `done`, but never leave readers
             // waiting on a queue no producer can write to again.
             queue.close();
+            if (managed) managed.active = false;
+            if (ownsReservation) reserved.delete(sessionId);
+            controller.signal.removeEventListener("abort", onAbort);
           }
         }
         return status;
@@ -414,8 +465,17 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           cancelWork ??= (async () => {
             stopping = true;
             if (!controller.signal.aborted) controller.abort();
-            if (managed?.session.cancel) await managed.session.cancel();
+            let cancellationError: unknown;
+            try {
+              await dispatchCancellation();
+            } catch (error) {
+              cancellationError = error;
+            }
+            // A cancellation dispatch failure cannot release the session
+            // early. Wait for the provider iterable and terminal event to
+            // drain before surfacing it to the caller.
             await done;
+            if (cancellationError !== undefined) throw cancellationError;
           })();
           return cancelWork;
         },
