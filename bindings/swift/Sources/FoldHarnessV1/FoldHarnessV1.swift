@@ -67,7 +67,7 @@ public struct FHCapabilities: Codable {
     public let extensions: [String: FHCancel]?
     public let filesystem: FHCancel
     public let images: FHCancel
-    public let interactions: FHCancel
+    public let interactions: FHInteractions
     public let network: FHCancel
     public let plans: FHCancel
     public let resume: FHCancel
@@ -95,7 +95,7 @@ public struct FHCapabilities: Codable {
         case usage = "usage"
     }
 
-    public init(cancel: FHCancel, extensions: [String: FHCancel]?, filesystem: FHCancel, images: FHCancel, interactions: FHCancel, network: FHCancel, plans: FHCancel, resume: FHCancel, shell: FHCancel, steering: FHSteering?, subagents: FHCancel, thinking: FHCancel, tools: FHCancel, usage: FHCancel) {
+    public init(cancel: FHCancel, extensions: [String: FHCancel]?, filesystem: FHCancel, images: FHCancel, interactions: FHInteractions, network: FHCancel, plans: FHCancel, resume: FHCancel, shell: FHCancel, steering: FHSteering?, subagents: FHCancel, thinking: FHCancel, tools: FHCancel, usage: FHCancel) {
         self.cancel = cancel
         self.extensions = extensions
         self.filesystem = filesystem
@@ -193,6 +193,33 @@ public enum FHSupport: String, Codable {
     case experimental = "experimental"
     case stable = "stable"
     case unsupported = "unsupported"
+}
+
+// MARK: - FHInteractions
+public struct FHInteractions: Codable {
+    public let constraints: [String: FHProtocolSchema]?
+    public let description: String?
+    public let recovery: FHRecovery?
+    public let support: FHSupport
+
+    public enum CodingKeys: String, CodingKey {
+        case constraints = "constraints"
+        case description = "description"
+        case recovery = "recovery"
+        case support = "support"
+    }
+
+    public init(constraints: [String: FHProtocolSchema]?, description: String?, recovery: FHRecovery?, support: FHSupport) {
+        self.constraints = constraints
+        self.description = description
+        self.recovery = recovery
+        self.support = support
+    }
+}
+
+public enum FHRecovery: String, Codable {
+    case liveOnly = "live-only"
+    case providerReplay = "provider-replay"
 }
 
 // MARK: - FHSteering
@@ -609,6 +636,7 @@ public struct FHPayload: Codable {
     public let outputAppend: String?
     public let paths: [String]?
     public let payload: FHProtocolSchema?
+    public let reason: String?
     public let response: FHResponse?
     public let retryable: Bool?
     public let status: FHPayloadStatus?
@@ -638,6 +666,7 @@ public struct FHPayload: Codable {
         case outputAppend = "outputAppend"
         case paths = "paths"
         case payload = "payload"
+        case reason = "reason"
         case response = "response"
         case retryable = "retryable"
         case status = "status"
@@ -650,7 +679,7 @@ public struct FHPayload: Codable {
         case usage = "usage"
     }
 
-    public init(accountID: String?, code: String?, command: String?, detail: String?, error: String?, exitCode: Int?, extensions: [String: FHProtocolSchema]?, interaction: FHInteraction?, interactionID: String?, kind: String, message: String?, model: String?, name: String?, namespace: String?, outputAppend: String?, paths: [String]?, payload: FHProtocolSchema?, response: FHResponse?, retryable: Bool?, status: FHPayloadStatus?, steps: [FHStepElement]?, text: String?, title: String?, toolID: String?, toolKind: String?, truncated: Bool?, usage: FHUsage?) {
+    public init(accountID: String?, code: String?, command: String?, detail: String?, error: String?, exitCode: Int?, extensions: [String: FHProtocolSchema]?, interaction: FHInteraction?, interactionID: String?, kind: String, message: String?, model: String?, name: String?, namespace: String?, outputAppend: String?, paths: [String]?, payload: FHProtocolSchema?, reason: String?, response: FHResponse?, retryable: Bool?, status: FHPayloadStatus?, steps: [FHStepElement]?, text: String?, title: String?, toolID: String?, toolKind: String?, truncated: Bool?, usage: FHUsage?) {
         self.accountID = accountID
         self.code = code
         self.command = command
@@ -668,6 +697,7 @@ public struct FHPayload: Codable {
         self.outputAppend = outputAppend
         self.paths = paths
         self.payload = payload
+        self.reason = reason
         self.response = response
         self.retryable = retryable
         self.status = status

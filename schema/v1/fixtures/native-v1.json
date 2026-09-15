@@ -2,7 +2,7 @@
   "capabilities": {
     "resume": { "support": "stable" },
     "cancel": { "support": "stable" },
-    "interactions": { "support": "experimental" },
+    "interactions": { "support": "experimental", "recovery": "provider-replay" },
     "tools": { "support": "stable" },
     "images": { "support": "stable" },
     "thinking": { "support": "stable" },

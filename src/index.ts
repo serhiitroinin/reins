@@ -4,6 +4,7 @@ export * from "./wire.js";
 export * from "./profile.js";
 export * from "./context.js";
 export * from "./runtime.js";
+export * from "./interactions.js";
 export * from "./turn-queue.js";
 export * from "./stores.js";
 export * from "./tools.js";

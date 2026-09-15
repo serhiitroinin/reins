@@ -178,6 +178,13 @@ function validateCapabilities(value: HarnessCapabilities): void {
   for (const key of Object.keys(value.extensions ?? {})) {
     check(key.includes(":"), `capability extension must use a namespaced key: ${key}`);
   }
+  if (value.interactions.recovery !== undefined) {
+    check(
+      value.interactions.recovery === "live-only"
+        || value.interactions.recovery === "provider-replay",
+      "invalid interaction recovery mode",
+    );
+  }
   if (value.steering) {
     check(
       ["stable", "experimental", "unsupported"].includes(value.steering.support),

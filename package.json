@@ -70,6 +70,11 @@
       "bun": "./src/runtime.ts",
       "import": "./dist/runtime.js"
     },
+    "./interactions": {
+      "types": "./src/interactions.ts",
+      "bun": "./src/interactions.ts",
+      "import": "./dist/interactions.js"
+    },
     "./turn-queue": {
       "types": "./src/turn-queue.ts",
       "bun": "./src/turn-queue.ts",
