@@ -72,6 +72,11 @@
       "bun": "./src/context.ts",
       "import": "./dist/context.js"
     },
+    "./mcp": {
+      "types": "./src/mcp.ts",
+      "bun": "./src/mcp.ts",
+      "import": "./dist/mcp.js"
+    },
     "./transports/ndjson": {
       "types": "./src/transports/ndjson.ts",
       "bun": "./src/transports/ndjson.ts",
