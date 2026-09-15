@@ -637,6 +637,60 @@ describe("ACP v1 adapter", () => {
     await runtime.close();
   });
 
+  test("keeps tool presentation extensions JSON-safe and bounded", async () => {
+    const state = fakeState();
+    const secret = "oversized-extension-secret";
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const agent = basicAgent(state, {
+      async onPrompt({ params, client }) {
+        const notify = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, {
+          sessionId: params.sessionId,
+          update,
+        });
+        await notify({
+          sessionUpdate: "tool_call",
+          toolCallId: "bounded-tool",
+          title: "Bound extensions",
+          status: "in_progress",
+        });
+        await notify({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "bounded-tool",
+          status: "in_progress",
+        });
+        await notify({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "bounded-tool",
+          status: "completed",
+        });
+        return { stopReason: "end_turn" };
+      },
+    });
+    const adapter = createAcpV1Adapter({
+      id: "acp-extension-bounds",
+      eventTextLimit: 64,
+      session: () => ({ cwd: "/tmp/acp-extension-bounds" }),
+      connect: () => byteConnection(agent, state),
+      presentTool(snapshot) {
+        if (snapshot.phase === "start") return { extensions: { "example:safe": true } };
+        if (snapshot.phase === "update") return { extensions: cyclic };
+        return { extensions: { "example:unsafe": secret.repeat(10) } };
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const result = await finish(runtime, runRequest(adapter.id));
+    expect(result.status).toBe("completed");
+    const toolEvents = result.events.filter((event) => event.payload.kind.startsWith("tool-"));
+    expect(toolEvents[0]?.payload).toMatchObject({ extensions: { "example:safe": true } });
+    expect(toolEvents[1]?.payload).toMatchObject({ truncated: true });
+    expect(toolEvents[2]?.payload).toMatchObject({ truncated: true });
+    expect(toolEvents[1]?.payload.extensions).toBeUndefined();
+    expect(toolEvents[2]?.payload.extensions).toBeUndefined();
+    expect(JSON.stringify(result.events)).not.toContain(secret);
+    await runtime.close();
+  });
+
   test("reconnects with session/load after an ACP process exits between turns", async () => {
     const state = fakeState();
     let connectionCount = 0;

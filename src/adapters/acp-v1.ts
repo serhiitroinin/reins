@@ -293,7 +293,7 @@ export interface AcpV1AdapterOptions {
   ): Promise<void> | void;
   /** Bound an ACP agent that acknowledges cancellation but never ends the prompt. */
   cancelTimeoutMs?: number;
-  /** Maximum persisted string length from ACP display fields or a host presentation. */
+  /** Maximum persisted string length and host-extension JSON byte size from one display field. */
   eventTextLimit?: number;
   /** Maximum assistant and thought text persisted across one turn. */
   turnTextLimit?: number;
