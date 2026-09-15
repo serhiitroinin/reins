@@ -1142,9 +1142,11 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             }),
           ]);
           if (timer) clearTimeout(timer);
-          if (outcome === "timeout") {
-            await closeTransport(new HarnessAdapterInterruptedError()).catch(() => undefined);
-          }
+          // ACP updates identify only the session, not the prompt that
+          // produced them. Retire every cancelled transport before another
+          // turn can load the same session so a delayed update from the old
+          // prompt cannot be attributed to its replacement.
+          await closeTransport(new HarnessAdapterInterruptedError()).catch(() => undefined);
         },
 
         checkpoint: () => checkpoint,

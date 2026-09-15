@@ -115,7 +115,7 @@ function fakeConnection(
       });
       return;
     }
-    if (scenario === "cancel") {
+    if (scenario === "cancel" || scenario === "steering") {
       assistant(CONFORMANCE.waitingText);
       return;
     }
@@ -175,6 +175,16 @@ function fakeConnection(
     if (message.method === "turn/start") {
       answer(message.id, { turn: { id: "codex-turn" } });
       queueMicrotask(() => afterTurnStarts(params));
+      return;
+    }
+    if (message.method === "turn/steer" && scenario === "steering") {
+      answer(message.id, {});
+      const input = Array.isArray(params.input) ? params.input : [];
+      const followUp = input.map(object).find((entry) => entry.type === "text");
+      queueMicrotask(() => {
+        assistant(string(followUp?.text) || "follow-up-missing");
+        complete();
+      });
       return;
     }
     if (message.method === "turn/interrupt") {

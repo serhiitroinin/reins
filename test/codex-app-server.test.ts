@@ -7,6 +7,7 @@ import {
   codexThreadResumeParams,
   codexThreadStartParams,
   codexTurnStartParams,
+  codexTurnSteerParams,
   codexTurnSettingOverrides,
   createCodexAppServerClient,
   openCodexTurn,
@@ -131,6 +132,17 @@ describe("Codex App Server client", () => {
       threadId: "thread-2",
       input: [{ type: "text", text: "standard", text_elements: [] }],
     });
+    expect(codexTurnSteerParams({
+      threadId: "thread-2",
+      expectedTurnId: "turn-2",
+      input: [{ type: "text", text: "follow up", text_elements: [] }],
+      clientUserMessageId: "message-2",
+    })).toEqual({
+      threadId: "thread-2",
+      expectedTurnId: "turn-2",
+      input: [{ type: "text", text: "follow up", text_elements: [] }],
+      clientUserMessageId: "message-2",
+    });
   });
 
   test("maps model-specific effort and Fast into generic controls", () => {
@@ -226,6 +238,21 @@ describe("Codex App Server client", () => {
     });
     fx.answer(3, { turn: { id: "turn-1" } });
     expect(await opening).toBe("thread-1");
+  });
+
+  test("sends Codex steering through the explicit turn/steer method", async () => {
+    const fx = fixture();
+    const steering = fx.client.steerTurn(codexTurnSteerParams({
+      threadId: "thread-1",
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "more", text_elements: [] }],
+    }));
+    expect(fx.message(0)).toMatchObject({
+      method: "turn/steer",
+      params: { threadId: "thread-1", expectedTurnId: "turn-1" },
+    });
+    fx.answer(0, {});
+    await steering;
   });
 
   test("refuses unhandled server requests instead of hanging", async () => {

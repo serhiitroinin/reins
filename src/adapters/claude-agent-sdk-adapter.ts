@@ -27,6 +27,7 @@ import {
   HarnessAdapterInterruptedError,
   type HarnessAdapter,
   type HarnessAdapterEvent,
+  type HarnessAdapterFollowUpRequest,
   type HarnessAdapterRunRequest,
   type HarnessAdapterSession,
 } from "../runtime.js";
@@ -128,6 +129,11 @@ export interface ClaudeAgentSdkAdapterOptions {
   mapInput?(
     request: HarnessAdapterRunRequest,
   ): Promise<ClaudeAgentSdkTurnInput> | ClaudeAgentSdkTurnInput;
+  /** Map input injected into an already-running provider turn. */
+  mapFollowUp?(
+    request: HarnessAdapterFollowUpRequest,
+    turn: HarnessAdapterRunRequest,
+  ): Promise<ClaudeAgentSdkTurnInput> | ClaudeAgentSdkTurnInput;
   /** Decide immediately or defer a provider permission request to the host UI. */
   authorizeTool?(
     request: ClaudeAgentSdkToolRequest,
@@ -151,6 +157,7 @@ export interface ClaudeAgentSdkAdapterOptions {
 }
 
 export interface ClaudeAgentSdkAdapterSession extends HarnessAdapterSession {
+  steer(request: HarnessAdapterFollowUpRequest): Promise<void>;
   cancel(): Promise<void>;
   checkpoint(): string | null;
   close(): Promise<void>;
@@ -177,6 +184,13 @@ export const CLAUDE_AGENT_SDK_CAPABILITIES: HarnessCapabilities = {
   shell: unsupported,
   filesystem: unsupported,
   network: unsupported,
+  steering: {
+    support: "stable",
+    strategies: ["same-turn"],
+    preferred: "same-turn",
+    description: "Injects another user message into the active Claude Agent SDK stream.",
+    constraints: { whileInteractionPending: false },
+  },
   extensions: {
     [CLAUDE_AGENT_SDK_NAMESPACE]: { support: "stable" },
     "anthropic:compaction": { support: "stable" },
@@ -261,6 +275,21 @@ function defaultTurnInput(request: HarnessAdapterRunRequest): ClaudeAgentSdkTurn
   };
 }
 
+function defaultFollowUpInput(
+  request: HarnessAdapterFollowUpRequest,
+  turn: HarnessAdapterRunRequest,
+): ClaudeAgentSdkTurnInput {
+  return {
+    runId: request.runId,
+    turnId: request.turnId,
+    input: request.input,
+    // Same-turn follow-ups inherit the context already installed for the
+    // active turn. Repeating it would duplicate untrusted workspace data.
+    context: { sources: [], unavailable: [] },
+    ...(turn.configuration ? { configuration: turn.configuration } : {}),
+  };
+}
+
 function applicationToolFailure(code: string, message: string): HarnessToolResult {
   return { content: [{ type: "text", text: message }], isError: true, code };
 }
@@ -300,6 +329,7 @@ interface ActiveTurn {
   publicFailure: ClaudeAgentSdkPublicError | null;
   finished: boolean;
   cancelling: Promise<void> | null;
+  sendTail: Promise<void>;
 }
 
 function canonical(value: unknown, seen = new Set<object>()): string {
@@ -400,6 +430,9 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           value.settle({ behavior: "deny", message: "The turn ended before the interaction was answered." });
         }
       };
+
+      const hasPending = (turn: ActiveTurn): boolean =>
+        [...pending.values()].some((value) => value.turn === turn);
 
       const tools: HarnessTurnTools = {
         list(): readonly HarnessToolDescriptor[] {
@@ -570,6 +603,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             publicFailure: null,
             finished: false,
             cancelling: null,
+            sendTail: Promise.resolve(),
           };
           const consumer = createClaudeAgentSdkEventConsumer({
             ...options.events,
@@ -645,6 +679,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               throw error;
             }
           })();
+          turn.sendTail = execute;
           void execute.catch((error: unknown) => {
             if (turn.finished) return;
             turn.finished = true;
@@ -677,6 +712,97 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             turn.finished = true;
             if (active === turn) active = null;
           }
+        },
+        async steer(followUp) {
+          const turn = active;
+          if (
+            !turn
+            || turn.finished
+            || turn.cancelling
+            || turn.request.signal.aborted
+            || followUp.signal.aborted
+          ) {
+            throw new HarnessAdapterError(
+              "CLAUDE_TURN_NOT_STEERABLE",
+              "Claude is not ready to accept a follow-up for this turn.",
+              true,
+            );
+          }
+          if (
+            followUp.expectedTurnId !== turn.request.turnId
+            || followUp.turnId !== turn.request.turnId
+            || followUp.runId !== turn.request.runId
+          ) {
+            throw new HarnessAdapterError("CLAUDE_STALE_TURN", "The active Claude turn changed before the follow-up was sent.");
+          }
+          if (hasPending(turn)) {
+            throw new HarnessAdapterError(
+              "CLAUDE_INTERACTION_PENDING",
+              "Answer the pending Claude request before sending a follow-up.",
+              true,
+            );
+          }
+          const sending = turn.sendTail.then(async () => {
+            if (
+              active !== turn
+              || turn.finished
+              || turn.cancelling
+              || turn.request.signal.aborted
+              || followUp.signal.aborted
+              || hasPending(turn)
+            ) {
+              throw new HarnessAdapterError(
+                "CLAUDE_TURN_NOT_STEERABLE",
+                "Claude is not ready to accept a follow-up for this turn.",
+                true,
+              );
+            }
+            const opened = connection;
+            if (!opened) {
+              throw new HarnessAdapterError(
+                "CLAUDE_TURN_NOT_STEERABLE",
+                "Claude is not ready to accept a follow-up for this turn.",
+                true,
+              );
+            }
+            const input = await (
+              options.mapFollowUp?.(followUp, turn.request)
+              ?? defaultFollowUpInput(followUp, turn.request)
+            );
+            if (
+              active !== turn
+              || turn.finished
+              || turn.cancelling
+              || turn.request.signal.aborted
+              || followUp.signal.aborted
+              || hasPending(turn)
+            ) {
+              throw new HarnessAdapterError(
+                "CLAUDE_TURN_NOT_STEERABLE",
+                "Claude is not ready to accept a follow-up for this turn.",
+                true,
+              );
+            }
+            try {
+              await opened.send(input);
+            } catch (error) {
+              // A rejected send may already have reached the provider. Retire
+              // this connection so its stream can never be assigned to a
+              // later runtime turn.
+              streamFailure = error;
+              streamEnded = true;
+              if (connection === opened) connection = null;
+              connecting = null;
+              turn.finished = true;
+              turn.consumer.end("failed");
+              turn.queue.close();
+              turn.settled.resolve({ kind: "transport", error });
+              void Promise.resolve(opened.close()).catch(() => undefined);
+              throw error;
+            }
+          });
+          turn.sendTail = sending;
+          await sending;
         },
         async respond(interactionId, response) {
           const held = pending.get(interactionId);

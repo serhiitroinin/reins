@@ -57,6 +57,13 @@ export const ACP_V1_CAPABILITIES: HarnessCapabilities = {
   shell: unsupported,
   filesystem: unsupported,
   network: unsupported,
+  steering: {
+    support: "stable",
+    strategies: ["replacement-turn"],
+    preferred: "replacement-turn",
+    description: "ACP v1 has no native steer method; the runtime prepares, cancels, drains, retires the transport, and reloads a replacement turn.",
+    constraints: { requiresAgentCapability: "loadSession" },
+  },
   extensions: {
     [ACP_V1_NAMESPACE]: { support: "stable" },
   },

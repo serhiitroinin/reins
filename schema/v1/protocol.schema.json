@@ -40,6 +40,21 @@
       },
       "required": ["support"]
     },
+    "HarnessSteeringCapability": {
+      "type": "object",
+      "properties": {
+        "support": { "enum": ["stable", "experimental", "unsupported"] },
+        "description": { "type": "string" },
+        "constraints": { "$ref": "#/$defs/JsonObject" },
+        "strategies": {
+          "type": "array",
+          "items": { "enum": ["same-turn", "replacement-turn"] },
+          "uniqueItems": true
+        },
+        "preferred": { "enum": ["same-turn", "replacement-turn"] }
+      },
+      "required": ["support", "strategies"]
+    },
     "HarnessCapabilities": {
       "type": "object",
       "properties": {
@@ -55,6 +70,7 @@
         "shell": { "$ref": "#/$defs/HarnessCapability" },
         "filesystem": { "$ref": "#/$defs/HarnessCapability" },
         "network": { "$ref": "#/$defs/HarnessCapability" },
+        "steering": { "$ref": "#/$defs/HarnessSteeringCapability" },
         "extensions": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/HarnessCapability" }

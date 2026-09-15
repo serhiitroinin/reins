@@ -57,6 +57,9 @@ pub struct Capabilities {
 
     pub shell: Cancel,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steering: Option<Steering>,
+
     pub subagents: Cancel,
 
     pub thinking: Cancel,
@@ -100,6 +103,32 @@ pub enum Support {
     Stable,
 
     Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Steering {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred: Option<Preferred>,
+
+    pub strategies: Vec<Preferred>,
+
+    pub support: Support,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Preferred {
+    #[serde(rename = "replacement-turn")]
+    ReplacementTurn,
+
+    #[serde(rename = "same-turn")]
+    SameTurn,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

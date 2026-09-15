@@ -20,6 +20,7 @@ export const conformanceCapabilities: HarnessCapabilities = {
   shell: unsupported,
   filesystem: unsupported,
   network: unsupported,
+  steering: { support: "stable", strategies: ["same-turn"], preferred: "same-turn" },
   extensions: { "conformance:fixture": { support: "stable" } },
 };
 
@@ -62,6 +63,7 @@ export function createConformanceFixture(options: {
           const current = scenario;
           let release: (() => void) | undefined;
           let interactionResponse: HarnessInteractionResponse | undefined;
+          let followUpText: string | undefined;
           const blocked = new Promise<void>((resolve) => { release = resolve; });
           const session: HarnessAdapterSession = {
             async *run(request) {
@@ -74,6 +76,12 @@ export function createConformanceFixture(options: {
               if (current === "cancel") {
                 yield { kind: "assistant-text", text: CONFORMANCE.waitingText };
                 await blocked;
+                return;
+              }
+              if (current === "steering") {
+                yield { kind: "assistant-text", text: CONFORMANCE.waitingText };
+                await blocked;
+                yield { kind: "assistant-text", text: followUpText ?? "follow-up-missing" };
                 return;
               }
               if (current === "interaction") {
@@ -108,6 +116,12 @@ export function createConformanceFixture(options: {
             respond(interactionId, response) {
               if (interactionId !== CONFORMANCE.interaction.id) throw new Error("unexpected interaction id");
               interactionResponse = response;
+              release?.();
+              return Promise.resolve();
+            },
+            steer(request) {
+              const input = request.input.find((entry) => entry.type === "text");
+              followUpText = input?.type === "text" ? input.text : undefined;
               release?.();
               return Promise.resolve();
             },

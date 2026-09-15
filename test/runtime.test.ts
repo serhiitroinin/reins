@@ -490,6 +490,805 @@ describe("harness runtime", () => {
     expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 
+  test("closes a session that finishes opening after cancellation without starting it", async () => {
+    let finishOpening!: () => void;
+    const opening = new Promise<void>((resolve) => { finishOpening = resolve; });
+    let opened = false;
+    let ran = false;
+    let closed = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opened = true;
+        await opening;
+        return {
+          async *run() { ran = true; },
+          async close() { closed = true; },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    while (!opened) await Bun.sleep(0);
+
+    let cancellationSettled = false;
+    const cancellation = run.cancel().finally(() => { cancellationSettled = true; });
+    await Bun.sleep(0);
+    expect(cancellationSettled).toBe(false);
+
+    finishOpening();
+    await cancellation;
+
+    expect(ran).toBe(false);
+    expect(closed).toBe(true);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).map((event) => event.payload.kind)).toEqual(["turn-started", "turn-completed"]);
+  });
+
+  test("dispatches adapter cancellation when a supplied controller aborts externally", async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            yield { kind: "assistant-text", text: "waiting" };
+            await waiting;
+          },
+          async cancel() {
+            cancellations += 1;
+            release();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { controller });
+    const events = collect(run.events);
+    await Bun.sleep(0);
+
+    controller.abort();
+
+    expect(await run.done).toBe("interrupted");
+    expect(cancellations).toBe(1);
+    expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
+  test("waits for provider drain when adapter cancellation rejects", async () => {
+    let releaseDrain!: () => void;
+    const draining = new Promise<void>((resolve) => { releaseDrain = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() { await draining; },
+          async cancel() { throw new Error("provider cancellation failed"); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await Bun.sleep(0);
+
+    let cancellationSettled = false;
+    const cancellation = run.cancel()
+      .finally(() => { cancellationSettled = true; });
+    await Bun.sleep(0);
+    expect(cancellationSettled).toBe(false);
+
+    releaseDrain();
+    await expect(cancellation).rejects.toThrow("provider cancellation failed");
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+  });
+
+  test("keeps a cancelled session reserved until its terminal event is persisted", async () => {
+    let releaseProvider!: () => void;
+    const providerWaiting = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    let terminalReached!: () => void;
+    const terminalStarted = new Promise<void>((resolve) => { terminalReached = resolve; });
+    let persistTerminal!: () => void;
+    const terminalWaiting = new Promise<void>((resolve) => { persistTerminal = resolve; });
+    let invocations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            invocations += 1;
+            if (invocations === 1) await providerWaiting;
+          },
+          async cancel() { releaseProvider(); },
+        };
+      },
+    };
+    const persistence = createMemoryPersistence();
+    const append = persistence.events.append.bind(persistence.events);
+    persistence.events.append = async (event) => {
+      if (event.runId === "first-run" && event.payload.kind === "turn-completed") {
+        terminalReached();
+        await terminalWaiting;
+      }
+      return append(event);
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const first = harness.start(request, { runId: "first-run", turnId: "first-turn" });
+    const firstEvents = collect(first.events);
+    await Bun.sleep(0);
+    const cancellation = first.cancel();
+    await terminalStarted;
+
+    const overlapping = harness.start(request, { runId: "overlap-run", turnId: "overlap-turn" });
+    const overlappingEvents = await collect(overlapping.events);
+    expect(await overlapping.done).toBe("error");
+    expect(overlappingEvents.find((event) => event.payload.kind === "error")?.payload).toMatchObject({
+      kind: "error",
+      code: "SESSION_BUSY",
+    });
+
+    persistTerminal();
+    await cancellation;
+    await firstEvents;
+
+    const next = harness.start(request, { runId: "next-run", turnId: "next-turn" });
+    await collect(next.events);
+    expect(await next.done).toBe("completed");
+    expect(invocations).toBe(2);
+  });
+
+  test("steers a declared same-turn follow-up without a second lifecycle envelope", async () => {
+    let ready = false;
+    let acceptFollowUp!: () => void;
+    const followedUp = new Promise<void>((resolve) => { acceptFollowUp = resolve; });
+    const observed: unknown[] = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"], preferred: "same-turn" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            ready = true;
+            yield { kind: "assistant-text", text: "before" };
+            await followedUp;
+            yield { kind: "assistant-text", text: "after" };
+          },
+          async steer(followUp) {
+            observed.push(followUp);
+            acceptFollowUp();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { runId: "same-run", turnId: "same-turn" });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    const result = await run.followUp({
+      expectedTurnId: "same-turn",
+      input: [{ type: "text", text: "more" }],
+      metadata: { source: "queue" },
+    });
+
+    expect(result).toEqual({ strategy: "same-turn", run });
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({
+      expectedTurnId: "same-turn",
+      runId: "same-run",
+      turnId: "same-turn",
+      input: [{ type: "text", text: "more" }],
+      metadata: { source: "queue" },
+    });
+    expect(await run.done).toBe("completed");
+    expect((await events).map((event) => event.payload.kind)).toEqual([
+      "turn-started",
+      "assistant-text",
+      "assistant-text",
+      "turn-completed",
+    ]);
+  });
+
+  test("refuses stale and unsupported follow-ups without cancelling the active turn", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    let steers = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async steer() { steers += 1; },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { turnId: "current-turn" });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    await expect(run.followUp({
+      expectedTurnId: "older-turn",
+      input: [{ type: "text", text: "stale" }],
+    })).rejects.toMatchObject({ code: "STALE_TURN" });
+    await expect(run.followUp({
+      expectedTurnId: "current-turn",
+      input: [{ type: "text", text: "unsupported" }],
+    })).rejects.toMatchObject({ code: "FOLLOW_UP_UNSUPPORTED" });
+    expect(steers).toBe(0);
+    expect(cancellations).toBe(0);
+
+    await run.cancel();
+    await events;
+    expect(cancellations).toBe(1);
+  });
+
+  test("prepares a replacement before cancelling and admits it after the old terminal", async () => {
+    let firstReady = false;
+    let releaseFirst!: () => void;
+    const firstWaiting = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const order: string[] = [];
+    let invocations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"], preferred: "replacement-turn" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            invocations += 1;
+            order.push(`run:${invocations}`);
+            if (invocations === 1) {
+              firstReady = true;
+              await firstWaiting;
+            }
+          },
+          async cancel() {
+            order.push("cancel");
+            releaseFirst();
+          },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "test:context",
+        failureMode: "required",
+        prepare(contextRequest) {
+          order.push(`prepare:${contextRequest.turnId}`);
+          return { content: [{ type: "text", text: contextRequest.input[0]?.type === "text" ? contextRequest.input[0].text : "" }] };
+        },
+      }],
+    });
+    const first = harness.start(request, {
+      runId: "first-run",
+      turnId: "first-turn",
+      context: { sources: [], unavailable: [] },
+    });
+    const firstEvents = collect(first.events);
+    while (!firstReady) await Bun.sleep(0);
+
+    const result = await first.followUp({
+      expectedTurnId: "first-turn",
+      input: [{ type: "text", text: "replacement" }],
+    }, {
+      replacement: { runId: "second-run", turnId: "second-turn" },
+    });
+    const secondEvents = collect(result.run.events);
+
+    expect(result.strategy).toBe("replacement-turn");
+    expect(result.run).not.toBe(first);
+    expect(result.run.runId).toBe("second-run");
+    expect(result.run.turnId).toBe("second-turn");
+    expect(await first.done).toBe("interrupted");
+    expect(await result.run.done).toBe("completed");
+    expect(order).toEqual(["run:1", "prepare:second-turn", "cancel", "run:2"]);
+    expect((await firstEvents).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
+    expect((await secondEvents).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "completed" });
+  });
+
+  test("leaves the active turn alive when replacement preparation fails", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{ id: "test:required", failureMode: "required", prepare: () => null }],
+    });
+    const run = harness.start(request, {
+      turnId: "active-turn",
+      context: { sources: [], unavailable: [] },
+    });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    await expect(run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "replacement" }],
+    })).rejects.toMatchObject({ code: "CONTEXT_SOURCE_UNAVAILABLE" });
+    expect(cancellations).toBe(0);
+
+    await run.cancel();
+    await events;
+    expect(cancellations).toBe(1);
+  });
+
+  test("serializes stop ahead of a later same-turn follow-up", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let steers = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async steer() { steers += 1; },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { turnId: "active-turn" });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    const stopping = run.cancel();
+    const followUp = run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "too late" }],
+    });
+
+    await stopping;
+    await expect(followUp).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    await events;
+    expect(steers).toBe(0);
+  });
+
+  test("stop aborts an in-flight follow-up before waiting for its control slot", async () => {
+    let ready = false;
+    let steeringStarted!: () => void;
+    const started = new Promise<void>((resolve) => { steeringStarted = resolve; });
+    let releaseRun!: () => void;
+    const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await running; },
+          async steer({ signal }) {
+            steeringStarted();
+            await new Promise<void>((_resolve, reject) => {
+              const abort = () => reject(new HarnessAdapterInterruptedError());
+              signal.addEventListener("abort", abort, { once: true });
+              if (signal.aborted) abort();
+            });
+          },
+          async cancel() { releaseRun(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { turnId: "active-turn" });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    const followUp = run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "still pending" }],
+    });
+    await started;
+    const stopping = run.cancel();
+
+    await expect(followUp).rejects.toMatchObject({ code: "FOLLOW_UP_FAILED" });
+    await stopping;
+    expect(await run.done).toBe("interrupted");
+    await events;
+  });
+
+  test("an aborted replacement controller leaves the active turn untouched", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, {
+      turnId: "active-turn",
+      context: { sources: [], unavailable: [] },
+    });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+    const replacementController = new AbortController();
+    replacementController.abort();
+
+    await expect(run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "cancelled replacement" }],
+    }, {
+      replacement: {
+        controller: replacementController,
+        context: { sources: [], unavailable: [] },
+      },
+    })).rejects.toMatchObject({ code: "FOLLOW_UP_FAILED" });
+    expect(cancellations).toBe(0);
+
+    await run.cancel();
+    await events;
+    expect(cancellations).toBe(1);
+  });
+
+  test("refuses follow-ups after provider drain while checkpoint persistence is pending", async () => {
+    let persistStarted!: () => void;
+    const checkpointStarted = new Promise<void>((resolve) => { persistStarted = resolve; });
+    let finishPersistence!: () => void;
+    const persistence = new Promise<void>((resolve) => { finishPersistence = resolve; });
+    let steers = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() {},
+          async steer() { steers += 1; },
+          checkpoint: () => "checkpoint",
+        };
+      },
+    };
+    const store = createMemoryPersistence();
+    const save = store.sessions.save.bind(store.sessions);
+    store.sessions.save = async (session) => {
+      persistStarted();
+      await persistence;
+      await save(session);
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: store });
+    const run = harness.start(request, { turnId: "drained-turn" });
+    const events = collect(run.events);
+    await checkpointStarted;
+
+    await expect(run.followUp({
+      expectedTurnId: "drained-turn",
+      input: [{ type: "text", text: "too late" }],
+    })).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(steers).toBe(0);
+
+    finishPersistence();
+    expect(await run.done).toBe("completed");
+    await events;
+  });
+
+  test("refuses follow-ups after provider failure while error persistence is pending", async () => {
+    let providerEnded!: () => void;
+    const ended = new Promise<void>((resolve) => { providerEnded = resolve; });
+    let errorPersisting!: () => void;
+    const persistenceStarted = new Promise<void>((resolve) => { errorPersisting = resolve; });
+    let finishPersistence!: () => void;
+    const persistence = new Promise<void>((resolve) => { finishPersistence = resolve; });
+    let steers = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            providerEnded();
+            throw new Error("provider failed");
+          },
+          async steer() { steers += 1; },
+        };
+      },
+    };
+    const store = createMemoryPersistence();
+    const append = store.events.append.bind(store.events);
+    store.events.append = async (event) => {
+      if (event.payload.kind === "error") {
+        errorPersisting();
+        await persistence;
+      }
+      return append(event);
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: store });
+    const run = harness.start(request, { turnId: "failed-turn" });
+    const events = collect(run.events);
+    await ended;
+    await persistenceStarted;
+
+    await expect(run.followUp({
+      expectedTurnId: "failed-turn",
+      input: [{ type: "text", text: "too late" }],
+    })).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(steers).toBe(0);
+
+    finishPersistence();
+    expect(await run.done).toBe("error");
+    await events;
+  });
+
+  test("stop aborts replacement context preparation before waiting for control serialization", async () => {
+    let runReady = false;
+    let releaseRun!: () => void;
+    const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let preparationStarted!: () => void;
+    const preparing = new Promise<void>((resolve) => { preparationStarted = resolve; });
+    let replacementSignalAborted = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { runReady = true; await running; },
+          async cancel() { releaseRun(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "test:replacement",
+        failureMode: "required",
+        prepare({ signal }) {
+          preparationStarted();
+          return new Promise((resolve) => {
+            const abort = () => {
+              replacementSignalAborted = true;
+              resolve({ content: [] });
+            };
+            signal.addEventListener("abort", abort, { once: true });
+            if (signal.aborted) abort();
+          });
+        },
+      }],
+    });
+    const run = harness.start(request, {
+      turnId: "active-turn",
+      context: { sources: [], unavailable: [] },
+    });
+    const events = collect(run.events);
+    while (!runReady) await Bun.sleep(0);
+
+    const followUp = run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "replacement" }],
+    });
+    await preparing;
+    const stopping = run.cancel();
+
+    await expect(followUp).rejects.toMatchObject({ code: "FOLLOW_UP_FAILED" });
+    await stopping;
+    expect(replacementSignalAborted).toBe(true);
+    expect(await run.done).toBe("interrupted");
+    await events;
+  });
+
+  test("does not abort a replacement controller while cancelling the old turn", async () => {
+    let firstReady = false;
+    let releaseFirst!: () => void;
+    const firstWaiting = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let invocations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            invocations += 1;
+            if (invocations === 1) {
+              firstReady = true;
+              await firstWaiting;
+              throw new HarnessAdapterInterruptedError();
+            }
+            yield { kind: "assistant-text", text: "replacement" };
+          },
+          async cancel() { releaseFirst(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, {
+      turnId: "active-turn",
+      context: { sources: [], unavailable: [] },
+    });
+    const oldEvents = collect(run.events);
+    while (!firstReady) await Bun.sleep(0);
+    const replacementController = new AbortController();
+
+    const result = await run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "replace" }],
+    }, {
+      replacement: {
+        controller: replacementController,
+        context: { sources: [], unavailable: [] },
+      },
+    });
+    const replacementEvents = await collect(result.run.events);
+
+    expect(result.strategy).toBe("replacement-turn");
+    expect(replacementController.signal.aborted).toBe(false);
+    expect(await run.done).toBe("interrupted");
+    expect(await result.run.done).toBe("completed");
+    expect(replacementEvents.some((event) => event.payload.kind === "assistant-text"
+      && event.payload.text === "replacement")).toBe(true);
+    await oldEvents;
+  });
+
+  test("normalizes an unsafe cancellation failure during replacement", async () => {
+    let firstReady = false;
+    let releaseFirst!: () => void;
+    const firstWaiting = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            firstReady = true;
+            await firstWaiting;
+            throw new HarnessAdapterInterruptedError();
+          },
+          async cancel() {
+            releaseFirst();
+            throw new Error("raw-provider-secret");
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, {
+      turnId: "active-turn",
+      context: { sources: [], unavailable: [] },
+    });
+    const events = collect(run.events);
+    while (!firstReady) await Bun.sleep(0);
+
+    const followUp = run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "text", text: "replace" }],
+    }, {
+      replacement: { context: { sources: [], unavailable: [] } },
+    });
+
+    await expect(followUp).rejects.toMatchObject({
+      code: "FOLLOW_UP_FAILED",
+      message: "The adapter could not replace the active turn.",
+    });
+    await expect(followUp).rejects.not.toThrow("raw-provider-secret");
+    expect(await run.done).toBe("interrupted");
+    await events;
+  });
+
+  test("rejects reused replacement identity before preparing or cancelling", async () => {
+    const controller = new AbortController();
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    let preparations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "replacement",
+        failureMode: "required",
+        prepare() {
+          preparations += 1;
+          return { content: [] };
+        },
+      }],
+    });
+    const run = harness.start(request, {
+      runId: "active-run",
+      turnId: "active-turn",
+      controller,
+      context: { sources: [], unavailable: [] },
+    });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    const attempts = [
+      { runId: "active-run" },
+      { turnId: "active-turn" },
+      { controller },
+    ];
+    for (const replacement of attempts) {
+      await expect(run.followUp({
+        expectedTurnId: "active-turn",
+        input: [{ type: "text", text: "invalid replacement" }],
+      }, { replacement })).rejects.toThrow("a replacement follow-up requires a fresh");
+    }
+    expect(preparations).toBe(0);
+    expect(cancellations).toBe(0);
+    expect(controller.signal.aborted).toBe(false);
+
+    await run.cancel();
+    expect(await run.done).toBe("interrupted");
+    await events;
+  });
+
   test("rejects empty host turn identifiers synchronously", () => {
     const harness = createHarness({ adapters: [], persistence: createMemoryPersistence() });
     expect(() => harness.start(request, { runId: "" })).toThrow("a host-supplied runId cannot be empty");

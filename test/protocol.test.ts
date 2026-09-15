@@ -4,6 +4,7 @@ import {
   isHarnessEvent,
   type HarnessEvent,
   type HarnessRunRequest,
+  type HarnessSteeringCapability,
 } from "../src/protocol.ts";
 
 describe("harness protocol", () => {
@@ -39,5 +40,15 @@ describe("harness protocol", () => {
     };
 
     expect(request.effort).toBe("provider:future-effort");
+  });
+
+  test("keeps provider steering distinct from host-side waiting", () => {
+    const steering: HarnessSteeringCapability = {
+      support: "stable",
+      strategies: ["same-turn", "replacement-turn"],
+      preferred: "same-turn",
+    };
+
+    expect(steering.strategies).not.toContain("wait");
   });
 });
