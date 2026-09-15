@@ -121,6 +121,10 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter` — a complete, provider-injected Claude Agent SDK adapter.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-events` — SDK-free Claude events, usage, limits, compaction, and subagent extensions.
+- `@serhiitroinin/fold-harness/adapters/acp-v1-adapter` — a stable ACP v1
+  lifecycle over a host-injected byte transport.
+- `@serhiitroinin/fold-harness/adapters/acp-v1` — SDK-free ACP setup,
+  negotiation, session-control, permission, and presentation contracts.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
 - `@serhiitroinin/fold-harness/schema/v1/protocol.schema.json` and
   `discovery.schema.json` — versioned JSON Schema 2020-12 contracts.
@@ -185,6 +189,13 @@ Fold's Codex and Claude lanes consume the complete package adapters. Both keep
 process creation, credentials, sandbox policy, vault context, and product event
 projection in Fold.
 
+The generic ACP v1 adapter has also been live-tested against Claude Agent ACP,
+Codex ACP, and OpenCode. Native Claude and Codex adapters remain the enhanced
+paths where their provider-specific limits, subagents, compaction, security
+posture, and lifecycle detail matter. ACP is the interoperability path for new
+agents; it is not treated as a lowest-common-denominator replacement for those
+features. See [ACP v1 compatibility](docs/ACP_V1.md).
+
 ## Codex adapter boundary
 
 `createCodexAppServerAdapter` owns initialize, thread start or resume, turn
@@ -233,3 +244,29 @@ Claude subagent extensions retain `skipTranscript` when the provider marks a
 task as non-transcript activity. Raw subagent and compaction failures stay
 private unless the host selects safe text with `redactSubagentError` or
 `redactCompactionError`.
+
+## ACP v1 adapter boundary
+
+`createAcpV1Adapter` owns stable-v1 initialization, new/load session lifecycle,
+prompts, cancellation, permission round trips, normalized text/thinking/plan/
+tool/usage events, checkpoints, and reconnect after a provider process exits.
+It uses the official ACP TypeScript SDK internally but exposes only package-owned
+structural types.
+
+The host supplies raw readable/writable byte streams and closes them. This makes
+the adapter usable from Node, Electron, a native sidecar, a local socket, or a
+remote bridge without putting process spawning or credentials in the package.
+The host also owns the absolute workspace roots, MCP servers, permission policy,
+tool redaction, provider error mapping, and every environment variable.
+
+ACP session modes and config options are deliberately exposed through
+`configureSession`. A host maps model, effort, provider mode, Codex Fast, or a
+future agent-specific option by id/category only after negotiation. They are not
+silently reinterpreted as the package's engine permission modes. Model catalogs,
+engine permission profiles, and account limits stay on the independent discovery
+APIs because ACP v1 does not standardize all three.
+
+Prepared application context requires an explicit `mapPrompt`. ACP prompt blocks
+have no trusted system/instruction role, so the default mapper refuses to flatten
+trusted instructions into untrusted conversation content. Filesystem, shell,
+network, and client-side terminal/file callbacks are not advertised by default.
