@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.15
+
+### Patch Changes
+
+- 90be086: Allow an already-admitted host turn to bind its run and turn identifiers,
+  AbortController, and prepared context to the runtime while preserving exact
+  identity at adapter and tool boundaries.
+
 ## 0.1.0-next.14
 
 ### Patch Changes
