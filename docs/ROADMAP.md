@@ -22,17 +22,19 @@
 - A provider-injected Claude Agent SDK adapter covering long-lived stream
   routing, provider interactions, normalized events, cancellation, checkpoints,
   subagents, and separate limit snapshots through the conformance runner.
+- Fold's Claude session lane consuming the complete package adapter while Fold
+  retains its process policy and frozen product projection.
+- Versioned JSON Schema 2020-12 protocol and discovery contracts with a
+  JSON-safe request codec and generated Swift and Rust data bindings.
 
 ## Next
 
-1. Migrate Fold's Claude session lane onto the complete package adapter while keeping process policy and its frozen product projection in Fold.
-2. Publish versioned JSON Schema for protocol and discovery contracts, then generate native-language bindings.
-3. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
-4. Decide from measured parity which native adapters remain necessary.
-5. Move the generic MCP tool bridge behind `HarnessToolHost`.
-6. Migrate Fold's complete context assembly onto runtime contributions.
-7. Implement durable Fold stores behind the runtime interfaces.
-8. Build a non-Fold domain example with a browser, terminal, or native UI.
+1. Implement an ACP v1 adapter and test Claude, Codex, OpenCode, and a Grok-backed provider through it.
+2. Decide from measured parity which native adapters remain necessary.
+3. Move the generic MCP tool bridge behind `HarnessToolHost`.
+4. Migrate Fold's complete context assembly onto runtime contributions.
+5. Implement durable Fold stores behind the runtime interfaces.
+6. Build a non-Fold domain example with a browser, terminal, or native UI.
 
 ## Deliberately outside the first release
 

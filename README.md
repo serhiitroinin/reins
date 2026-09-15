@@ -111,6 +111,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
 
 - `@serhiitroinin/fold-harness` — protocol, runtime, stores, tools, and transports.
 - `@serhiitroinin/fold-harness/protocol` — browser-safe public contracts.
+- `@serhiitroinin/fold-harness/wire` — JSON-safe run request encoding for
+  transports and native hosts.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/context` — turn-scoped application context sources.
@@ -120,8 +122,30 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter` — a complete, provider-injected Claude Agent SDK adapter.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-events` — SDK-free Claude events, usage, limits, compaction, and subagent extensions.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
+- `@serhiitroinin/fold-harness/schema/v1/protocol.schema.json` and
+  `discovery.schema.json` — versioned JSON Schema 2020-12 contracts.
 
 See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADMAP.md).
+
+## Native and non-JavaScript hosts
+
+The npm tarball includes the v1 schema manifest plus generated Swift `Codable`
+and Rust Serde data bindings. They model the portable protocol only; a native
+product chooses its own transport, persistence, UI, provider processes,
+credentials, and security policy.
+
+```ts
+import { encodeHarnessRunRequest } from "@serhiitroinin/fold-harness/wire";
+
+const message = encodeHarnessRunRequest({
+  session: { tenantId: "acme", actorId: "ada", threadId: "order-42" },
+  adapterId: "openai:codex",
+  input: [{ type: "text", text: "Inspect this order" }],
+  settings: { controls: { "openai:service-tier": "fast" } },
+});
+```
+
+See [the v1 schema and compatibility rules](docs/SCHEMA_V1.md).
 
 ## Design constraints
 
@@ -157,10 +181,9 @@ require a core-package enum release.
 
 The package is pre-release software. Fold is the first dogfood consumer.
 
-Fold's Codex lane consumes the complete App Server adapter. Its Claude lane
-uses the shared pushable input stream and will move onto the complete Claude
-adapter next. Both adapters keep process creation, credentials, sandbox policy,
-vault context, and product event projection in Fold.
+Fold's Codex and Claude lanes consume the complete package adapters. Both keep
+process creation, credentials, sandbox policy, vault context, and product event
+projection in Fold.
 
 ## Codex adapter boundary
 

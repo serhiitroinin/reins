@@ -1,0 +1,333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json",
+  "title": "Fold Harness discovery v1",
+  "description": "Provider-neutral engine, model, permission, control, and limit discovery contracts.",
+  "$ref": "#/$defs/HarnessEngineProfile",
+  "$defs": {
+    "JsonValue": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/JsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/JsonValue" } }
+      ]
+    },
+    "JsonObject": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/JsonValue" }
+    },
+    "Id": { "type": "string", "minLength": 1 },
+    "Timestamp": { "type": "string", "format": "date-time" },
+    "HarnessWireDiscoveryRequest": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "adapterId": { "$ref": "#/$defs/Id" },
+        "accountId": { "type": "string" },
+        "modelId": { "type": "string" }
+      },
+      "required": ["schemaVersion", "adapterId"]
+    },
+    "HarnessOption": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "unavailableReason": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["id", "label"]
+    },
+    "HarnessToggleControl": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "scope": { "$ref": "#/$defs/Id" },
+        "unavailableReason": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/JsonObject" },
+        "kind": { "const": "toggle" },
+        "defaultValue": { "type": "boolean" }
+      },
+      "required": ["id", "label", "scope", "kind", "defaultValue"]
+    },
+    "HarnessSelectControl": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "scope": { "$ref": "#/$defs/Id" },
+        "unavailableReason": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/JsonObject" },
+        "kind": { "const": "select" },
+        "options": { "type": "array", "items": { "$ref": "#/$defs/HarnessOption" } },
+        "defaultValue": { "type": "string" }
+      },
+      "required": ["id", "label", "scope", "kind", "options"]
+    },
+    "HarnessNumberControl": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "scope": { "$ref": "#/$defs/Id" },
+        "unavailableReason": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/JsonObject" },
+        "kind": { "const": "number" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "defaultValue": { "type": "number" }
+      },
+      "required": ["id", "label", "scope", "kind"]
+    },
+    "HarnessControl": {
+      "oneOf": [
+        { "$ref": "#/$defs/HarnessToggleControl" },
+        { "$ref": "#/$defs/HarnessSelectControl" },
+        { "$ref": "#/$defs/HarnessNumberControl" }
+      ]
+    },
+    "HarnessConsent": {
+      "type": "object",
+      "properties": {
+        "version": { "$ref": "#/$defs/Id" },
+        "title": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["version", "title", "description"]
+    },
+    "HarnessPermissionMode": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "unavailableReason": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/JsonObject" },
+        "posture": { "$ref": "#/$defs/Id" },
+        "consent": { "$ref": "#/$defs/HarnessConsent" }
+      },
+      "required": ["id", "label", "posture"]
+    },
+    "HarnessPermissionProfile": {
+      "type": "object",
+      "properties": {
+        "kind": { "$ref": "#/$defs/Id" },
+        "modes": { "type": "array", "items": { "$ref": "#/$defs/HarnessPermissionMode" } },
+        "defaultModeId": { "$ref": "#/$defs/Id" },
+        "selectable": { "type": "boolean" },
+        "description": { "type": "string" }
+      },
+      "required": ["kind", "modes", "defaultModeId", "selectable"]
+    },
+    "HarnessEffortProfile": {
+      "type": "object",
+      "properties": {
+        "options": { "type": "array", "items": { "$ref": "#/$defs/HarnessOption" } },
+        "defaultOptionId": { "type": "string" }
+      },
+      "required": ["options"]
+    },
+    "HarnessModelGroup": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" }
+      },
+      "required": ["id", "label"]
+    },
+    "HarnessModel": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "group": { "$ref": "#/$defs/HarnessModelGroup" },
+        "hidden": { "type": "boolean" },
+        "unavailableReason": { "type": "string" },
+        "inputModalities": { "type": "array", "items": { "type": "string" } },
+        "contextWindowTokens": { "type": "integer" },
+        "effort": { "$ref": "#/$defs/HarnessEffortProfile" },
+        "controls": { "type": "array", "items": { "$ref": "#/$defs/HarnessControl" } },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["id", "label"]
+    },
+    "HarnessModelCatalog": {
+      "type": "object",
+      "properties": {
+        "models": { "type": "array", "items": { "$ref": "#/$defs/HarnessModel" } },
+        "defaultModelId": { "type": "string" }
+      },
+      "required": ["models"]
+    },
+    "HarnessEngineProfile": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "permissions": { "$ref": "#/$defs/HarnessPermissionProfile" },
+        "controls": { "type": "array", "items": { "$ref": "#/$defs/HarnessControl" } },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["id", "label", "permissions"]
+    },
+    "HarnessLimit": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "kind": { "$ref": "#/$defs/Id" },
+        "scope": { "$ref": "#/$defs/Id" },
+        "unit": { "type": "string" },
+        "used": { "type": "number" },
+        "remaining": { "type": "number" },
+        "limit": { "type": "number" },
+        "usedPercent": { "type": "number" },
+        "resetsAt": { "$ref": "#/$defs/Timestamp" },
+        "windowDurationMs": { "type": "number" },
+        "modelIds": { "type": "array", "items": { "type": "string" } },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["id", "label", "kind", "scope", "unit"]
+    },
+    "HarnessLimitSnapshot": {
+      "type": "object",
+      "properties": {
+        "planLabel": { "type": "string" },
+        "limits": { "type": "array", "items": { "$ref": "#/$defs/HarnessLimit" } },
+        "extensions": { "$ref": "#/$defs/JsonObject" }
+      },
+      "required": ["limits"]
+    },
+    "AvailableEngineProfile": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "available" },
+        "value": { "$ref": "#/$defs/HarnessEngineProfile" },
+        "fetchedAt": { "$ref": "#/$defs/Timestamp" },
+        "expiresAt": { "$ref": "#/$defs/Timestamp" }
+      },
+      "required": ["status", "value"]
+    },
+    "AvailableModelCatalog": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "available" },
+        "value": { "$ref": "#/$defs/HarnessModelCatalog" },
+        "fetchedAt": { "$ref": "#/$defs/Timestamp" },
+        "expiresAt": { "$ref": "#/$defs/Timestamp" }
+      },
+      "required": ["status", "value"]
+    },
+    "AvailableLimitSnapshot": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "available" },
+        "value": { "$ref": "#/$defs/HarnessLimitSnapshot" },
+        "fetchedAt": { "$ref": "#/$defs/Timestamp" },
+        "expiresAt": { "$ref": "#/$defs/Timestamp" }
+      },
+      "required": ["status", "value"]
+    },
+    "UnavailableDiscovery": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "unavailable" },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      },
+      "required": ["status", "message"],
+      "not": {
+        "type": "object",
+        "properties": { "value": {} },
+        "required": ["value"]
+      }
+    },
+    "UnsupportedDiscovery": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "unsupported" },
+        "message": { "type": "string" }
+      },
+      "required": ["status"],
+      "not": {
+        "type": "object",
+        "properties": { "value": {} },
+        "required": ["value"]
+      }
+    },
+    "HarnessEngineProfileDiscovery": {
+      "oneOf": [
+        { "$ref": "#/$defs/AvailableEngineProfile" },
+        { "$ref": "#/$defs/UnavailableDiscovery" },
+        { "$ref": "#/$defs/UnsupportedDiscovery" }
+      ]
+    },
+    "HarnessModelCatalogDiscovery": {
+      "oneOf": [
+        { "$ref": "#/$defs/AvailableModelCatalog" },
+        { "$ref": "#/$defs/UnavailableDiscovery" },
+        { "$ref": "#/$defs/UnsupportedDiscovery" }
+      ]
+    },
+    "HarnessLimitSnapshotDiscovery": {
+      "oneOf": [
+        { "$ref": "#/$defs/AvailableLimitSnapshot" },
+        { "$ref": "#/$defs/UnavailableDiscovery" },
+        { "$ref": "#/$defs/UnsupportedDiscovery" }
+      ]
+    },
+    "HarnessPermissionSelection": {
+      "type": "object",
+      "properties": {
+        "modeId": { "$ref": "#/$defs/Id" },
+        "consentVersion": { "type": "string" }
+      },
+      "required": ["modeId"]
+    },
+    "HarnessControlValue": {
+      "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
+    },
+    "HarnessRunSettings": {
+      "type": "object",
+      "properties": {
+        "permission": { "$ref": "#/$defs/HarnessPermissionSelection" },
+        "controls": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/HarnessControlValue" }
+        }
+      }
+    },
+    "HarnessConfigurationIssue": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "code": { "enum": ["unknown-control", "invalid-value", "unknown-permission", "stale-consent"] },
+        "message": { "type": "string" }
+      },
+      "required": ["path", "code", "message"]
+    },
+    "ResolvedHarnessConfiguration": {
+      "type": "object",
+      "properties": {
+        "permission": { "$ref": "#/$defs/HarnessPermissionSelection" },
+        "controls": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/HarnessControlValue" }
+        },
+        "issues": { "type": "array", "items": { "$ref": "#/$defs/HarnessConfigurationIssue" } }
+      },
+      "required": ["permission", "controls", "issues"]
+    }
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "capabilities": {
+    "resume": { "support": "stable" },
+    "cancel": { "support": "stable" },
+    "interactions": { "support": "experimental" },
+    "tools": { "support": "stable" },
+    "images": { "support": "stable" },
+    "thinking": { "support": "stable" },
+    "plans": { "support": "experimental" },
+    "usage": { "support": "stable" },
+    "subagents": { "support": "unsupported" },
+    "shell": { "support": "unsupported" },
+    "filesystem": { "support": "unsupported" },
+    "network": { "support": "unsupported" },
+    "extensions": {
+      "opencode:multi-provider": {
+        "support": "stable",
+        "constraints": { "providers": ["openai", "xai"], "nullable": null }
+      }
+    }
+  },
+  "event": {
+    "schemaVersion": 1,
+    "eventId": "event-1",
+    "sequence": 1,
+    "timestamp": "2026-09-15T09:00:00.000Z",
+    "session": { "tenantId": "tenant", "actorId": "actor", "threadId": "thread" },
+    "runId": "run-1",
+    "turnId": "turn-1",
+    "adapterId": "xai:grok-acp",
+    "payload": {
+      "kind": "extension",
+      "namespace": "xai:grok",
+      "name": "citation",
+      "payload": { "uri": "https://example.com/source", "rank": 1.0 }
+    }
+  },
+  "interaction": {
+    "id": "permission-1",
+    "kind": "permission",
+    "title": "Run the provider action?",
+    "detail": "The provider requested a command.",
+    "choices": [
+      { "id": "allow", "label": "Allow", "allow": true },
+      { "id": "deny", "label": "Deny", "allow": false }
+    ],
+    "acceptsText": true,
+    "metadata": { "provider": "opencode", "reviewed": null }
+  },
+  "interactionResponse": {
+    "choiceId": "allow",
+    "text": "Reviewed",
+    "labels": ["safe"]
+  },
+  "runRequest": {
+    "schemaVersion": 1,
+    "session": { "tenantId": "tenant", "actorId": "actor", "threadId": "thread" },
+    "adapterId": "openai:codex",
+    "input": [
+      { "type": "text", "text": "Inspect this image" },
+      { "type": "image", "mediaType": "image/png", "data": "AQID", "encoding": "base64", "name": "pixel.png" }
+    ],
+    "model": "gpt-5.6-luna",
+    "effort": "high",
+    "accountId": "account-1",
+    "settings": {
+      "permission": { "modeId": "read-only" },
+      "controls": { "openai:service-tier": "fast" }
+    },
+    "configuration": { "transport": "app-server" },
+    "metadata": { "client": "native-acceptance" }
+  },
+  "toolDescriptor": {
+    "name": "lookup_order",
+    "description": "Look up one order",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "id": { "type": "string" } },
+      "required": ["id"]
+    },
+    "metadata": { "readOnly": true }
+  },
+  "toolResult": {
+    "content": [
+      { "type": "text", "text": "ready" },
+      { "type": "resource", "uri": "fold://orders/42", "mediaType": "application/json", "text": "{\"id\":\"42\"}" }
+    ],
+    "metadata": { "cached": false }
+  },
+  "discoveryRequest": {
+    "schemaVersion": 1,
+    "adapterId": "opencode:acp",
+    "accountId": "account-1",
+    "modelId": "gpt-5.6-luna"
+  },
+  "engineProfile": {
+    "id": "opencode:acp",
+    "label": "OpenCode",
+    "description": "Multi-provider ACP agent",
+    "permissions": {
+      "kind": "provider-policy",
+      "modes": [
+        { "id": "ask", "label": "Ask", "posture": "standard" },
+        {
+          "id": "allow-all",
+          "label": "Allow all",
+          "posture": "vendor:autonomous",
+          "consent": {
+            "version": "grant-v1",
+            "title": "Allow provider actions",
+            "description": "Provider actions may run without another prompt."
+          }
+        }
+      ],
+      "defaultModeId": "ask",
+      "selectable": true
+    },
+    "controls": [
+      { "id": "opencode:loop-budget", "label": "Loop budget", "kind": "number", "scope": "turn", "min": 1.0, "max": 20.0, "defaultValue": 8.0 }
+    ],
+    "extensions": { "opencode:transport": "acp" }
+  },
+  "engineProfileDiscovery": {
+    "status": "unsupported",
+    "message": "This adapter uses a static profile."
+  },
+  "modelCatalog": {
+    "defaultModelId": "gpt-5.6-luna",
+    "models": [
+      {
+        "id": "gpt-5.6-luna",
+        "label": "GPT-5.6 Luna",
+        "group": { "id": "openai", "label": "OpenAI" },
+        "inputModalities": ["text", "image"],
+        "effort": {
+          "options": [
+            { "id": "low", "label": "Low" },
+            { "id": "high", "label": "High" }
+          ],
+          "defaultOptionId": "high"
+        },
+        "controls": [
+          {
+            "id": "openai:service-tier",
+            "label": "Speed",
+            "kind": "select",
+            "scope": "turn",
+            "options": [
+              { "id": "default", "label": "Standard" },
+              { "id": "fast", "label": "Fast", "description": "1.5x speed, increased usage" }
+            ],
+            "defaultValue": "default"
+          }
+        ]
+      },
+      {
+        "id": "grok-4",
+        "label": "Grok 4",
+        "group": { "id": "xai", "label": "xAI" },
+        "extensions": { "xai:live-search": true }
+      }
+    ]
+  },
+  "modelCatalogDiscovery": {
+    "status": "unavailable",
+    "message": "Refresh the provider account.",
+    "retryable": true
+  },
+  "limitSnapshot": {
+    "planLabel": "Developer",
+    "limits": [
+      {
+        "id": "xai:requests",
+        "label": "Requests",
+        "kind": "vendor:request-rate",
+        "scope": "account",
+        "unit": "requests",
+        "used": 3.0,
+        "remaining": 97.0,
+        "limit": 100.0,
+        "usedPercent": 3.0,
+        "resetsAt": "2026-09-15T10:00:00.000Z",
+        "windowDurationMs": 3600000.0,
+        "modelIds": ["grok-4"],
+        "extensions": { "xai:burst": 5.0 }
+      }
+    ]
+  },
+  "limitSnapshotDiscovery": {
+    "status": "available",
+    "fetchedAt": "2026-09-15T09:00:00.000Z",
+    "expiresAt": "2026-09-15T09:05:00.000Z",
+    "value": {
+      "limits": [
+        { "id": "context", "label": "Context", "kind": "context", "scope": "model", "unit": "tokens", "limit": 256000.0, "modelIds": ["gpt-5.6-luna"] }
+      ]
+    }
+  },
+  "resolvedConfiguration": {
+    "permission": { "modeId": "read-only" },
+    "controls": { "openai:service-tier": "fast", "opencode:loop-budget": 8.0 },
+    "issues": []
+  }
+}

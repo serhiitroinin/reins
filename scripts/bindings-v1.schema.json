@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/serhiitroinin/fold-harness/schema/v1/bindings.schema.json",
+  "title": "V1",
+  "description": "Generation-only reachability document for the public v1 schema roots.",
+  "type": "object",
+  "properties": {
+    "capabilities": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessCapabilities" },
+    "event": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessEvent" },
+    "interaction": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessInteraction" },
+    "interactionResponse": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessInteractionResponse" },
+    "runRequest": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireRunRequest" },
+    "toolDescriptor": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" },
+    "toolResult": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolResult" },
+    "discoveryRequest": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessWireDiscoveryRequest" },
+    "engineProfile": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessEngineProfile" },
+    "engineProfileDiscovery": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessEngineProfileDiscovery" },
+    "modelCatalog": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessModelCatalog" },
+    "modelCatalogDiscovery": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessModelCatalogDiscovery" },
+    "limitSnapshot": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessLimitSnapshot" },
+    "limitSnapshotDiscovery": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessLimitSnapshotDiscovery" },
+    "resolvedConfiguration": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/ResolvedHarnessConfiguration" }
+  },
+  "required": [
+    "capabilities",
+    "event",
+    "interaction",
+    "interactionResponse",
+    "runRequest",
+    "toolDescriptor",
+    "toolResult",
+    "discoveryRequest",
+    "engineProfile",
+    "engineProfileDiscovery",
+    "modelCatalog",
+    "modelCatalogDiscovery",
+    "limitSnapshot",
+    "limitSnapshotDiscovery",
+    "resolvedConfiguration"
+  ]
+}

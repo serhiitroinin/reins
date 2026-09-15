@@ -182,8 +182,18 @@ content cross that boundary.
 This division is also the stack boundary. The protocol, discovery contracts,
 and wire formats do not assume React, Electron, HTTP, or a particular database.
 JavaScript hosts can use the runtime directly. Other language and native hosts
-can implement the same versioned protocol from generated bindings once the JSON
-Schema milestone lands; they do not need to embed Fold's UI or daemon.
+can implement the same versioned protocol from the JSON Schema or generated
+Swift and Rust data bindings; they do not need to embed Fold's UI or daemon.
+The schema describes values rather than selecting HTTP, SSE, WebSocket, Unix
+socket, or embedded-bridge transport. Binary images use an explicit canonical
+base64 wire representation. Executable callbacks, abort signals, provider SDK
+objects, application-only context state, and raw failures stay outside it.
+
+Schema v1 evolves only through compatible optional fields and open identifiers.
+Known event kinds retain their required shapes, while an unknown future event
+kind remains retainable or safely ignorable. An incompatible field or closed
+union change requires a new schema major. Generated bindings are conveniences,
+not validators; the JSON Schema remains authoritative at an untrusted boundary.
 
 The current Codex App Server schema accepts dynamic tools on thread creation,
 not thread resume. The adapter enables the experimental API capability when a

@@ -24,6 +24,16 @@
   "files": [
     "dist",
     "src",
+    "schema",
+    "bindings/README.md",
+    "bindings/rust/Cargo.lock",
+    "bindings/rust/Cargo.toml",
+    "bindings/rust/src",
+    "bindings/rust/tests",
+    "bindings/swift/Package.swift",
+    "bindings/swift/Sources",
+    "bindings/swift/Tests",
+    "docs/SCHEMA_V1.md",
     "README.md",
     "LICENSE"
   ],
@@ -40,6 +50,12 @@
       "bun": "./src/protocol.ts",
       "import": "./dist/protocol.js"
     },
+    "./wire": {
+      "types": "./src/wire.ts",
+      "bun": "./src/wire.ts",
+      "import": "./dist/wire.js"
+    },
+    "./schema/v1/*": "./schema/v1/*",
     "./profile": {
       "types": "./src/profile.ts",
       "bun": "./src/profile.ts",
@@ -108,9 +124,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "generate:bindings": "bun run scripts/generate-bindings.ts",
+    "check:bindings": "bun run scripts/generate-bindings.ts --check",
     "test": "bun test",
     "example": "bun run examples/minimal/index.ts",
-    "check": "bun run typecheck && bun test && bun run build",
+    "check": "bun run typecheck && bun run check:bindings && bun test && bun run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "prepare": "bun run build",
@@ -120,6 +138,9 @@
     "@changesets/cli": "^2.29.7",
     "@types/bun": "^1.2.0",
     "@types/node": "^22.0.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "quicktype": "26.0.0",
     "typescript": "^5.6.0"
   },
   "publishConfig": {
