@@ -32,6 +32,7 @@ import {
   type AcpV1ConnectRequest,
   type AcpV1DeferredPermission,
   type AcpV1McpServer,
+  type AcpV1NegotiatedAgent,
   type AcpV1PermissionAuthorization,
   type AcpV1PermissionDecision,
   type AcpV1PermissionRequest,
@@ -437,6 +438,7 @@ interface PendingPermission {
   offered: ReadonlySet<string>;
   response: ReturnType<typeof deferred<acp.RequestPermissionResponse>>;
   resolving: boolean;
+  settled: boolean;
   turn: ActiveTurn;
 }
 
@@ -450,6 +452,8 @@ interface ActiveTurn {
   promptStarted: boolean;
   turnCostUsd: number;
   tools: Map<string, ToolState>;
+  textChars: number;
+  truncatedKinds: Set<"assistant-text" | "thinking" | "plan">;
 }
 
 export interface AcpV1AdapterSession extends HarnessAdapterSession {
@@ -467,13 +471,20 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
   const id = options.id ?? "acp";
   const cancelTimeoutMs = options.cancelTimeoutMs ?? 2_000;
   const eventTextLimit = options.eventTextLimit ?? 16_000;
+  const turnTextLimit = options.turnTextLimit ?? 1_000_000;
+  const planEntryLimit = options.planEntryLimit ?? 256;
   if (!Number.isFinite(cancelTimeoutMs) || cancelTimeoutMs < 1) {
     throw new Error("cancelTimeoutMs must be a positive number");
   }
   if (!Number.isSafeInteger(eventTextLimit) || eventTextLimit < 64) {
     throw new Error("eventTextLimit must be an integer of at least 64 characters");
   }
-  const observedLimits = new Map<string, HarnessLimitSnapshot>();
+  if (!Number.isSafeInteger(turnTextLimit) || turnTextLimit < eventTextLimit) {
+    throw new Error("turnTextLimit must be an integer at least as large as eventTextLimit");
+  }
+  if (!Number.isSafeInteger(planEntryLimit) || planEntryLimit < 1) {
+    throw new Error("planEntryLimit must be a positive integer");
+  }
 
   return {
     id,
@@ -482,9 +493,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
     models: (request) => discovery(options.models, request),
     limits: (request) => options.limits
       ? discovery(options.limits, request)
-      : observedLimits.has(request.accountId ?? "")
-        ? { status: "available", value: observedLimits.get(request.accountId ?? "")! }
-        : { status: "unsupported" },
+      : { status: "unsupported" },
 
     async open({ session, resumeToken }) {
       let checkpoint = resumeToken;
@@ -517,19 +526,70 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
         if (provider) await provider.close();
       };
 
+      const settlePermission = (
+        interactionId: string,
+        item: PendingPermission,
+        outcome: acp.RequestPermissionResponse,
+        response: HarnessInteractionResponse,
+      ): boolean => {
+        if (item.settled) return false;
+        item.settled = true;
+        pending.delete(interactionId);
+        item.turn.permissions.delete(interactionId);
+        item.turn.queue.push({ kind: "interaction-resolved", interactionId, response });
+        item.response.resolve(outcome);
+        return true;
+      };
+
       const settlePermissions = (turn: ActiveTurn): void => {
         for (const interactionId of [...turn.permissions]) {
           const item = pending.get(interactionId);
           if (!item) continue;
-          pending.delete(interactionId);
-          turn.permissions.delete(interactionId);
-          item.turn.queue.push({
-            kind: "interaction-resolved",
-            interactionId,
-            response: {},
-          });
-          item.response.resolve({ outcome: { outcome: "cancelled" } });
+          settlePermission(interactionId, item, { outcome: { outcome: "cancelled" } }, {});
         }
+      };
+
+      const closeOpenTools = (turn: ActiveTurn, status: "failed" | "cancelled"): void => {
+        for (const [toolId, tool] of turn.tools) {
+          if (tool.completed) continue;
+          tool.completed = true;
+          turn.queue.push({
+            kind: "tool-completed",
+            toolId,
+            status,
+            toolKind: tool.kind,
+            title: tool.title,
+          });
+        }
+      };
+
+      const noteTruncation = (
+        turn: ActiveTurn,
+        kind: "assistant-text" | "thinking" | "plan",
+        limit: number,
+      ): void => {
+        if (turn.truncatedKinds.has(kind)) return;
+        turn.truncatedKinds.add(kind);
+        turn.queue.push({
+          kind: "extension",
+          namespace: ACP_V1_NAMESPACE,
+          name: "content-truncated",
+          payload: { kind, limit },
+        });
+      };
+
+      const pushText = (
+        turn: ActiveTurn,
+        kind: "assistant-text" | "thinking",
+        text: string,
+      ): void => {
+        const available = Math.max(0, turnTextLimit - turn.textChars);
+        const retained = text.slice(0, available);
+        turn.textChars += retained.length;
+        for (let offset = 0; offset < retained.length; offset += eventTextLimit) {
+          turn.queue.push({ kind, text: retained.slice(offset, offset + eventTextLimit) });
+        }
+        if (retained.length < text.length) noteTruncation(turn, kind, turnTextLimit);
       };
 
       const handlePermission = async (
@@ -566,6 +626,9 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
               : { behavior: "cancel" },
           };
         }
+        if (turn.cancelled || !turn.acceptUpdates || active !== turn) {
+          return { outcome: { outcome: "cancelled" } };
+        }
         if (authorization.behavior !== "ask") return selectedPermission(authorization, offered);
         const interactionId = authorization.interaction.id;
         if (interactionId.trim() === "" || pending.has(interactionId)) {
@@ -577,6 +640,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
           offered,
           response,
           resolving: false,
+          settled: false,
           turn,
         });
         turn.permissions.add(interactionId);
@@ -615,7 +679,6 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
           }
         }
         const snapshot = { limits } satisfies HarnessLimitSnapshot;
-        observedLimits.set(turn.request.accountId ?? "", snapshot);
         options.onLimits?.(snapshot, checkpointRequest({
           ...turn.request,
           resumeToken: checkpoint,
@@ -628,18 +691,26 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
         if (!turn || !turn.acceptUpdates || turn.cancelled || notification.sessionId !== sessionId) return;
         const update = notification.update;
         if (update.sessionUpdate === "agent_message_chunk") {
-          if (update.content.type === "text") turn.queue.push({ kind: "assistant-text", text: update.content.text });
+          if (update.content.type === "text") pushText(turn, "assistant-text", update.content.text);
           return;
         }
         if (update.sessionUpdate === "agent_thought_chunk") {
-          if (update.content.type === "text") turn.queue.push({ kind: "thinking", text: update.content.text });
+          if (update.content.type === "text") pushText(turn, "thinking", update.content.text);
           return;
         }
         if (update.sessionUpdate === "plan") {
+          const entries = update.entries.slice(0, planEntryLimit);
           turn.queue.push({
             kind: "plan-updated",
-            steps: update.entries.map((entry) => ({ text: entry.content, status: entry.status })),
+            steps: entries.map((entry) => ({
+              text: bounded(entry.content, eventTextLimit).value,
+              status: bounded(entry.status, eventTextLimit).value,
+            })),
           });
+          if (entries.length < update.entries.length
+            || entries.some((entry) => entry.content.length > eventTextLimit || entry.status.length > eventTextLimit)) {
+            noteTruncation(turn, "plan", planEntryLimit);
+          }
           return;
         }
         if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
@@ -683,7 +754,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
         if (connecting) return connecting;
         const connectRequest: AcpV1ConnectRequest = {
           session,
-          resumeToken,
+          resumeToken: checkpoint,
           runId: request.runId,
           turnId: request.turnId,
           ...(request.model ? { model: request.model } : {}),
@@ -696,7 +767,27 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
         connecting = (async () => {
           let created: AcpV1ByteConnection | null = null;
           try {
-            const providerConnection = await options.connect(connectRequest);
+            const providerPromise = Promise.resolve().then(() => options.connect(connectRequest));
+            let abandoned = false;
+            let rejectAbort!: (error: HarnessAdapterInterruptedError) => void;
+            const turnAborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+            const abort = (): void => rejectAbort(new HarnessAdapterInterruptedError());
+            if (request.signal.aborted) abort();
+            else request.signal.addEventListener("abort", abort, { once: true });
+            void providerPromise.then((provider) => {
+              if (abandoned || closed || request.signal.aborted) {
+                void Promise.resolve(provider.close()).catch(() => undefined);
+              }
+            }, () => undefined);
+            let providerConnection: AcpV1ByteConnection;
+            try {
+              providerConnection = await Promise.race([providerPromise, turnAborted]);
+            } catch (error) {
+              abandoned = true;
+              throw error;
+            } finally {
+              request.signal.removeEventListener("abort", abort);
+            }
             let providerClosed = false;
             created = {
               readable: providerConnection.readable,
@@ -718,10 +809,14 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             const sdk = app.connect(acp.ndJsonStream(created.writable, created.readable));
             connection = sdk;
             void sdk.closed.then(() => {
+              const wasCurrent = connection === sdk;
+              if (wasCurrent) connection = null;
               if (raw === created) raw = null;
               void created?.close();
               const turn = active;
-              if (turn && !turn.cancelled) turn.queue.fail(sdk.signal.reason ?? new Error("ACP connection closed"));
+              if (wasCurrent && turn && !turn.cancelled) {
+                turn.queue.fail(sdk.signal.reason ?? new Error("ACP connection closed"));
+              }
             });
             const initialized = await sdk.agent.request(acp.methods.agent.initialize, {
               protocolVersion: ACP_V1_PROTOCOL_VERSION,
@@ -738,14 +833,50 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
                 `The ACP agent selected unsupported protocol version ${initialized.protocolVersion}.`,
               );
             }
-            imageSupported = initialized.agentCapabilities?.promptCapabilities?.image === true;
+            const agentCapabilities = initialized.agentCapabilities;
+            imageSupported = agentCapabilities?.promptCapabilities?.image === true;
+            const negotiated: AcpV1NegotiatedAgent = {
+              protocolVersion: ACP_V1_PROTOCOL_VERSION,
+              ...(initialized.agentInfo ? {
+                agentInfo: {
+                  name: initialized.agentInfo.name,
+                  version: initialized.agentInfo.version,
+                  ...(initialized.agentInfo.title ? { title: initialized.agentInfo.title } : {}),
+                },
+              } : {}),
+              capabilities: {
+                loadSession: agentCapabilities?.loadSession === true,
+                imagePrompt: imageSupported,
+                additionalDirectories: agentCapabilities?.sessionCapabilities?.additionalDirectories != null,
+                mcp: {
+                  stdio: true,
+                  http: agentCapabilities?.mcpCapabilities?.http === true,
+                  sse: agentCapabilities?.mcpCapabilities?.sse === true,
+                },
+              },
+            };
+            if ((setup.additionalDirectories?.length ?? 0) > 0 && !negotiated.capabilities.additionalDirectories) {
+              throw new HarnessAdapterError(
+                "ACP_ADDITIONAL_DIRECTORIES_UNSUPPORTED",
+                "The connected ACP agent does not accept additional workspace roots.",
+              );
+            }
+            for (const server of setup.mcpServers ?? []) {
+              if (server.type === "http" && !negotiated.capabilities.mcp.http) {
+                throw new HarnessAdapterError("ACP_MCP_UNSUPPORTED", "The connected ACP agent does not accept HTTP MCP servers.");
+              }
+              if (server.type === "sse" && !negotiated.capabilities.mcp.sse) {
+                throw new HarnessAdapterError("ACP_MCP_UNSUPPORTED", "The connected ACP agent does not accept SSE MCP servers.");
+              }
+            }
+            await options.onNegotiated?.(negotiated, checkpointRequest(connectRequest));
             const sessionRequest = {
               cwd: setup.cwd,
               ...(setup.additionalDirectories ? { additionalDirectories: [...setup.additionalDirectories] } : {}),
               mcpServers: (setup.mcpServers ?? []).map(mapMcpServer),
             };
-            if (resumeToken) {
-              if (initialized.agentCapabilities?.loadSession !== true) {
+            if (checkpoint) {
+              if (!negotiated.capabilities.loadSession) {
                 throw new HarnessAdapterError(
                   "ACP_RESUME_UNSUPPORTED",
                   "The connected ACP agent cannot restore this saved session.",
@@ -753,11 +884,13 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
               }
               const loaded = await sdk.agent.request(acp.methods.agent.session.load, {
                 ...sessionRequest,
-                sessionId: resumeToken,
+                sessionId: checkpoint,
               });
-              sessionId = resumeToken;
+              sessionId = checkpoint;
               modes = sessionModeState(loaded.modes);
               configOptions = sessionConfigOptions(loaded.configOptions);
+              previousUsage = null;
+              previousCostUsd = null;
             } else {
               const createdSession = await sdk.agent.request<acp.NewSessionResponse, acp.NewSessionRequest>(
                 acp.methods.agent.session.new,
@@ -782,8 +915,23 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
 
       const controller = (): AcpV1SessionController => ({
         get sessionId() { return sessionId ?? ""; },
-        get modes() { return modes; },
-        get configOptions() { return configOptions; },
+        get modes() {
+          return modes ? {
+            currentModeId: modes.currentModeId,
+            availableModes: modes.availableModes.map((mode) => ({ ...mode })),
+          } : null;
+        },
+        get configOptions() {
+          return configOptions.map((option) => option.type === "boolean"
+            ? { ...option }
+            : {
+                ...option,
+                options: option.options.map((value) => ({
+                  ...value,
+                  ...(value.group ? { group: { ...value.group } } : {}),
+                })),
+              });
+        },
         async setMode(modeId) {
           if (!connection || !sessionId || !modes?.availableModes.some((mode) => mode.id === modeId)) {
             throw new HarnessAdapterError("ACP_INVALID_MODE", "The selected ACP session mode is unavailable.");
@@ -846,6 +994,8 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             promptStarted: false,
             turnCostUsd: 0,
             tools: new Map(),
+            textChars: 0,
+            truncatedKinds: new Set(),
           };
           active = turn;
           try {
@@ -874,11 +1024,17 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
             });
             turn.promptStarted = true;
             void prompt.then(
-              () => {
+              (response) => {
+                turn.acceptUpdates = false;
+                settlePermissions(turn);
+                closeOpenTools(turn, response.stopReason === "cancelled" ? "cancelled" : "failed");
                 turn.providerSettled.resolve();
                 turn.queue.close();
               },
               (error) => {
+                turn.acceptUpdates = false;
+                settlePermissions(turn);
+                closeOpenTools(turn, turn.cancelled ? "cancelled" : "failed");
                 turn.providerSettled.resolve();
                 turn.queue.fail(error);
               },
@@ -929,13 +1085,13 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
           let decision: AcpV1PermissionDecision;
           try {
             decision = await item.authorization.resolve(response);
+            if (item.settled || item.turn.cancelled || item.turn !== active) {
+              throw new HarnessAdapterError("ACP_UNKNOWN_PERMISSION", "The ACP permission request is no longer open.");
+            }
             const outcome = selectedPermission(decision, item.offered);
-            pending.delete(interactionId);
-            item.turn.permissions.delete(interactionId);
-            item.turn.queue.push({ kind: "interaction-resolved", interactionId, response });
-            item.response.resolve(outcome);
+            settlePermission(interactionId, item, outcome, response);
           } catch (error) {
-            item.resolving = false;
+            if (!item.settled) item.resolving = false;
             throw error;
           }
         },

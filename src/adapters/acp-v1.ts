@@ -78,6 +78,18 @@ export interface AcpV1ImplementationInfo {
   title?: string;
 }
 
+/** Safe projection of the optional behavior negotiated during `initialize`. */
+export interface AcpV1NegotiatedAgent {
+  protocolVersion: 1;
+  agentInfo?: AcpV1ImplementationInfo;
+  capabilities: {
+    loadSession: boolean;
+    imagePrompt: boolean;
+    additionalDirectories: boolean;
+    mcp: { stdio: true; http: boolean; sse: boolean };
+  };
+}
+
 export type AcpV1McpServer =
   | {
       type?: "stdio";
@@ -274,10 +286,19 @@ export interface AcpV1AdapterOptions {
     checkpoint: string,
     request: Pick<AcpV1ConnectRequest, "session" | "accountId" | "runId" | "turnId">,
   ): Promise<void> | void;
+  /** Observe a metadata-free projection of the negotiated ACP behavior. */
+  onNegotiated?(
+    agent: AcpV1NegotiatedAgent,
+    request: Pick<AcpV1ConnectRequest, "session" | "accountId" | "runId" | "turnId">,
+  ): Promise<void> | void;
   /** Bound an ACP agent that acknowledges cancellation but never ends the prompt. */
   cancelTimeoutMs?: number;
   /** Maximum persisted string length from ACP display fields or a host presentation. */
   eventTextLimit?: number;
+  /** Maximum assistant and thought text persisted across one turn. */
+  turnTextLimit?: number;
+  /** Maximum number of entries retained from one provider plan update. */
+  planEntryLimit?: number;
 }
 
 /**
