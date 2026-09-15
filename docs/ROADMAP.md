@@ -33,14 +33,16 @@
   and OpenCode across repeated turns and fresh-process resume.
 - A measured adapter strategy: retain native Claude/Codex adapters for enhanced
   provider behavior and use ACP as the generic interoperability path.
+- A bounded, transport-neutral MCP server over `HarnessToolHost`, with trusted
+  turn context captured outside the wire and no provider or operating-system
+  dependency.
 
 ## Next
 
-1. Move the generic MCP tool bridge behind `HarnessToolHost`.
-2. Migrate Fold's complete context assembly onto runtime contributions.
-3. Implement durable Fold stores behind the runtime interfaces.
-4. Build a non-Fold domain example with a browser, terminal, or native UI.
-5. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
+1. Migrate Fold's complete context assembly onto runtime contributions.
+2. Implement durable Fold stores behind the runtime interfaces.
+3. Build a non-Fold domain example with a browser, terminal, or native UI.
+4. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
    test credential are available; keep it experimental until then.
 
 ## Deliberately outside the first release
