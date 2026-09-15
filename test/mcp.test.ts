@@ -21,7 +21,11 @@ interface Fixture {
   responses(): unknown[];
 }
 
-function fixture(host: HarnessToolHost, options: { maxFrameBytes?: number } = {}): Fixture {
+function fixture(host: HarnessToolHost, options: {
+  maxFrameBytes?: number;
+  maxConcurrentCalls?: number;
+  maxToolsPerPage?: number;
+} = {}): Fixture {
   const written: Uint8Array[] = [];
   const server = createHarnessMcpServer({
     host,
@@ -231,6 +235,41 @@ describe("Harness MCP server", () => {
     expect((messages.at(-1) as { result: { content: Array<{ text: string }> } }).result.content[0]?.text).toContain(text);
   });
 
+  test("paginates a stable catalog and rejects an invalid cursor", () => {
+    const host = createToolHost(Array.from({ length: 5 }, (_, index) => ({
+      name: `tool_${index}`,
+      description: `Tool ${index}`,
+      inputSchema: { type: "object" },
+      execute: () => ({ content: [] }),
+    })));
+    const target = fixture(host, { maxToolsPerPage: 2 });
+    initialize(target);
+    target.receive(request("first", "tools/list", {}));
+    const first = target.responses().at(-1) as {
+      result: { tools: Array<{ name: string }>; nextCursor?: string };
+    };
+    expect(first.result.tools.map((tool) => tool.name)).toEqual(["tool_0", "tool_1"]);
+    expect(first.result.nextCursor).toBeString();
+
+    target.receive(request("second", "tools/list", { cursor: first.result.nextCursor }));
+    const second = target.responses().at(-1) as {
+      result: { tools: Array<{ name: string }>; nextCursor?: string };
+    };
+    expect(second.result.tools.map((tool) => tool.name)).toEqual(["tool_2", "tool_3"]);
+    target.receive(request("last", "tools/list", { cursor: second.result.nextCursor }));
+    expect(target.responses().at(-1)).toMatchObject({
+      id: "last",
+      result: { tools: [{ name: "tool_4" }] },
+    });
+
+    target.receive(request("invalid", "tools/list", { cursor: "made-up" }));
+    expect(target.responses().at(-1)).toEqual({
+      jsonrpc: "2.0",
+      id: "invalid",
+      error: { code: -32602, message: "Invalid tools/list cursor." },
+    });
+  });
+
   test("replaces an oversized result with a bounded protocol error", async () => {
     const target = fixture(createToolHost([{
       name: "large",
@@ -275,14 +314,38 @@ describe("Harness MCP server", () => {
     expect(receivedContext?.session).toEqual(context.session);
     expect(receivedContext?.adapterId).toBe(context.adapterId);
     expect(receivedSignal?.aborted).toBe(false);
+    const before = target.written.length;
     target.receive({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: "active", reason: "user stopped" } });
     await Bun.sleep(0);
     expect(receivedSignal?.aborted).toBe(true);
-    expect(target.responses().at(-1)).toEqual({
-      jsonrpc: "2.0", id: "active", result: {
-        content: [{ type: "text", text: "cancelled" }], isError: true,
+    // MCP cancellation has no response. A late tool result cannot race the
+    // cancelled request back into the client.
+    expect(target.written).toHaveLength(before);
+  });
+
+  test("refuses tool calls beyond the configured concurrency bound", async () => {
+    const signals: AbortSignal[] = [];
+    const target = fixture({
+      list: () => [{ name: "wait", description: "Wait", inputSchema: { type: "object" } }],
+      call: async (_name, _input, received) => {
+        signals.push(received.signal);
+        return await new Promise((resolve) => received.signal.addEventListener("abort", () => {
+          resolve({ content: [] });
+        }, { once: true }));
       },
+    }, { maxConcurrentCalls: 2 });
+    initialize(target);
+    target.receive(request("one", "tools/call", { name: "wait", arguments: {} }));
+    target.receive(request("two", "tools/call", { name: "wait", arguments: {} }));
+    target.receive(request("three", "tools/call", { name: "wait", arguments: {} }));
+    await Bun.sleep(0);
+    expect(signals).toHaveLength(2);
+    expect(target.responses().at(-1)).toEqual({
+      jsonrpc: "2.0",
+      id: "three",
+      error: { code: -32000, message: "Too many tool calls are active." },
     });
+    target.server.end();
   });
 
   test("aborts active tools and drops late results when the server ends", async () => {

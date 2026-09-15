@@ -103,12 +103,16 @@ caller supplies only a tool name and arguments; it cannot choose the actor,
 tenant, turn, context snapshot, or policy.
 
 The server owns bounded newline JSON-RPC framing and the MCP initialize,
-ping, list, call, and cancellation methods. It consumes and emits
+ping, cursor-paginated list, concurrency-bounded call, and cancellation
+methods. It consumes and emits
 `Uint8Array`, so the product can place it behind stdio, a Unix socket, a web
 stream, a native bridge, or a remote transport. The product still owns that
 transport and all authentication, origin, confidentiality, lifecycle, and
-backpressure decisions. The package imports no MCP/provider SDK and performs
-no process, filesystem, environment, credential, or network access.
+backpressure decisions. In particular, its injected writer must synchronously
+accept or queue the complete frame and throw if it cannot; a socket with
+partial writes needs a host-owned draining writer. The package imports no
+MCP/provider SDK and performs no process, filesystem, environment, credential,
+or network access.
 
 Tool descriptor and result metadata remain private instead of becoming MCP
 `_meta` implicitly. A product can add an explicit, reviewed projection later
