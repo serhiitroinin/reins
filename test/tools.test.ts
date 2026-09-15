@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createToolHost } from "../src/tools.ts";
+import { bindToolHost, createToolHost } from "../src/tools.ts";
 
 const context = {
   session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
@@ -11,6 +11,24 @@ const context = {
 };
 
 describe("tool host", () => {
+  test("binds trusted turn context outside the provider call", async () => {
+    let received = "";
+    const host = createToolHost([{
+      name: "where",
+      description: "Read the trusted turn",
+      inputSchema: { type: "object" },
+      execute: (_input, toolContext) => {
+        received = `${toolContext.session.actorId}:${toolContext.turnId}`;
+        return { content: [] };
+      },
+    }]);
+    const tools = bindToolHost(host, context);
+
+    expect(tools.list()).toMatchObject([{ name: "where" }]);
+    await tools.call("where", { context: { turnId: "attacker" } });
+    expect(received).toBe("actor:turn");
+  });
+
   test("validates and executes an application tool", async () => {
     const tools = createToolHost([{
       name: "greet",

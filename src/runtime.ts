@@ -32,7 +32,7 @@ import type {
   HarnessLimitSnapshot,
   HarnessModelCatalog,
 } from "./profile.js";
-import { emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
+import { bindToolHost, emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
 
 export type HarnessAdapterEvent = Exclude<
   HarnessEventPayload,
@@ -344,10 +344,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             turnId,
             signal: controller.signal,
             context,
-            tools: {
-              list: () => tools.list(toolContext),
-              call: (name, input) => tools.call(name, input, toolContext),
-            },
+            tools: bindToolHost(tools, toolContext),
           })) {
             if (controller.signal.aborted) break;
             await emit(payload);
