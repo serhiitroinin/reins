@@ -431,6 +431,9 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         }
       };
 
+      const hasPending = (turn: ActiveTurn): boolean =>
+        [...pending.values()].some((value) => value.turn === turn);
+
       const tools: HarnessTurnTools = {
         list(): readonly HarnessToolDescriptor[] {
           return active?.request.tools.list() ?? [];
@@ -732,7 +735,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           ) {
             throw new HarnessAdapterError("CLAUDE_STALE_TURN", "The active Claude turn changed before the follow-up was sent.");
           }
-          if ([...pending.values()].some((value) => value.turn === turn)) {
+          if (hasPending(turn)) {
             throw new HarnessAdapterError(
               "CLAUDE_INTERACTION_PENDING",
               "Answer the pending Claude request before sending a follow-up.",
@@ -746,6 +749,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               || turn.cancelling
               || turn.request.signal.aborted
               || followUp.signal.aborted
+              || hasPending(turn)
             ) {
               throw new HarnessAdapterError(
                 "CLAUDE_TURN_NOT_STEERABLE",
@@ -765,6 +769,20 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               options.mapFollowUp?.(followUp, turn.request)
               ?? defaultFollowUpInput(followUp, turn.request)
             );
+            if (
+              active !== turn
+              || turn.finished
+              || turn.cancelling
+              || turn.request.signal.aborted
+              || followUp.signal.aborted
+              || hasPending(turn)
+            ) {
+              throw new HarnessAdapterError(
+                "CLAUDE_TURN_NOT_STEERABLE",
+                "Claude is not ready to accept a follow-up for this turn.",
+                true,
+              );
+            }
             try {
               await opened.send(input);
             } catch (error) {
