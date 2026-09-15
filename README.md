@@ -79,6 +79,22 @@ const run = harness.start({
 for await (const event of run.events) console.log(event.payload);
 ```
 
+An application that already admitted a turn may pass runtime-only start
+options as the second argument. Host-supplied IDs keep product and harness
+events correlated; a supplied controller becomes the run's controller; and a
+prepared context is passed by identity to both the adapter and application
+tools. These live values are intentionally absent from the JSON wire contract.
+
+```ts
+const controller = new AbortController();
+const run = harness.start(request, {
+  runId: productRunId,
+  turnId: productTurnId,
+  controller,
+  context: preparedContext,
+});
+```
+
 Run the complete example with `bun run example`.
 
 ## MCP tool bridge

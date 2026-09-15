@@ -63,6 +63,14 @@ The host supplies event and session stores. The in-memory implementation is a
 reference for tests and prototypes; production applications should implement
 durable, tenant-scoped stores.
 
+A product that admits and identifies work before calling the runtime can bind
+its existing run id, turn id, `AbortController`, and prepared context through
+the runtime-only start options. The supplied controller becomes owned by that
+run: runtime cancellation aborts it. The supplied context is trusted host
+state and is passed by identity to the adapter and tool boundary without being
+persisted. These values are not part of `HarnessRunRequest` or its JSON-safe
+wire representation.
+
 ## Context sources
 
 Context sources are application-owned, turn-scoped snapshots. The runtime
