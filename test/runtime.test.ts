@@ -1015,6 +1015,56 @@ describe("harness runtime", () => {
     await events;
   });
 
+  test("refuses follow-ups after provider failure while error persistence is pending", async () => {
+    let providerEnded!: () => void;
+    const ended = new Promise<void>((resolve) => { providerEnded = resolve; });
+    let errorPersisting!: () => void;
+    const persistenceStarted = new Promise<void>((resolve) => { errorPersisting = resolve; });
+    let finishPersistence!: () => void;
+    const persistence = new Promise<void>((resolve) => { finishPersistence = resolve; });
+    let steers = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            providerEnded();
+            throw new Error("provider failed");
+          },
+          async steer() { steers += 1; },
+        };
+      },
+    };
+    const store = createMemoryPersistence();
+    const append = store.events.append.bind(store.events);
+    store.events.append = async (event) => {
+      if (event.payload.kind === "error") {
+        errorPersisting();
+        await persistence;
+      }
+      return append(event);
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: store });
+    const run = harness.start(request, { turnId: "failed-turn" });
+    const events = collect(run.events);
+    await ended;
+    await persistenceStarted;
+
+    await expect(run.followUp({
+      expectedTurnId: "failed-turn",
+      input: [{ type: "text", text: "too late" }],
+    })).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(steers).toBe(0);
+
+    finishPersistence();
+    expect(await run.done).toBe("error");
+    await events;
+  });
+
   test("stop aborts replacement context preparation before waiting for control serialization", async () => {
     let runReady = false;
     let releaseRun!: () => void;

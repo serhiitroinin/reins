@@ -975,6 +975,13 @@ describe("ACP v1 adapter", () => {
       },
     });
     const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    expect(await runtime.capabilities(adapter.id)).toMatchObject({
+      steering: {
+        support: "stable",
+        strategies: ["replacement-turn"],
+        constraints: { requiresAgentCapability: "loadSession" },
+      },
+    });
     expect(await runtime.profile(adapter.id)).toMatchObject({ status: "available", value: { id: "acp-config" } });
     expect(await runtime.models(adapter.id)).toMatchObject({ status: "available", value: { models: [{ id: "fast" }] } });
     expect(await runtime.limits(adapter.id)).toEqual({ status: "unsupported" });
