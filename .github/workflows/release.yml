@@ -28,7 +28,16 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: npm install --global npm@latest
-      - run: npm publish --access public --provenance
+      - name: Publish with the matching npm dist-tag
+        run: |
+          PACKAGE_VERSION="$(node --print "require('./package.json').version")"
+          if [[ "$PACKAGE_VERSION" == *-* ]]; then
+            NPM_DIST_TAG="${PACKAGE_VERSION#*-}"
+            NPM_DIST_TAG="${NPM_DIST_TAG%%.*}"
+          else
+            NPM_DIST_TAG="latest"
+          fi
+          npm publish --access public --provenance --tag "$NPM_DIST_TAG"
       - run: gh release create "${{ inputs.tag }}" --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
