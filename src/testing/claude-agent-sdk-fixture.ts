@@ -75,6 +75,7 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
       state.resumeTokens.push(request.resumeToken);
       const messages = createPushableAsyncIterable<unknown>();
       let closed = false;
+      let sends = 0;
       const complete = (): void => {
         messages.push({ type: "result", subtype: "success", is_error: false });
       };
@@ -87,6 +88,7 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
       const connection: ClaudeAgentSdkConnection = {
         messages,
         send(input) {
+          sends += 1;
           state.sends.push(input);
           if (current === "safe-error") {
             messages.push({ type: "result", subtype: "conformance-safe", is_error: true });
@@ -94,6 +96,16 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
           }
           if (current === "cancel") {
             assistant(CONFORMANCE.waitingText);
+            return;
+          }
+          if (current === "steering") {
+            if (sends === 1) {
+              assistant(CONFORMANCE.waitingText);
+              return;
+            }
+            const followUp = input.input.find((entry) => entry.type === "text");
+            assistant(followUp?.type === "text" ? followUp.text : "follow-up-missing");
+            complete();
             return;
           }
           if (current === "interaction") {

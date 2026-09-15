@@ -52,6 +52,7 @@ function conformanceAgent(
   state: AcpV1FixtureState,
 ): acp.AgentApp {
   const cancelled = deferred<void>();
+  let prompts = 0;
   return acp.agent({ name: "fold-harness-acp-conformance" })
     .onRequest(acp.methods.agent.initialize, () => ({
       protocolVersion: 1,
@@ -66,11 +67,17 @@ function conformanceAgent(
       return {};
     })
     .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
+      prompts += 1;
       const emitText = (text: string) => client.notify(acp.methods.client.session.update, {
         sessionId: params.sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
       });
       if (scenario === "cancel") {
+        await emitText(CONFORMANCE.waitingText);
+        await cancelled.promise;
+        return { stopReason: "cancelled" };
+      }
+      if (scenario === "steering" && prompts === 1) {
         await emitText(CONFORMANCE.waitingText);
         await cancelled.promise;
         return { stopReason: "cancelled" };
@@ -90,6 +97,8 @@ function conformanceAgent(
       await emitText(
         scenario === "resume-restored"
           ? CONFORMANCE.resumedText
+          : scenario === "steering"
+            ? promptText ?? "follow-up-missing"
           : scenario === "tools" || scenario === "context"
             ? promptText ?? "missing"
             : CONFORMANCE.text,
@@ -150,6 +159,10 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
       return fakeConnection(conformanceAgent(scenario, state), state);
     },
     async mapPrompt(request) {
+      if (scenario === "steering") {
+        const input = request.input.find((entry) => entry.type === "text");
+        return [{ type: "text", text: input?.type === "text" ? input.text : "follow-up-missing" }];
+      }
       if (scenario === "tools") {
         const result = await request.tools.call(CONFORMANCE.toolName, { value: CONFORMANCE.toolInput });
         const content = result.content.find((entry) => entry.type === "text");

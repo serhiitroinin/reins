@@ -16,6 +16,7 @@ describe("adapter conformance", () => {
       "context boundary",
       "independent discovery",
       "cancellation and busy session",
+      "active-turn follow-up",
       "interaction round trip",
       "resume checkpoint",
     ]);

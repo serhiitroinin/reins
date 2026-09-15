@@ -33,6 +33,7 @@ export type AdapterConformanceScenario =
   | "resume-restored"
   | "tools"
   | "context"
+  | "steering"
   | "discovery";
 
 export interface AdapterConformanceDiscovery {
@@ -75,6 +76,7 @@ export const CONFORMANCE = {
   toolOutput: "tool-ok",
   contextSourceId: "conformance:context",
   contextText: "context-ok",
+  followUpText: "conformance-follow-up",
   resumeToken: "conformance-resume-token",
   interaction: {
     id: "conformance-interaction",
@@ -176,6 +178,20 @@ function validateCapabilities(value: HarnessCapabilities): void {
   for (const key of Object.keys(value.extensions ?? {})) {
     check(key.includes(":"), `capability extension must use a namespaced key: ${key}`);
   }
+  if (value.steering) {
+    check(
+      ["stable", "experimental", "unsupported"].includes(value.steering.support),
+      "invalid steering capability support",
+    );
+    check(new Set(value.steering.strategies).size === value.steering.strategies.length, "duplicate steering strategy");
+    check(
+      value.steering.strategies.every((strategy) => strategy === "same-turn" || strategy === "replacement-turn"),
+      "invalid steering strategy",
+    );
+    if (value.steering.preferred) {
+      check(value.steering.strategies.includes(value.steering.preferred), "preferred steering strategy is not declared");
+    }
+  }
 }
 
 function validateEnvelope(events: readonly HarnessEvent[], adapterId: string, session: HarnessSessionKey): void {
@@ -185,7 +201,9 @@ function validateEnvelope(events: readonly HarnessEvent[], adapterId: string, se
   check(events.filter((event) => event.payload.kind === "turn-completed").length === 1, "a run must complete exactly once");
   for (const [index, event] of events.entries()) {
     check(event.schemaVersion === 1, "event schema version must be 1");
-    check(event.sequence === index + 1, "event sequences must be monotonic");
+    if (index > 0) {
+      check(event.sequence === events[index - 1]!.sequence + 1, "event sequences must be monotonic");
+    }
     check(event.adapterId === adapterId, "event adapter identity changed");
     same(event.session, session, "event session identity changed");
     check(event.runId.length > 0 && event.turnId.length > 0 && event.eventId.length > 0, "event identifiers must not be empty");
@@ -350,6 +368,68 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
     check(await first.done === "interrupted", "cancelled turn did not end as interrupted");
     check(tail.at(-1)?.payload.kind === "turn-completed", "cancelled turn did not seal its stream");
     await first.cancel();
+  });
+
+  if (
+    !capabilities?.steering
+    || capabilities.steering.support === "unsupported"
+    || capabilities.steering.strategies.length === 0
+  ) skip("active-turn follow-up", "adapter reports active-turn follow-ups as unsupported");
+  else await runCase("active-turn follow-up", async (defer) => {
+    const value = adapter("steering");
+    const harness = scopedRuntime(defer, timeoutMs, {
+      adapters: [value],
+      persistence: createMemoryPersistence(),
+    });
+    const first = harness.start(request(fixture.adapterId));
+    const iterator = first.events[Symbol.asyncIterator]();
+    check((await iterator.next()).value?.payload.kind === "turn-started", "steering scenario did not start");
+    const waiting = await iterator.next();
+    check(
+      waiting.value?.payload.kind === "assistant-text" && waiting.value.payload.text === CONFORMANCE.waitingText,
+      "steering scenario did not reach its wait point",
+    );
+    const result = await first.followUp({
+      expectedTurnId: first.turnId,
+      input: [{ type: "text", text: CONFORMANCE.followUpText }],
+    });
+
+    if (result.strategy === "same-turn") {
+      check(result.run === first, "same-turn steering replaced the public run");
+      const tail: HarnessEvent[] = [];
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        tail.push(next.value);
+      }
+      check(await first.done === "completed", "same-turn steering did not complete");
+      check(tail.at(-1)?.payload.kind === "turn-completed", "same-turn steering did not seal once");
+      check(
+        tail.flatMap((event) => event.payload.kind === "assistant-text" ? [event.payload.text] : [])
+          .join("")
+          .includes(CONFORMANCE.followUpText),
+        "same-turn follow-up output was missing",
+      );
+    } else {
+      check(result.run !== first, "replacement steering reused the public run");
+      const firstTail: HarnessEvent[] = [];
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        firstTail.push(next.value);
+      }
+      check(await first.done === "interrupted", "replaced turn did not end as interrupted");
+      check(firstTail.at(-1)?.payload.kind === "turn-completed", "replaced turn did not seal before admission");
+      const replacementEvents = await collect(result.run.events);
+      check(await result.run.done === "completed", "replacement follow-up did not complete");
+      check(result.run.turnId !== first.turnId, "replacement follow-up reused the old turn id");
+      check(
+        replacementEvents.some((event) => event.payload.kind === "assistant-text"
+          && event.payload.text.includes(CONFORMANCE.followUpText)),
+        "replacement follow-up output was missing",
+      );
+      validateEnvelope(replacementEvents, fixture.adapterId, SESSION);
+    }
   });
 
   if (capabilities?.interactions.support === "unsupported") skip("interaction round trip", "adapter reports interactions as unsupported");
