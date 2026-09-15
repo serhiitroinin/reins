@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "rootDir": "../..",
+    "types": ["bun", "node"]
+  },
+  "include": [
+    "./**/*.ts",
+    "../../test/incident-terminal-example.test.ts"
+  ]
+}

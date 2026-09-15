@@ -255,6 +255,26 @@ kind remains retainable or safely ignorable. An incompatible field or closed
 union change requires a new schema major. Generated bindings are conveniences,
 not validators; the JSON Schema remains authoritative at an untrusted boundary.
 
+## Reference host
+
+`examples/incident-terminal` is the first non-Fold reference product. Its UI is
+plain terminal input/output, its domain state is an in-memory incident store,
+and its provider is a deterministic offline fixture. It consumes the same
+runtime surfaces a browser, desktop shell, server, or native bridge would:
+discovery, context sources, tools, events, interactions, checkpoints, and
+cancellation.
+
+The example keeps provider execution permission and application transaction
+confirmation separate. The adapter requests the former through a runtime
+interaction. The validated incident tool performs the latter in the host just
+before mutation. Neither decision is inferred from the other.
+
+This example does not add a terminal abstraction to the package and does not
+claim provider interoperability or sandboxing. It demonstrates that product
+state and presentation can change without changing the core runtime. The
+native Claude/Codex and ACP adapter suites remain the evidence for provider
+behavior.
+
 The current Codex App Server schema accepts dynamic tools on thread creation,
 not thread resume. The adapter enables the experimental API capability when a
 run exposes a non-empty catalog, and omits an empty catalog so ordinary turns

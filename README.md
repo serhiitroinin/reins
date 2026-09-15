@@ -97,6 +97,23 @@ const run = harness.start(request, {
 
 Run the complete example with `bun run example`.
 
+## Non-Fold terminal host
+
+The [incident terminal example](examples/incident-terminal/README.md) is a
+second product built entirely outside Fold. It runs offline and demonstrates a
+discovery-driven terminal UI, required and optional domain context, validated
+read/write tools, separate provider and application confirmation, restart and
+checkpoint recovery, and cancellation with retained partial events.
+
+```bash
+bun run example:incident
+```
+
+Use `bun run example:incident:interactive` to answer both consent boundaries
+yourself. The scripted adapter keeps the example deterministic; a production
+host can replace it with a native or ACP adapter without changing the domain
+or event-rendering boundary.
+
 ## MCP tool bridge
 
 A host can expose the same `HarnessToolHost` to any MCP-capable agent without

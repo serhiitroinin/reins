@@ -36,13 +36,16 @@
 - A bounded, transport-neutral MCP server over `HarnessToolHost`, with trusted
   turn context captured outside the wire and no provider or operating-system
   dependency.
+- Fold's complete workspace context assembled through runtime contributions,
+  while vault and product-specific reads remain Fold-owned.
+- Fold-owned durable SQLite event and checkpoint stores behind the runtime
+  persistence interfaces, with the frozen product projection kept separate.
+- A non-Fold incident-triage terminal reference host covering generic
+  discovery, context, tools, two consent boundaries, resume, and cancellation.
 
 ## Next
 
-1. Migrate Fold's complete context assembly onto runtime contributions.
-2. Implement durable Fold stores behind the runtime interfaces.
-3. Build a non-Fold domain example with a browser, terminal, or native UI.
-4. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
+1. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
    test credential are available; keep it experimental until then.
 
 ## Deliberately outside the first release
