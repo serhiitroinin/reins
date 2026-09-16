@@ -67,6 +67,14 @@ export interface HarnessAdapterFollowUpRequest {
   signal: AbortSignal;
 }
 
+export interface HarnessAdapterSubagentControlRequest {
+  taskId: string;
+  runId: string;
+  turnId: string;
+  /** Aborted when the parent turn ends, is cancelled, or the runtime closes. */
+  signal: AbortSignal;
+}
+
 export interface HarnessAdapterSession {
   /**
    * Yield only events owned by this invocation's `runId` and `turnId`.
@@ -84,7 +92,7 @@ export interface HarnessAdapterSession {
    */
   cancel?(): Promise<void>;
   /** Stop one active provider subagent without cancelling its parent turn. */
-  stopSubagent?(taskId: string): Promise<boolean>;
+  stopSubagent?(request: HarnessAdapterSubagentControlRequest): Promise<boolean>;
   checkpoint?(): Promise<string | null> | string | null;
   close?(): Promise<void>;
 }
@@ -1032,6 +1040,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       let publicCancelWork: Promise<void> | null = null;
       let cancellationDispatch: Promise<void> | null = null;
       let controlTail: Promise<void> = Promise.resolve();
+      const controlLifetime = new AbortController();
       let replacementInFlight: AbortController | null = null;
       let preserveReplacementOnAbort = false;
       /** Interactions the durable event stream still says this turn can answer. */
@@ -1054,6 +1063,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
 
       const onAbort = (): void => {
         stopping = true;
+        if (!controlLifetime.signal.aborted) controlLifetime.abort();
         if (!preserveReplacementOnAbort && replacementInFlight && !replacementInFlight.signal.aborted) {
           replacementInFlight.abort();
         }
@@ -1205,6 +1215,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             // the runtime turn as interrupted.
             await emit(payload);
           }
+          if (!controlLifetime.signal.aborted) controlLifetime.abort();
           // Provider output has drained. Do not accept new input while the
           // checkpoint and terminal envelope are still becoming durable.
           phase = "sealing";
@@ -1227,6 +1238,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         } catch (error) {
           // The provider iterable has already settled on every catch path.
           // Close follow-up admission before persisting a public error.
+          if (!controlLifetime.signal.aborted) controlLifetime.abort();
           phase = "sealing";
           if (controller.signal.aborted || stopping || error instanceof HarnessAdapterInterruptedError) {
             status = "interrupted";
@@ -1247,6 +1259,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             await emit({ kind: "error", ...failure });
           }
         } finally {
+          if (!controlLifetime.signal.aborted) controlLifetime.abort();
           phase = "sealing";
           try {
             // A custom adapter may end without explicitly closing a deferred
@@ -1623,8 +1636,43 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               );
             }
             try {
-              return await target.session.stopSubagent(taskId);
+              const operation = Promise.resolve(target.session.stopSubagent({
+                taskId,
+                runId,
+                turnId,
+                signal: controlLifetime.signal,
+              }));
+              return await new Promise<boolean>((resolve, reject) => {
+                let settled = false;
+                const retire = (): void => {
+                  if (settled) return;
+                  settled = true;
+                  reject(new HarnessAdapterInterruptedError());
+                };
+                controlLifetime.signal.addEventListener("abort", retire, { once: true });
+                if (controlLifetime.signal.aborted) retire();
+                void operation.then(
+                  (value) => {
+                    controlLifetime.signal.removeEventListener("abort", retire);
+                    if (settled) return;
+                    settled = true;
+                    resolve(value);
+                  },
+                  (error) => {
+                    controlLifetime.signal.removeEventListener("abort", retire);
+                    if (settled) return;
+                    settled = true;
+                    reject(error);
+                  },
+                );
+              });
             } catch (error) {
+              if (error instanceof HarnessAdapterInterruptedError && controlLifetime.signal.aborted) {
+                throw new HarnessRuntimeError(
+                  "TURN_NOT_ACTIVE",
+                  "This harness turn is no longer accepting subagent controls.",
+                );
+              }
               reportFailure(error, {
                 phase: "subagent",
                 adapterId: adapter.id,

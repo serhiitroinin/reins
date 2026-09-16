@@ -31,6 +31,7 @@ import {
   type HarnessAdapterFollowUpRequest,
   type HarnessAdapterRunRequest,
   type HarnessAdapterSession,
+  type HarnessAdapterSubagentControlRequest,
 } from "../runtime.js";
 import type { HarnessToolDescriptor, HarnessToolResult, HarnessTurnTools } from "../tools.js";
 import {
@@ -165,7 +166,7 @@ export interface ClaudeAgentSdkAdapterSession extends HarnessAdapterSession {
   cancel(): Promise<void>;
   checkpoint(): string | null;
   close(): Promise<void>;
-  stopSubagent(taskId: string): Promise<boolean>;
+  stopSubagent(request: HarnessAdapterSubagentControlRequest): Promise<boolean>;
 }
 
 export interface ClaudeAgentSdkAdapter extends HarnessAdapter {
@@ -906,13 +907,38 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           return turn.cancelling;
         },
         checkpoint: () => checkpoint,
-        async stopSubagent(taskId) {
+        async stopSubagent({ taskId, signal }) {
           const stop = connection?.stopSubagent;
-          if (!stop || !active || active.finished) return false;
+          if (!stop || !active || active.finished || signal.aborted) return false;
           try {
-            await stop.call(connection, taskId);
+            const stopping = Promise.resolve(stop.call(connection, taskId));
+            await new Promise<void>((resolve, reject) => {
+              let settled = false;
+              const abort = (): void => {
+                if (settled) return;
+                settled = true;
+                reject(new HarnessAdapterInterruptedError());
+              };
+              signal.addEventListener("abort", abort, { once: true });
+              if (signal.aborted) abort();
+              void stopping.then(
+                () => {
+                  signal.removeEventListener("abort", abort);
+                  if (settled) return;
+                  settled = true;
+                  resolve();
+                },
+                (error) => {
+                  signal.removeEventListener("abort", abort);
+                  if (settled) return;
+                  settled = true;
+                  reject(error);
+                },
+              );
+            });
             return true;
-          } catch {
+          } catch (error) {
+            if (error instanceof HarnessAdapterInterruptedError || error instanceof HarnessAdapterError) throw error;
             return false;
           }
         },

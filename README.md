@@ -277,7 +277,9 @@ turn is still active immediately before provider dispatch. It returns `true`
 when the adapter accepted the stop and `false` when it safely could not stop
 that task. Missing support, an ended turn, and unsafe provider failures surface
 as typed, sanitized runtime errors; stopping a subagent does not cancel its
-parent turn.
+parent turn. The adapter request includes a turn-scoped abort signal. Cancel,
+normal turn completion, and runtime close retire a pending stop immediately;
+adapters must observe that signal and suppress work after retirement.
 
 ## Non-Fold terminal host
 

@@ -1516,7 +1516,7 @@ describe("harness runtime", () => {
             runStarted();
             await running;
           },
-          async stopSubagent(taskId) {
+          async stopSubagent({ taskId }) {
             stopped.push(taskId);
             firstStopStarted();
             await firstStopWaiting;
@@ -1531,15 +1531,121 @@ describe("harness runtime", () => {
     await started;
 
     const first = run.stopSubagent("agent-1");
+    const firstResult = first.catch((error) => error);
     await stopping;
     const queued = run.stopSubagent("agent-2");
     finishRun();
     expect(await run.done).toBe("completed");
     finishFirstStop();
 
-    expect(await first).toBe(true);
+    expect(await firstResult).toMatchObject({ code: "TURN_NOT_ACTIVE" });
     await expect(queued).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
     expect(stopped).toEqual(["agent-1"]);
+    await events;
+  });
+
+  test("cancel retires a hung subagent control without accepting its late result", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let releaseRun!: () => void;
+    const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let controlStarted!: () => void;
+    const controlling = new Promise<void>((resolve) => { controlStarted = resolve; });
+    let finishControl!: () => void;
+    let controlAborted = false;
+    let lateEffects = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({ ...capabilities, subagents: { support: "stable" } }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          stopSubagent({ signal }) {
+            controlStarted();
+            signal.addEventListener("abort", () => { controlAborted = true; }, { once: true });
+            return new Promise<boolean>((resolve) => {
+              finishControl = () => {
+                if (!signal.aborted) lateEffects += 1;
+                resolve(true);
+              };
+            });
+          },
+          async cancel() { releaseRun(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+    const control = run.stopSubagent("agent-1").catch((error) => error);
+    await controlling;
+
+    await run.cancel();
+
+    expect(await control).toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(controlAborted).toBe(true);
+    finishControl();
+    await Bun.sleep(0);
+    expect(lateEffects).toBe(0);
+    await events;
+  });
+
+  test("close retires a hung subagent control and drains its parent run", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let releaseRun!: () => void;
+    const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let controlStarted!: () => void;
+    const controlling = new Promise<void>((resolve) => { controlStarted = resolve; });
+    let finishControl!: () => void;
+    let controlAborted = false;
+    let lateEffects = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        cancel: unsupported,
+        subagents: { support: "stable" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          stopSubagent({ signal }) {
+            controlStarted();
+            signal.addEventListener("abort", () => { controlAborted = true; }, { once: true });
+            return new Promise<boolean>((resolve) => {
+              finishControl = () => {
+                if (!signal.aborted) lateEffects += 1;
+                resolve(true);
+              };
+            });
+          },
+          async close() { releaseRun(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+    const control = run.stopSubagent("agent-1").catch((error) => error);
+    await controlling;
+
+    await harness.close();
+
+    expect(await control).toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(controlAborted).toBe(true);
+    finishControl();
+    await Bun.sleep(0);
+    expect(lateEffects).toBe(0);
+    expect(await run.done).toBe("interrupted");
     await events;
   });
 

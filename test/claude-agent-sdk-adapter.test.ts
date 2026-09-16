@@ -678,7 +678,12 @@ describe("Claude Agent SDK adapter", () => {
     const iterator = second[Symbol.asyncIterator]();
     const first = iterator.next();
     await Bun.sleep(0);
-    expect(await opened.stopSubagent("agent-7")).toBe(true);
+    expect(await opened.stopSubagent({
+      taskId: "agent-7",
+      runId: "run-two",
+      turnId: "two",
+      signal: new AbortController().signal,
+    })).toBe(true);
     finishSecond();
     expect(await first).toEqual({ done: false, value: { kind: "assistant-text", text: "turn-2" } });
     expect(await iterator.next()).toEqual({ done: true, value: undefined });

@@ -247,7 +247,11 @@ inside the serialized control lane, and calls an optional adapter-session
 method. It neither exposes the provider session nor assigns task identity.
 Adapters return whether they accepted the targeted stop; unsupported control,
 ended turns, and unsafe failures become stable sanitized runtime errors. The
-parent turn remains active.
+parent turn remains active. The adapter receives a turn-scoped abort signal.
+Turn completion, cancellation, and runtime close retire the control lane, so a
+hung provider promise cannot hold `run.cancel()` or shutdown. A late provider
+settlement is ignored, and adapters must use the signal to prevent late side
+effects.
 
 ## Tools
 
