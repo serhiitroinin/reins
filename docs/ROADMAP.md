@@ -61,11 +61,16 @@
   selections, effort, resolved permission and generic controls, input policy,
   and stable host session bindings, with inherited or explicitly readmitted
   replacement turns and shared Claude, Codex, and ACP conformance coverage.
+- Versioned adapter checkpoint formats, restart-stable host session bindings,
+  runtime-owned early checkpoint writes, explicit inactive-session reset, and
+  sanitized provider-neutral lifecycle diagnostics.
 
 ## Next
 
-1. Verify Grok's ACP command/auth/cancel/resume behavior when a local binary and
-   test credential are available; keep it experimental until then.
+1. Harden native Claude and Codex recovery against expired or provider-rejected
+   checkpoints, with explicit host policy instead of silent conversation loss.
+2. Add portable activity or attention vocabulary only where Claude/Codex hosts
+   have a concrete non-Fold consumer and conformance case.
 
 ## Deliberately outside the first release
 

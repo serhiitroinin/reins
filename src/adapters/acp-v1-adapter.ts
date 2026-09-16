@@ -485,8 +485,15 @@ export interface AcpV1AdapterSession extends HarnessAdapterSession {
 }
 
 export interface AcpV1Adapter extends HarnessAdapter {
-  open(request: { session: AcpV1ConnectRequest["session"]; resumeToken: string | null }): Promise<AcpV1AdapterSession>;
+  open(request: {
+    session: AcpV1ConnectRequest["session"];
+    resumeToken: string | null;
+    persistCheckpoint?(resumeToken: string | null): Promise<void>;
+  }): Promise<AcpV1AdapterSession>;
 }
+
+/** Persisted session-id format shared by stable ACP v1 connections. */
+export const ACP_V1_CHECKPOINT_FORMAT = "agent-client-protocol:session-id@1";
 
 /** Compose a Harness adapter over the official stable ACP v1 protocol. */
 export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
@@ -510,6 +517,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
 
   return {
     id,
+    checkpoint: { format: ACP_V1_CHECKPOINT_FORMAT },
     capabilities: () => options.capabilities ?? ACP_V1_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultAcpV1Profile(id), request),
     models: (request) => discovery(options.models, request),
@@ -517,7 +525,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
       ? discovery(options.limits, request)
       : { status: "unsupported" },
 
-    async open({ session, resumeToken }) {
+    async open({ session, resumeToken, persistCheckpoint }) {
       let checkpoint = resumeToken;
       let closed = false;
       let active: ActiveTurn | null = null;
@@ -943,6 +951,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
               checkpoint = createdSession.sessionId;
               modes = sessionModeState(createdSession.modes);
               configOptions = sessionConfigOptions(createdSession.configOptions);
+              await persistCheckpoint?.(createdSession.sessionId);
               await options.onCheckpoint?.(createdSession.sessionId, checkpointRequest(connectRequest));
             }
           } catch (error) {

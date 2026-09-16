@@ -194,6 +194,7 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
 function createIncidentAdapter(state: IncidentAdapterState): HarnessAdapter {
   return {
     id: ADAPTER_ID,
+    checkpoint: { format: "example:incident-simulator/session@1" },
     capabilities: () => capabilities,
     profile: () => ({ status: "available", value: profile }),
     models: () => ({ status: "available", value: models }),

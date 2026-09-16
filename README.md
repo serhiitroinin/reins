@@ -117,7 +117,44 @@ leaving a field out means the host has not adopted enforcement for that
 dimension yet. A supplied controls object is exact, so model-specific options
 such as `{ "openai:service-tier": "fast" }` need no provider branch in core.
 The opaque, non-secret `sessionBinding` pins host-owned connection authority
-for that logical runtime session.
+for that logical runtime session. When a provider is resumable, the binding is
+stored beside its private checkpoint and checked again after a process restart.
+
+## Session recovery and diagnostics
+
+Resumable adapters declare an open checkpoint format. The runtime wraps the
+opaque provider token in a versioned `HarnessSessionCheckpoint`, persists it
+as soon as the adapter announces it, and offers it only to adapters that
+declare that format as current or compatible. A changed host binding or
+incompatible adapter format fails before provider communication. Recovery is
+an explicit host decision:
+
+```ts
+await harness.resetSession(session, adapterId);
+```
+
+Reset closes an inactive live adapter session and removes its durable state.
+It refuses a busy session, so it cannot race an active turn. Checkpoint tokens
+remain private persistence data; they never enter the event or diagnostics
+contracts.
+
+Hosts can observe sanitized operational failures without coupling logging to
+provider SDK errors:
+
+```ts
+const harness = createHarness({
+  adapters,
+  persistence,
+  onDiagnostic(diagnostic) {
+    operations.enqueue(diagnostic);
+  },
+});
+```
+
+Diagnostics contain stable runtime identity, phase, safe code, and safe
+message only. The runtime never includes prompts, credentials, tool results,
+checkpoint tokens, or raw provider errors, never persists diagnostics, and
+ignores a failing observer.
 
 Same-turn follow-ups reuse the frozen snapshot. A replacement inherits it
 unless the host supplies a complete newly admitted `replacement.admission`.

@@ -169,10 +169,17 @@ export interface ClaudeAgentSdkAdapterSession extends HarnessAdapterSession {
 }
 
 export interface ClaudeAgentSdkAdapter extends HarnessAdapter {
-  open(request: { session: HarnessSessionKey; resumeToken: string | null }): Promise<ClaudeAgentSdkAdapterSession>;
+  open(request: {
+    session: HarnessSessionKey;
+    resumeToken: string | null;
+    persistCheckpoint?(resumeToken: string | null): Promise<void>;
+  }): Promise<ClaudeAgentSdkAdapterSession>;
 }
 
 const unsupported = { support: "unsupported" as const };
+
+/** Persisted token format understood by the native Claude adapter. */
+export const CLAUDE_AGENT_SDK_CHECKPOINT_FORMAT = "anthropic:claude-agent-sdk/session-id@1";
 
 /** Conservative capabilities of the injected adapter itself. */
 export const CLAUDE_AGENT_SDK_CAPABILITIES: HarnessCapabilities = {
@@ -407,6 +414,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
 
   return {
     id,
+    checkpoint: { format: CLAUDE_AGENT_SDK_CHECKPOINT_FORMAT },
     capabilities: () => options.capabilities ?? CLAUDE_AGENT_SDK_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultProfile(id), request),
     models: (request) => discovery(options.models, request),
@@ -422,7 +430,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
         : { status: "unsupported" };
     },
 
-    async open({ session, resumeToken }) {
+    async open({ session, resumeToken, persistCheckpoint }) {
       let checkpoint = resumeToken;
       let active: ActiveTurn | null = null;
       let connection: ClaudeAgentSdkConnection | null = null;
@@ -657,7 +665,9 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
                 canUseTool,
                 noteCompactSummary(summary) { compactSummary = summary; },
               };
-              checkpointWork = checkpointWork.then(() => options.onCheckpoint?.(value, checkpointRequest(requestValue)));
+              checkpointWork = checkpointWork
+                .then(() => persistCheckpoint?.(value))
+                .then(() => options.onCheckpoint?.(value, checkpointRequest(requestValue)));
             },
             onLimits(snapshot) {
               const account = connectionAccountId ?? "";

@@ -111,6 +111,7 @@ describe("harness runtime", () => {
     const openedWith: Array<string | null> = [];
     const adapter: HarnessAdapter = {
       id: "scripted",
+      checkpoint: { format: "test:scripted/session@1" },
       capabilities: () => capabilities,
       async open({ resumeToken }) {
         openedWith.push(resumeToken);
@@ -143,6 +144,187 @@ describe("harness runtime", () => {
     expect(openedWith).toEqual([null]);
     expect((await persistence.events.list(request.session, "scripted")).map((event) => event.sequence))
       .toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(await persistence.sessions.load(request.session, "scripted")).toMatchObject({
+      checkpoint: {
+        schemaVersion: 1,
+        format: "test:scripted/session@1",
+        token: "provider-session-1",
+      },
+    });
+  });
+
+  test("restores a versioned checkpoint only under the persisted host binding", async () => {
+    const persistence = createMemoryPersistence();
+    const firstAdapter: HarnessAdapter = {
+      id: "scripted",
+      checkpoint: { format: "test:scripted/session@2", compatibleFormats: ["test:scripted/session@1"] },
+      capabilities: () => capabilities,
+      async open() {
+        return { async *run() {}, checkpoint: () => "provider-session-2" };
+      },
+    };
+    const firstHarness = createHarness({ adapters: [firstAdapter], persistence });
+    const first = firstHarness.start(request, { admission: { sessionBinding: "account:a|policy:1" } });
+    await collect(first.events);
+    expect(await first.done).toBe("completed");
+    await firstHarness.close();
+    expect(await persistence.sessions.load(request.session, "scripted")).toMatchObject({
+      checkpoint: {
+        schemaVersion: 1,
+        format: "test:scripted/session@2",
+        token: "provider-session-2",
+      },
+      sessionBinding: "account:a|policy:1",
+    });
+
+    const openedWith: Array<string | null> = [];
+    const resumedAdapter: HarnessAdapter = {
+      id: "scripted",
+      checkpoint: { format: "test:scripted/session@3", compatibleFormats: ["test:scripted/session@2"] },
+      capabilities: () => capabilities,
+      async open({ resumeToken }) {
+        openedWith.push(resumeToken);
+        return { async *run() {}, checkpoint: () => resumeToken };
+      },
+    };
+    const resumedHarness = createHarness({ adapters: [resumedAdapter], persistence });
+    const resumed = resumedHarness.start(request, { admission: { sessionBinding: "account:a|policy:1" } });
+    await collect(resumed.events);
+    expect(await resumed.done).toBe("completed");
+    expect(openedWith).toEqual(["provider-session-2"]);
+    await resumedHarness.close();
+
+    let mismatchedOpen = false;
+    const mismatchedHarness = createHarness({
+      adapters: [{
+        ...resumedAdapter,
+        async open() {
+          mismatchedOpen = true;
+          return { async *run() {} };
+        },
+      }],
+      persistence,
+    });
+    const mismatched = mismatchedHarness.start(request, {
+      admission: { sessionBinding: "account:b|policy:1" },
+    });
+    const mismatchedEvents = await collect(mismatched.events);
+    expect(await mismatched.done).toBe("error");
+    expect(mismatchedOpen).toBe(false);
+    expect(mismatchedEvents.find((event) => event.payload.kind === "error")?.payload).toMatchObject({
+      kind: "error",
+      code: "SESSION_BINDING_MISMATCH",
+    });
+  });
+
+  test("refuses incompatible checkpoints until the host explicitly resets the session", async () => {
+    const persistence = createMemoryPersistence();
+    await persistence.sessions.save({
+      key: request.session,
+      adapterId: "scripted",
+      checkpoint: {
+        schemaVersion: 1,
+        format: "test:scripted/session@1",
+        token: "old-provider-session",
+      },
+      updatedAt: "2026-09-16T00:00:00.000Z",
+    });
+    const openedWith: Array<string | null> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      checkpoint: { format: "test:scripted/session@2" },
+      capabilities: () => capabilities,
+      async open({ resumeToken }) {
+        openedWith.push(resumeToken);
+        return { async *run() {}, checkpoint: () => "new-provider-session" };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const refused = harness.start(request);
+    const refusedEvents = await collect(refused.events);
+    expect(await refused.done).toBe("error");
+    expect(openedWith).toEqual([]);
+    expect(refusedEvents.find((event) => event.payload.kind === "error")?.payload).toMatchObject({
+      kind: "error",
+      code: "SESSION_CHECKPOINT_INCOMPATIBLE",
+    });
+
+    await harness.resetSession(request.session, "scripted");
+    expect(await persistence.sessions.load(request.session, "scripted")).toBeNull();
+    const fresh = harness.start(request);
+    await collect(fresh.events);
+    expect(await fresh.done).toBe("completed");
+    expect(openedWith).toEqual([null]);
+  });
+
+  test("persists an adapter checkpoint while its provider turn is still active", async () => {
+    const persistence = createMemoryPersistence();
+    let checkpointSaved!: () => void;
+    const saved = new Promise<void>((resolve) => { checkpointSaved = resolve; });
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      checkpoint: { format: "test:scripted/session@1" },
+      capabilities: () => capabilities,
+      async open({ persistCheckpoint }) {
+        return {
+          async *run() {
+            await persistCheckpoint?.("accepted-provider-session");
+            checkpointSaved();
+            await blocked;
+          },
+          async cancel() { release(); },
+          checkpoint: () => "accepted-provider-session",
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request, { admission: { sessionBinding: "binding-a" } });
+    const events = collect(run.events);
+    await saved;
+    expect(await persistence.sessions.load(request.session, "scripted")).toMatchObject({
+      checkpoint: { token: "accepted-provider-session" },
+      sessionBinding: "binding-a",
+    });
+    await run.cancel();
+    await events;
+  });
+
+  test("reports only sanitized diagnostics and ignores a failing observer", async () => {
+    const diagnostics: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      models() { throw new Error("private discovery credential"); },
+      async open() {
+        return {
+          async *run() { throw new Error("private provider transcript"); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      onDiagnostic(diagnostic) {
+        diagnostics.push(diagnostic);
+        return Promise.reject(new Error("observer failure"));
+      },
+    });
+    expect(await harness.models("scripted")).toEqual({
+      status: "unavailable",
+      message: "scripted discovery failed.",
+    });
+    const run = harness.start(request);
+    await collect(run.events);
+    expect(await run.done).toBe("error");
+    await Bun.sleep(0);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "discovery", code: "DISCOVERY_FAILED" }),
+      expect.objectContaining({ phase: "turn", code: "ADAPTER_ERROR" }),
+    ]));
+    expect(JSON.stringify(diagnostics)).not.toContain("credential");
+    expect(JSON.stringify(diagnostics)).not.toContain("transcript");
   });
 
   test("seals an aborted turn as interrupted", async () => {
@@ -176,6 +358,7 @@ describe("harness runtime", () => {
   test("invalidates an unanswered interaction before sealing its turn", async () => {
     const adapter: HarnessAdapter = {
       id: "scripted",
+      checkpoint: { format: "test:scripted/session@1" },
       capabilities: () => ({
         ...capabilities,
         interactions: { support: "stable", recovery: "live-only" },
@@ -1655,6 +1838,7 @@ describe("harness runtime", () => {
     let steers = 0;
     const adapter: HarnessAdapter = {
       id: "scripted",
+      checkpoint: { format: "test:scripted/session@1" },
       capabilities: () => ({
         ...capabilities,
         steering: { support: "stable", strategies: ["same-turn"] },
