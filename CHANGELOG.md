@@ -1,5 +1,13 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.22
+
+### Patch Changes
+
+- 939481d: Enforce an optional host-resolved input policy at runtime admission, snapshot
+  it per run, and reject invalid initial or active-turn input before provider
+  state changes.
+
 ## 0.1.0-next.21
 
 ### Minor Changes
