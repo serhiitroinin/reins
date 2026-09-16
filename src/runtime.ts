@@ -8,6 +8,7 @@
 import {
   harnessSessionKey,
   type HarnessCapabilities,
+  type HarnessContextValue,
   type HarnessEvent,
   type HarnessEventInput,
   type HarnessEventPayload,
@@ -38,6 +39,7 @@ import type {
   HarnessLimitSnapshot,
   HarnessModelCatalog,
   HarnessPermissionSelection,
+  HarnessRunSettings,
 } from "./profile.js";
 import { bindToolHost, emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
 
@@ -144,7 +146,21 @@ export interface HarnessFollowUpOptions {
   /** Omit to use the adapter-declared preferred strategy. */
   strategy?: HarnessSteeringStrategy;
   /** Host identity and prepared context for a replacement turn. */
-  replacement?: HarnessStartOptions;
+  replacement?: HarnessReplacementOptions;
+}
+
+/** Complete execution fields for a replacement turn; omitted fields are cleared. */
+export interface HarnessReplacementExecution {
+  accountId?: string;
+  model?: string;
+  effort?: string;
+  settings?: HarnessRunSettings;
+  configuration?: Readonly<Record<string, unknown>>;
+}
+
+export interface HarnessReplacementOptions extends HarnessStartOptions {
+  /** Requires an explicit newly admitted snapshot. */
+  execution?: HarnessReplacementExecution;
 }
 
 export interface HarnessFollowUpResult {
@@ -296,6 +312,101 @@ function snapshotAdmission(
       },
     } : {}),
     ...(inputPolicy ? { inputPolicy } : {}),
+  };
+}
+
+function snapshotContextValue(value: HarnessContextValue): HarnessContextValue {
+  if (Array.isArray(value)) return value.map(snapshotContextValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, snapshotContextValue(entry)]),
+    );
+  }
+  return value;
+}
+
+function snapshotInput(input: readonly HarnessInput[]): readonly HarnessInput[] {
+  return input.map((part) => part.type === "image"
+    ? { ...part, data: new Uint8Array(part.data) }
+    : { ...part });
+}
+
+function snapshotInlineContext(context: HarnessInlineContext | undefined): HarnessInlineContext | undefined {
+  if (!context) return undefined;
+  return {
+    version: context.version,
+    records: context.records.map((record) => ({
+      ...record,
+      payload: snapshotContextValue(record.payload),
+      ...(record.binding ? { binding: { ...record.binding } } : {}),
+    })),
+  };
+}
+
+function snapshotSettings(settings: HarnessRunSettings | undefined): HarnessRunSettings | undefined {
+  if (!settings) return undefined;
+  return {
+    ...(settings.permission ? { permission: { ...settings.permission } } : {}),
+    ...(settings.controls ? { controls: { ...settings.controls } } : {}),
+  };
+}
+
+function snapshotUnknown(value: unknown, seen = new WeakMap<object, unknown>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  const known = seen.get(value);
+  if (known !== undefined) return known;
+  if (value instanceof Uint8Array) return new Uint8Array(value);
+  if (Array.isArray(value)) {
+    const copy: unknown[] = [];
+    seen.set(value, copy);
+    for (const entry of value) copy.push(snapshotUnknown(entry, seen));
+    return copy;
+  }
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const copy: Record<string, unknown> = {};
+  seen.set(value, copy);
+  for (const [key, entry] of Object.entries(value)) copy[key] = snapshotUnknown(entry, seen);
+  return copy;
+}
+
+function snapshotRecord(value: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  return snapshotUnknown(value) as Readonly<Record<string, unknown>>;
+}
+
+function snapshotRunRequest(request: HarnessRunRequest): HarnessRunRequest {
+  const inlineContext = snapshotInlineContext(request.inlineContext);
+  const settings = snapshotSettings(request.settings);
+  return {
+    ...request,
+    session: { ...request.session },
+    input: snapshotInput(request.input),
+    ...(inlineContext ? { inlineContext } : {}),
+    ...(settings ? { settings } : {}),
+    ...(request.configuration ? { configuration: snapshotRecord(request.configuration) } : {}),
+    ...(request.metadata ? { metadata: snapshotRecord(request.metadata) } : {}),
+  };
+}
+
+function snapshotFollowUpRequest(request: HarnessFollowUpRequest): HarnessFollowUpRequest {
+  const inlineContext = snapshotInlineContext(request.inlineContext);
+  return {
+    ...request,
+    input: snapshotInput(request.input),
+    ...(inlineContext ? { inlineContext } : {}),
+    ...(request.metadata ? { metadata: snapshotRecord(request.metadata) } : {}),
+  };
+}
+
+function snapshotReplacementExecution(
+  execution: HarnessReplacementExecution | undefined,
+): HarnessReplacementExecution | undefined {
+  if (!execution) return undefined;
+  const settings = snapshotSettings(execution.settings);
+  return {
+    ...execution,
+    ...(settings ? { settings } : {}),
+    ...(execution.configuration ? { configuration: snapshotRecord(execution.configuration) } : {}),
   };
 }
 
@@ -516,7 +627,8 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           inputValidation.issues[0]?.message ?? "The harness input is invalid.",
         );
       }
-      const sessionId = harnessSessionKey(request.session, adapter.id);
+      const runRequest = snapshotRunRequest(request);
+      const sessionId = harnessSessionKey(runRequest.session, adapter.id);
       const knownSessionBinding = sessionBindings.get(sessionId);
       if (
         knownSessionBinding !== undefined
@@ -593,7 +705,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           ) return;
           const event = await options.persistence.events.append({
             schemaVersion: 1,
-            session: request.session,
+            session: runRequest.session,
             runId,
             turnId,
             adapterId: adapter.id,
@@ -620,8 +732,8 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         try {
           await emit({
             kind: "turn-started",
-            ...(request.model ? { model: request.model } : {}),
-            ...(request.accountId ? { accountId: request.accountId } : {}),
+            ...(runRequest.model ? { model: runRequest.model } : {}),
+            ...(runRequest.accountId ? { accountId: runRequest.accountId } : {}),
           });
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           if (reserved.has(sessionId)) {
@@ -629,7 +741,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           reserved.add(sessionId);
           ownsReservation = true;
-          opening = open(request.session, adapter);
+          opening = open(runRequest.session, adapter);
           managed = await opening;
           if (controller.signal.aborted) {
             if (opened.get(sessionId) === opening) opened.delete(sessionId);
@@ -643,10 +755,10 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
           const context = startOptions.context
-            ?? await prepareContext(request, runId, turnId, controller.signal);
+            ?? await prepareContext(runRequest, runId, turnId, controller.signal);
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           const toolContext = {
-            session: request.session,
+            session: runRequest.session,
             adapterId: adapter.id,
             runId,
             turnId,
@@ -655,7 +767,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           };
           phase = "running";
           for await (const payload of managed.session.run({
-            ...request,
+            ...runRequest,
             runId,
             turnId,
             signal: controller.signal,
@@ -673,7 +785,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           // checkpoint and terminal envelope are still becoming durable.
           phase = "sealing";
           if (controller.signal.aborted) status = "interrupted";
-          await persistCheckpoint(managed, request.session);
+          await persistCheckpoint(managed, runRequest.session);
         } catch (error) {
           // The provider iterable has already settled on every catch path.
           // Close follow-up admission before persisting a public error.
@@ -761,31 +873,35 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           return publicCancelWork;
         },
         followUp(followUpRequest, followUpOptions = {}) {
+          const inputValidation = validateHarnessInlineContext(
+            followUpRequest.inlineContext,
+            followUpRequest.input,
+          );
+          if (!inputValidation.valid) {
+            return Promise.reject(new HarnessRuntimeError(
+              "INVALID_INPUT",
+              inputValidation.issues[0]?.message ?? "The harness input is invalid.",
+            ));
+          }
+          const admittedFollowUp = snapshotFollowUpRequest(followUpRequest);
           const replacementAdmissionProvided = followUpOptions.replacement?.admission !== undefined
             || followUpOptions.replacement?.inputPolicy !== undefined;
           const replacementAdmission = snapshotAdmission(
             followUpOptions.replacement?.admission,
             followUpOptions.replacement?.inputPolicy,
           );
+          const replacementExecution = snapshotReplacementExecution(
+            followUpOptions.replacement?.execution,
+          );
           return serializeControl(async () => {
-            ensureActiveTurn(followUpRequest.expectedTurnId);
-            const inputValidation = validateHarnessInlineContext(
-              followUpRequest.inlineContext,
-              followUpRequest.input,
-            );
-            if (!inputValidation.valid) {
-              throw new HarnessRuntimeError(
-                "INVALID_INPUT",
-                inputValidation.issues[0]?.message ?? "The harness input is invalid.",
-              );
-            }
+            ensureActiveTurn(admittedFollowUp.expectedTurnId);
             let capabilities: HarnessCapabilities;
             try {
               capabilities = await adapter.capabilities();
             } catch {
               throw new HarnessRuntimeError("FOLLOW_UP_FAILED", "The adapter could not describe follow-up support.");
             }
-            ensureActiveTurn(followUpRequest.expectedTurnId);
+            ensureActiveTurn(admittedFollowUp.expectedTurnId);
             const steering = capabilities.steering;
             const supported = steering?.support !== "unsupported" ? steering?.strategies ?? [] : [];
             const strategy = followUpOptions.strategy
@@ -802,9 +918,9 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               : admission;
             const followUpInputPolicy = followUpAdmission?.inputPolicy;
             const policyValidation = validateHarnessInput(
-              followUpRequest.input,
+              admittedFollowUp.input,
               followUpInputPolicy,
-              followUpRequest.inlineContext,
+              admittedFollowUp.inlineContext,
             );
             if (!policyValidation.valid) {
               throw new HarnessRuntimeError(
@@ -814,18 +930,18 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             }
 
             if (strategy === "same-turn") {
-              const target = ensureActiveTurn(followUpRequest.expectedTurnId);
+              const target = ensureActiveTurn(admittedFollowUp.expectedTurnId);
               if (!target.session.steer) {
                 throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept a same-turn follow-up.");
               }
               try {
                 await target.session.steer({
-                  expectedTurnId: followUpRequest.expectedTurnId,
+                  expectedTurnId: admittedFollowUp.expectedTurnId,
                   runId,
                   turnId,
-                  input: followUpRequest.input,
-                  ...(followUpRequest.inlineContext ? { inlineContext: followUpRequest.inlineContext } : {}),
-                  ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
+                  input: admittedFollowUp.input,
+                  ...(admittedFollowUp.inlineContext ? { inlineContext: admittedFollowUp.inlineContext } : {}),
+                  ...(admittedFollowUp.metadata ? { metadata: admittedFollowUp.metadata } : {}),
                   signal: controller.signal,
                 });
               } catch (error) {
@@ -850,12 +966,27 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             if (replacement.controller === controller) {
               throw new Error("a replacement follow-up requires a fresh AbortController");
             }
-            const { inlineContext: _previousInlineContext, ...replacementBase } = request;
+            if (replacementExecution !== undefined && !replacementAdmissionProvided) {
+              admissionMismatch("Replacement execution changes require a newly admitted snapshot.");
+            }
+            const { inlineContext: _previousInlineContext, ...inheritedBase } = runRequest;
+            let replacementBase = inheritedBase;
+            if (replacementExecution !== undefined) {
+              const {
+                accountId: _previousAccountId,
+                model: _previousModel,
+                effort: _previousEffort,
+                settings: _previousSettings,
+                configuration: _previousConfiguration,
+                ...stableBase
+              } = inheritedBase;
+              replacementBase = { ...stableBase, ...replacementExecution };
+            }
             const replacementRequest: HarnessRunRequest = {
               ...replacementBase,
-              input: followUpRequest.input,
-              ...(followUpRequest.inlineContext ? { inlineContext: followUpRequest.inlineContext } : {}),
-              ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
+              input: admittedFollowUp.input,
+              ...(admittedFollowUp.inlineContext ? { inlineContext: admittedFollowUp.inlineContext } : {}),
+              ...(admittedFollowUp.metadata ? { metadata: admittedFollowUp.metadata } : {}),
             };
             validateAdmission(replacementRequest, followUpAdmission);
             const replacementSessionBinding = sessionBindings.get(sessionId);
@@ -895,7 +1026,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               ) {
                 admissionMismatch("The admitted execution does not match this harness session.");
               }
-              ensureActiveTurn(followUpRequest.expectedTurnId);
+              ensureActiveTurn(admittedFollowUp.expectedTurnId);
               try {
                 await performCancellation(true);
               } catch (error) {

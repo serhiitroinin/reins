@@ -1051,6 +1051,7 @@ describe("harness runtime", () => {
     const waiting = new Promise<void>((resolve) => { release = resolve; });
     let steers = 0;
     let cancellations = 0;
+    let observedText: string | undefined;
     const adapter: HarnessAdapter = {
       id: "scripted",
       capabilities: () => ({
@@ -1060,7 +1061,12 @@ describe("harness runtime", () => {
       async open() {
         return {
           async *run() { ready = true; await waiting; },
-          async steer() { steers += 1; release(); },
+          async steer(followUp) {
+            steers += 1;
+            const input = followUp.input[0];
+            observedText = input?.type === "text" ? input.text : undefined;
+            release();
+          },
           async cancel() { cancellations += 1; release(); },
         };
       },
@@ -1080,11 +1086,15 @@ describe("harness runtime", () => {
     expect(steers).toBe(0);
     expect(cancellations).toBe(0);
 
-    await run.followUp({
+    const mutableFollowUp = { type: "text" as const, text: "still active" };
+    const accepted = run.followUp({
       expectedTurnId: "policy-turn",
-      input: [{ type: "text", text: "still active" }],
+      input: [mutableFollowUp],
     });
+    mutableFollowUp.text = "drifted after admission";
+    await accepted;
     expect(steers).toBe(1);
+    expect(observedText).toBe("still active");
     expect(await run.done).toBe("completed");
     await events;
   });
@@ -1321,6 +1331,12 @@ describe("harness runtime", () => {
     let preparations = 0;
     let generatedIds = 0;
     let invocations = 0;
+    const observed: Array<{
+      session: string;
+      model: string | undefined;
+      fast: unknown;
+      text: string | undefined;
+    }> = [];
     const adapter: HarnessAdapter = {
       id: "scripted",
       capabilities: () => ({
@@ -1329,8 +1345,15 @@ describe("harness runtime", () => {
       }),
       async open() {
         return {
-          async *run() {
+          async *run(adapterRequest) {
             invocations += 1;
+            const text = adapterRequest.input[0];
+            observed.push({
+              session: adapterRequest.session.tenantId,
+              model: adapterRequest.model,
+              fast: adapterRequest.settings?.controls?.["vendor:fast"],
+              text: text?.type === "text" ? text.text : undefined,
+            });
             if (invocations === 1) {
               ready = true;
               await waiting;
@@ -1353,8 +1376,12 @@ describe("harness runtime", () => {
         },
       }],
     });
+    const mutableSession = { ...request.session };
+    const mutableInput = { type: "text" as const, text: "initial" };
     const mutableRequest = {
       ...request,
+      session: mutableSession,
+      input: [mutableInput],
       model: "model-a",
       settings: { controls: { "vendor:fast": false } },
     };
@@ -1370,16 +1397,25 @@ describe("harness runtime", () => {
       context: { sources: [], unavailable: [] },
       admission,
     });
+    admission.model = "model-b";
+    admission.settings.controls["vendor:fast"] = true;
+    mutableSession.tenantId = "drifted-tenant";
+    mutableInput.text = "drifted-input";
+    mutableRequest.model = "model-b";
+    mutableRequest.settings.controls["vendor:fast"] = true;
     const events = collect(run.events);
     while (!ready) await Bun.sleep(0);
 
-    admission.model = "model-b";
-    admission.settings.controls["vendor:fast"] = true;
-    mutableRequest.model = "model-b";
-    mutableRequest.settings.controls["vendor:fast"] = true;
     await expect(run.followUp({
       expectedTurnId: "initial-turn",
       input: [{ type: "text", text: "replace" }],
+    }, {
+      replacement: {
+        execution: {
+          model: "model-b",
+          settings: { controls: { "vendor:fast": true } },
+        },
+      },
     })).rejects.toMatchObject({ code: "ADMISSION_MISMATCH" });
     expect(generatedIds).toBe(0);
     expect(preparations).toBe(0);
@@ -1391,12 +1427,23 @@ describe("harness runtime", () => {
       settings: { controls: { "vendor:fast": true } },
       sessionBinding: "binding-a",
     };
+    const replacementExecution = {
+      model: "model-b",
+      settings: { controls: { "vendor:fast": true } },
+    };
     const replacing = run.followUp({
       expectedTurnId: "initial-turn",
       input: [{ type: "text", text: "replace" }],
-    }, { replacement: { admission: replacementAdmission } });
+    }, {
+      replacement: {
+        admission: replacementAdmission,
+        execution: replacementExecution,
+      },
+    });
     replacementAdmission.model = "model-after-call";
     replacementAdmission.settings.controls["vendor:fast"] = false;
+    replacementExecution.model = "model-after-call";
+    replacementExecution.settings.controls["vendor:fast"] = false;
 
     const result = await replacing;
     const replacementEvents = await collect(result.run.events);
@@ -1407,6 +1454,11 @@ describe("harness runtime", () => {
     expect(preparations).toBe(1);
     expect(cancellations).toBe(1);
     expect(invocations).toBe(2);
+    expect(observed).toEqual([
+      { session: "tenant", model: "model-a", fast: false, text: "initial" },
+      { session: "tenant", model: "model-b", fast: true, text: "replace" },
+    ]);
+    expect((await events)[0]?.session.tenantId).toBe("tenant");
     expect(replacementEvents.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "completed" });
   });
 
