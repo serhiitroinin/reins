@@ -120,9 +120,12 @@ The opaque, non-secret `sessionBinding` pins host-owned connection authority
 for that logical runtime session.
 
 Same-turn follow-ups reuse the frozen snapshot. A replacement inherits it
-unless the host supplies a complete newly admitted `replacement.admission`;
-validation happens before replacement IDs, context preparation, provider
-cancellation, or mutation and is repeated after asynchronous preparation.
+unless the host supplies a complete newly admitted `replacement.admission`.
+To change model, effort, account, settings, or provider configuration, the
+host also supplies `replacement.execution`; its fields replace rather than
+merge the original execution fields, and it is refused without explicit
+readmission. Validation happens before replacement IDs, context preparation,
+provider cancellation, or mutation and is repeated after asynchronous preparation.
 The legacy top-level `inputPolicy` option remains a compatibility fallback,
 but new hosts should place it inside `admission`. Calling
 `validateHarnessInput` in a UI remains useful feedback; the runtime check is

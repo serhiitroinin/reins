@@ -122,13 +122,22 @@ compatibility.
 
 Same-turn follow-ups reuse the private admission. Replacement follow-ups
 inherit it unless the host supplies an explicit new snapshot, which replaces
-rather than merges the old one. The replacement is validated before IDs,
+rather than merges the old one. Runtime-only `replacement.execution` can
+replace account, model, effort, settings, and provider configuration; its
+presence requires explicit readmission, and omitted execution fields are
+cleared rather than inherited. The replacement is validated before IDs,
 context preparation, or cancellation and checked again after asynchronous
 preparation. Admission never enters `HarnessRunRequest`, wire schemas, native
 bindings, adapters, persistence, or events. The runtime never derives it from
 a provider name or lets an untrusted request select its constraints;
 account/catalog lookup, settings resolution, and fingerprint composition stay
 host responsibilities.
+
+The runtime also snapshots the admitted request synchronously, including
+session identity, input bytes, inline context, settings, configuration, and
+metadata. An application mutating caller-owned objects after `start` or
+`followUp` therefore cannot change the event identity or provider request that
+already crossed admission.
 
 Cancellation changes the terminal status to `interrupted` and asks the
 adapter to settle. Events the adapter yields while settling are still durable:
