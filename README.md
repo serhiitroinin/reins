@@ -328,6 +328,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
   lifecycle over a host-injected byte transport.
 - `@serhiitroinin/fold-harness/adapters/acp-v1` — SDK-free ACP setup,
   negotiation, session-control, permission, and presentation contracts.
+- `@serhiitroinin/fold-harness/adapters/opencode-acp` — an OpenCode ACP
+  composition helper for exact model, effort, and host-defined mode mapping.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
 - `@serhiitroinin/fold-harness/schema/v1/protocol.schema.json` and
   `discovery.schema.json` — versioned JSON Schema 2020-12 contracts.
@@ -521,3 +523,11 @@ Prepared application context requires an explicit `mapPrompt`. ACP prompt blocks
 have no trusted system/instruction role, so the default mapper refuses to flatten
 trusted instructions into untrusted conversation content. Filesystem, shell,
 network, and client-side terminal/file callbacks are not advertised by default.
+
+OpenCode hosts may compose that same lifecycle with
+`createOpenCodeAcpAdapter`. The helper adds no process or security policy: it
+requires the host's engine profile and an exact host-defined mode, then maps an
+advertised model, effort, and mode in that order. A missing control or value
+fails closed. The host still owns process launch, private configuration,
+credentials, native-tool denial, MCP exposure, context mapping, discovery, and
+all capability claims.

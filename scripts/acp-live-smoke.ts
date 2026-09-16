@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   createAcpV1Adapter,
+  createOpenCodeAcpAdapter,
   type AcpV1ByteConnection,
   type AcpV1NegotiatedAgent,
   type AcpV1SessionConfigOption,
@@ -196,7 +197,8 @@ const sessionOptions: unknown[] = [];
 const persistence = createMemoryPersistence();
 const selectedConfig = configSelection();
 
-const makeAdapter = () => createAcpV1Adapter({
+const makeAdapter = () => {
+  const options = {
   id: `acp-live:${provider}`,
   session: () => ({ cwd: workspace }),
   connect() {
@@ -221,15 +223,36 @@ const makeAdapter = () => createAcpV1Adapter({
     const effort = process.env.ACP_SMOKE_EFFORT;
     const modelOption = controller.configOptions.find((option) => option.category === "model");
     const effortOption = controller.configOptions.find((option) => option.category === "thought_level");
-    if (model && modelOption) await controller.setConfigOption(modelOption.id, model);
-    if (effort && effortOption) await controller.setConfigOption(effortOption.id, effort);
+    if (provider !== "opencode" && model && modelOption) await controller.setConfigOption(modelOption.id, model);
+    if (provider !== "opencode" && effort && effortOption) await controller.setConfigOption(effortOption.id, effort);
     for (const [id, value] of Object.entries(selectedConfig)) await controller.setConfigOption(id, value);
   },
-});
+  };
+  if (provider !== "opencode") return createAcpV1Adapter(options);
+  return createOpenCodeAcpAdapter({
+    ...options,
+    modeId: process.env.ACP_SMOKE_OPENCODE_MODE ?? "build",
+    profile: {
+      status: "available",
+      value: {
+        id: options.id,
+        label: "OpenCode live smoke",
+        permissions: {
+          kind: "host-policy",
+          selectable: false,
+          defaultModeId: "host",
+          modes: [{ id: "host", label: "Smoke-owned policy", posture: "restricted" }],
+        },
+      },
+    },
+  });
+};
 
 const baseRequest = {
   session: { tenantId: "live", actorId: "smoke", threadId: `${provider}-session` },
   adapterId: `acp-live:${provider}`,
+  ...(process.env.ACP_SMOKE_MODEL ? { model: process.env.ACP_SMOKE_MODEL } : {}),
+  ...(process.env.ACP_SMOKE_EFFORT ? { effort: process.env.ACP_SMOKE_EFFORT } : {}),
 } as const;
 
 let stage = "create-first-runtime";

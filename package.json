@@ -145,6 +145,11 @@
       "bun": "./src/adapters/acp-v1-adapter.ts",
       "import": "./dist/adapters/acp-v1-adapter.js"
     },
+    "./adapters/opencode-acp": {
+      "types": "./src/adapters/opencode-acp.ts",
+      "bun": "./src/adapters/opencode-acp.ts",
+      "import": "./dist/adapters/opencode-acp.js"
+    },
     "./testing": {
       "types": "./src/testing/index.ts",
       "bun": "./src/testing/index.ts",

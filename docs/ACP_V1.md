@@ -47,6 +47,23 @@ The byte-stream boundary can wrap child-process pipes, Unix sockets, native FFI,
 an embedded bridge, or a remote transport. The portable Fold Harness wire schema
 remains independent of that choice.
 
+## OpenCode composition recipe
+
+`createOpenCodeAcpAdapter` delegates the entire lifecycle to
+`createAcpV1Adapter`. It contributes only the measured OpenCode session-control
+mapping: an exact selected model, then an exact model effort when one is
+advertised, then a fixed host-defined OpenCode mode. Current OpenCode exposes
+these as `model`, `effort` (`thought_level`), and `mode`; older compatible ACP
+revisions may expose mode through the protocol's mode method. Missing controls
+or values fail closed rather than falling back to a different model or agent.
+
+The helper deliberately requires a host-supplied engine profile and mode id.
+It does not spawn OpenCode, generate configuration, deny native tools, copy
+credentials, discover models, or claim a sandbox. An OpenCode mode describes
+agent behavior, not a portable permission level. The host must describe only
+the process posture it actually enforces and retain all process, environment,
+filesystem, network, native-tool, MCP, credential, and context-mapping policy.
+
 ## Provider differences remain explicit
 
 ACP modes describe an agent's session behavior. They are not assumed to be
@@ -115,6 +132,10 @@ bun run smoke:acp -- --provider opencode
 ACP_SMOKE_CONFIG_JSON='{"fast-mode":"on"}' bun run smoke:acp -- --provider codex
 ```
 
+The OpenCode path uses the public composition helper with the stock `build`
+mode only to verify protocol/session-control compatibility. It does not claim
+that the smoke process has a production host's native-tool policy.
+
 The Claude and Codex npm commands are pinned in `scripts/acp-live-smoke.ts`;
 OpenCode uses the locally installed binary whose version is reported by the ACP
 handshake. [Grok's official repository](https://github.com/xai-org/grok-build)
@@ -129,7 +150,8 @@ outside the ACP common surface: richer account-limit data, exact provider
 security controls, Claude subagents and compaction, Codex service-tier/model
 metadata, and provider-specific lifecycle details already used by Fold.
 
-Use ACP v1 as the generic route for OpenCode and future agents, and as an optional
+Use ACP v1, with the thin OpenCode composition recipe where useful, as the
+generic route for OpenCode and future agents, and as an optional
 portable route for Claude/Codex products that prefer interoperability over those
 enhancements. Revisit the split when stable ACP revisions cover the missing
 discovery and lifecycle semantics; do not emulate absent features in core.
