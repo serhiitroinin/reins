@@ -505,9 +505,17 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
       persistence: createMemoryPersistence(),
     });
     const first = harness.start(request(fixture.adapterId), {
-      inputPolicy: {
-        modalities: {
-          text: { support: "stable", maxTextCharacters: 256 },
+      admission: {
+        adapterId: fixture.adapterId,
+        accountId: null,
+        model: null,
+        effort: null,
+        settings: { permission: null, controls: {} },
+        sessionBinding: "conformance-steering-binding",
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable", maxTextCharacters: 256 },
+          },
         },
       },
     });
