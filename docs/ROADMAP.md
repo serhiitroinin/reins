@@ -36,6 +36,9 @@
   and OpenCode across repeated turns and fresh-process resume.
 - A measured adapter strategy: retain native Claude/Codex adapters for enhanced
   provider behavior and use ACP as the generic interoperability path.
+- A thin OpenCode-over-ACP composition helper for exact negotiated model,
+  effort, and host-defined mode selection without moving process policy into
+  the package.
 - A bounded, transport-neutral MCP server over `HarnessToolHost`, with trusted
   turn context captured outside the wire and no provider or operating-system
   dependency.

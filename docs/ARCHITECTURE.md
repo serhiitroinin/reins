@@ -379,6 +379,12 @@ effort, and Fast options complement rather than replace the package's independen
 profile, catalog, and account-limit discovery calls. ACP v1 has no complete
 portable representation for those product surfaces.
 
+The optional OpenCode ACP composition helper adds no lifecycle or policy layer.
+It applies only exact negotiated model, effort, and fixed host-mode selections
+over `createAcpV1Adapter`, and requires the host to inject the engine profile it
+can truthfully support. Process configuration, native-tool denial, credentials,
+discovery, capabilities, and sandbox claims remain host concerns.
+
 The generic ACP adapter deliberately does not advertise client filesystem or
 terminal capabilities. It normalizes agent-reported tool lifecycles, while
 application tool execution enters through explicit host-owned MCP servers.
