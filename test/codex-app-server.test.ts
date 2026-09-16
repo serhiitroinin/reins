@@ -232,6 +232,19 @@ describe("Codex App Server client", () => {
     });
   });
 
+  test("drops context windows that cannot satisfy the public integer schema", () => {
+    const catalog = codexModelCatalog({ models: [
+      { slug: "fractional", context_window_tokens: 1.5 },
+      { slug: "unsafe", context_window_tokens: Number.MAX_SAFE_INTEGER + 1 },
+      { slug: "valid", context_window_tokens: 256000 },
+    ] });
+    expect(catalog.models).toEqual([
+      { id: "fractional", label: "fractional" },
+      { id: "unsafe", label: "unsafe" },
+      { id: "valid", label: "valid", contextWindowTokens: 256000 },
+    ]);
+  });
+
   test("opens a new thread and starts its turn in protocol order", async () => {
     const fx = fixture();
     const opening = openCodexTurn({

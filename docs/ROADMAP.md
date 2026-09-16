@@ -10,6 +10,9 @@
 - NDJSON, JSON-RPC, and pushable async-input transports.
 - Codex App Server lifecycle client.
 - Independent engine profile, model catalog, typed control, permission, and limit discovery.
+- Portable model selection requirements, lifecycle/availability and context-window metadata,
+  catalog freshness, safe discovery codes, and open effort resolution.
+- Timestamped account-scoped limit observations kept independent from turn usage.
 - Codex model mapping, including model-specific reasoning and Fast service-tier controls.
 - Deterministic adapter fixtures, a framework-neutral conformance runner, and publish checks.
 - Codex App Server request builders for initialize, thread start/resume, and turns.
