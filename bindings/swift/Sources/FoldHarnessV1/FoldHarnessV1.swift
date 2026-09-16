@@ -612,6 +612,7 @@ public struct FHConsent: Codable {
 
 // MARK: - FHEngineProfileDiscovery
 public struct FHEngineProfileDiscovery: Codable {
+    public let code: String?
     public let expiresAt: String?
     public let fetchedAt: String?
     public let message: String?
@@ -620,6 +621,7 @@ public struct FHEngineProfileDiscovery: Codable {
     public let value: FHEngineProfile?
 
     public enum CodingKeys: String, CodingKey {
+        case code = "code"
         case expiresAt = "expiresAt"
         case fetchedAt = "fetchedAt"
         case message = "message"
@@ -628,7 +630,8 @@ public struct FHEngineProfileDiscovery: Codable {
         case value = "value"
     }
 
-    public init(expiresAt: String?, fetchedAt: String?, message: String?, retryable: Bool?, status: FHEngineProfileDiscoveryStatus, value: FHEngineProfile?) {
+    public init(code: String?, expiresAt: String?, fetchedAt: String?, message: String?, retryable: Bool?, status: FHEngineProfileDiscoveryStatus, value: FHEngineProfile?) {
+        self.code = code
         self.expiresAt = expiresAt
         self.fetchedAt = fetchedAt
         self.message = message
@@ -1070,6 +1073,7 @@ public struct FHLimitElement: Codable {
 
 // MARK: - FHLimitSnapshotDiscovery
 public struct FHLimitSnapshotDiscovery: Codable {
+    public let code: String?
     public let expiresAt: String?
     public let fetchedAt: String?
     public let message: String?
@@ -1078,6 +1082,7 @@ public struct FHLimitSnapshotDiscovery: Codable {
     public let value: FHLimitSnapshot?
 
     public enum CodingKeys: String, CodingKey {
+        case code = "code"
         case expiresAt = "expiresAt"
         case fetchedAt = "fetchedAt"
         case message = "message"
@@ -1086,7 +1091,8 @@ public struct FHLimitSnapshotDiscovery: Codable {
         case value = "value"
     }
 
-    public init(expiresAt: String?, fetchedAt: String?, message: String?, retryable: Bool?, status: FHEngineProfileDiscoveryStatus, value: FHLimitSnapshot?) {
+    public init(code: String?, expiresAt: String?, fetchedAt: String?, message: String?, retryable: Bool?, status: FHEngineProfileDiscoveryStatus, value: FHLimitSnapshot?) {
+        self.code = code
         self.expiresAt = expiresAt
         self.fetchedAt = fetchedAt
         self.message = message
@@ -1114,6 +1120,7 @@ public struct FHModelCatalog: Codable {
 
 // MARK: - FHModelElement
 public struct FHModelElement: Codable {
+    public let availability: FHAvailability?
     public let contextWindowTokens: Int?
     public let controls: [FHControlElement]?
     public let description: String?
@@ -1125,9 +1132,11 @@ public struct FHModelElement: Codable {
     public let inputModalities: [String]?
     public let inputPolicy: FHInputPolicy?
     public let label: String
+    public let legacy: Bool?
     public let unavailableReason: String?
 
     public enum CodingKeys: String, CodingKey {
+        case availability = "availability"
         case contextWindowTokens = "contextWindowTokens"
         case controls = "controls"
         case description = "description"
@@ -1139,10 +1148,12 @@ public struct FHModelElement: Codable {
         case inputModalities = "inputModalities"
         case inputPolicy = "inputPolicy"
         case label = "label"
+        case legacy = "legacy"
         case unavailableReason = "unavailableReason"
     }
 
-    public init(contextWindowTokens: Int?, controls: [FHControlElement]?, description: String?, effort: FHEffort?, extensions: [String: FHExtensionValue]?, group: FHGroup?, hidden: Bool?, id: String, inputModalities: [String]?, inputPolicy: FHInputPolicy?, label: String, unavailableReason: String?) {
+    public init(availability: FHAvailability?, contextWindowTokens: Int?, controls: [FHControlElement]?, description: String?, effort: FHEffort?, extensions: [String: FHExtensionValue]?, group: FHGroup?, hidden: Bool?, id: String, inputModalities: [String]?, inputPolicy: FHInputPolicy?, label: String, legacy: Bool?, unavailableReason: String?) {
+        self.availability = availability
         self.contextWindowTokens = contextWindowTokens
         self.controls = controls
         self.description = description
@@ -1154,8 +1165,14 @@ public struct FHModelElement: Codable {
         self.inputModalities = inputModalities
         self.inputPolicy = inputPolicy
         self.label = label
+        self.legacy = legacy
         self.unavailableReason = unavailableReason
     }
+}
+
+public enum FHAvailability: String, Codable {
+    case available = "available"
+    case unavailable = "unavailable"
 }
 
 // MARK: - FHEffort
@@ -1192,6 +1209,7 @@ public struct FHGroup: Codable {
 
 // MARK: - FHModelCatalogDiscovery
 public struct FHModelCatalogDiscovery: Codable {
+    public let code: String?
     public let expiresAt: String?
     public let fetchedAt: String?
     public let message: String?
@@ -1200,6 +1218,7 @@ public struct FHModelCatalogDiscovery: Codable {
     public let value: FHModelCatalog?
 
     public enum CodingKeys: String, CodingKey {
+        case code = "code"
         case expiresAt = "expiresAt"
         case fetchedAt = "fetchedAt"
         case message = "message"
@@ -1208,7 +1227,8 @@ public struct FHModelCatalogDiscovery: Codable {
         case value = "value"
     }
 
-    public init(expiresAt: String?, fetchedAt: String?, message: String?, retryable: Bool?, status: FHEngineProfileDiscoveryStatus, value: FHModelCatalog?) {
+    public init(code: String?, expiresAt: String?, fetchedAt: String?, message: String?, retryable: Bool?, status: FHEngineProfileDiscoveryStatus, value: FHModelCatalog?) {
+        self.code = code
         self.expiresAt = expiresAt
         self.fetchedAt = fetchedAt
         self.message = message

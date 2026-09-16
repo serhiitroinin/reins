@@ -537,6 +537,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         return {
           status: "unavailable",
           message: error.publicMessage,
+          code: error.code,
           ...(error.retryable ? { retryable: true } : {}),
         };
       }

@@ -79,6 +79,8 @@ export interface CodexAppServerAdapterOptions {
   profile?: CodexAppServerDiscoverySource<HarnessEngineProfile>;
   models?: CodexAppServerDiscoverySource<HarnessModelCatalog>;
   limits?: CodexAppServerDiscoverySource<HarnessLimitSnapshot>;
+  /** Clock used to timestamp limits observed on the provider stream. */
+  now?: () => Date;
   /** The host chooses the real cwd, sandbox, approval policy, and model. */
   thread(request: HarnessAdapterRunRequest): Promise<CodexAppServerThreadPolicy> | CodexAppServerThreadPolicy;
   /** The host creates an explicit, isolated provider connection for this turn. */
@@ -344,7 +346,8 @@ async function closeActive(active: ActiveTurn): Promise<void> {
 /** Compose a real HarnessAdapter over a host-owned App Server connection. */
 export function createCodexAppServerAdapter(options: CodexAppServerAdapterOptions): HarnessAdapter {
   const id = options.id ?? "codex";
-  let observedLimits: HarnessLimitSnapshot | null = null;
+  const now = options.now ?? (() => new Date());
+  const observedLimits = new Map<string, { snapshot: HarnessLimitSnapshot; fetchedAt: string }>();
 
   return {
     id,
@@ -353,8 +356,12 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
     models: (request) => discovery(options.models, request),
     limits: (request) => options.limits
       ? discovery(options.limits, request)
-      : observedLimits
-        ? { status: "available", value: observedLimits }
+      : observedLimits.has(request.accountId ?? "")
+        ? {
+            status: "available",
+            value: observedLimits.get(request.accountId ?? "")!.snapshot,
+            fetchedAt: observedLimits.get(request.accountId ?? "")!.fetchedAt,
+          }
         : { status: "unsupported" },
 
     async open({ session, resumeToken }) {
@@ -449,7 +456,10 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
                 settled.resolve({ kind: "terminal", outcome });
               },
               onLimits(snapshot) {
-                observedLimits = snapshot;
+                observedLimits.set(connectRequest.accountId ?? "", {
+                  snapshot,
+                  fetchedAt: now().toISOString(),
+                });
                 options.onLimits?.(snapshot, connectRequest);
               },
             });

@@ -102,6 +102,7 @@ describe("harness runtime", () => {
     expect(await harness.limits("failing")).toEqual({
       status: "unavailable",
       message: "Sign in to continue.",
+      code: "SIGNED_OUT",
       retryable: true,
     });
   });

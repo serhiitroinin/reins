@@ -182,9 +182,11 @@
         "description": { "type": "string" },
         "group": { "$ref": "#/$defs/HarnessModelGroup" },
         "hidden": { "type": "boolean" },
+        "availability": { "enum": ["available", "unavailable"] },
+        "legacy": { "type": "boolean" },
         "unavailableReason": { "type": "string" },
         "inputModalities": { "type": "array", "items": { "type": "string" } },
-        "contextWindowTokens": { "type": "integer" },
+        "contextWindowTokens": { "type": "integer", "minimum": 1 },
         "inputPolicy": { "$ref": "#/$defs/HarnessInputPolicy" },
         "effort": { "$ref": "#/$defs/HarnessEffortProfile" },
         "controls": { "type": "array", "items": { "$ref": "#/$defs/HarnessControl" } },
@@ -276,7 +278,8 @@
       "properties": {
         "status": { "const": "unavailable" },
         "message": { "type": "string" },
-        "retryable": { "type": "boolean" }
+        "retryable": { "type": "boolean" },
+        "code": { "$ref": "#/$defs/Id" }
       },
       "required": ["status", "message"],
       "not": {

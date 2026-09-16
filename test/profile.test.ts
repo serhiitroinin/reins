@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   harnessControls,
+  harnessDiscoveryFreshness,
   harnessInputPolicy,
+  resolveHarnessEffort,
   resolveHarnessConfiguration,
   type HarnessEngineProfile,
   type HarnessModel,
@@ -55,6 +57,30 @@ const model: HarnessModel = {
 };
 
 describe("engine profiles", () => {
+  test("classifies discovery freshness from an expiry timestamp", () => {
+    const available = { status: "available" as const, value: {}, fetchedAt: "2026-01-01T00:00:00Z", expiresAt: "2026-01-02T00:00:00Z" };
+    expect(harnessDiscoveryFreshness(available, "2026-01-01T12:00:00Z")).toBe("fresh");
+    expect(harnessDiscoveryFreshness(available, "2026-01-02T00:00:00Z")).toBe("stale");
+    expect(harnessDiscoveryFreshness({ status: "available", value: {} })).toBe("unknown");
+    expect(harnessDiscoveryFreshness({ status: "unavailable", message: "offline" })).toBe("unknown");
+  });
+
+  test("resolves open effort ids without inventing provider values", () => {
+    const withEffort: HarnessModel = {
+      id: "model", label: "Model", effort: {
+        defaultOptionId: "medium",
+        options: [{ id: "low", label: "Low" }, { id: "medium", label: "Medium" }, { id: "high", label: "High", unavailableReason: "not enabled" }],
+      },
+    };
+    expect(resolveHarnessEffort(withEffort)).toEqual({ effort: "medium", issues: [] });
+    expect(resolveHarnessEffort(withEffort, "low")).toEqual({ effort: "low", issues: [] });
+    expect(resolveHarnessEffort(withEffort, "x-provider-effort")).toEqual({
+      effort: "medium",
+      issues: [{ code: "unknown-effort", message: "The selected effort is not available for this model." }],
+    });
+    expect(resolveHarnessEffort(undefined, "x-provider-effort").issues).toHaveLength(1);
+  });
+
   test("merges engine and model-specific controls", () => {
     expect(harnessControls(profile, model).map(({ id }) => id)).toEqual([
       "openai:verbosity",

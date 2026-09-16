@@ -72,6 +72,10 @@ function field(value: Record<string, unknown>, camel: string, snake: string): un
   return value[camel] ?? value[snake];
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 /**
  * Convert one `model/list` response into the provider-neutral catalog.
  * Pagination remains the adapter's responsibility; concatenate pages before
@@ -126,6 +130,21 @@ export function codexModelCatalog(response: unknown): HarnessModelCatalog {
     const modalityPolicy = Object.fromEntries(
       modalities.map((modality) => [modality, { support: "stable" as const }]),
     );
+    const contextWindowTokens = finiteNumber(
+      field(model, "contextWindowTokens", "context_window_tokens")
+        ?? field(model, "contextWindow", "context_window")
+        ?? field(model, "maxContextTokens", "max_context_tokens"),
+    );
+    const unavailableReason = stringValue(field(model, "unavailableReason", "unavailable_reason"))
+      ?? stringValue(field(model, "reasonUnavailable", "reason_unavailable"));
+    const rawAvailability = field(model, "availability", "model_availability");
+    const availability = rawAvailability === "available" || rawAvailability === "unavailable"
+      ? rawAvailability
+      : model.available === false || model.enabled === false || unavailableReason
+        ? "unavailable"
+        : undefined;
+    const legacy = model.legacy === true || model.isLegacy === true || model.is_legacy === true
+      || model.deprecated === true || model.upgrade !== null && model.upgrade !== undefined;
     models.push({
       id,
       label: stringValue(field(model, "displayName", "display_name")) ?? id,
@@ -133,7 +152,11 @@ export function codexModelCatalog(response: unknown): HarnessModelCatalog {
       ...(model.hidden === true || (typeof model.visibility === "string" && model.visibility !== "list")
         ? { hidden: true }
         : {}),
+      ...(availability ? { availability } : {}),
+      ...(legacy ? { legacy: true } : {}),
+      ...(unavailableReason ? { unavailableReason } : {}),
       ...(modalities.length > 0 ? { inputModalities: modalities } : {}),
+      ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
       ...(modalities.length > 0 ? { inputPolicy: { modalities: modalityPolicy } } : {}),
       ...(effortOptions.length > 0 ? {
         effort: {
@@ -160,10 +183,12 @@ export function codexModelCatalog(response: unknown): HarnessModelCatalog {
     return (typeof leftPriority === "number" ? leftPriority : Number.MAX_SAFE_INTEGER)
       - (typeof rightPriority === "number" ? rightPriority : Number.MAX_SAFE_INTEGER);
   });
-  const defaultModel = data.find((entry) => record(entry).isDefault === true);
-  const defaultModelId = defaultModel
-    ? stringValue(record(defaultModel).id) ?? stringValue(record(defaultModel).model) ?? stringValue(record(defaultModel).slug)
-    : undefined;
+  const defaultModel = data.find((entry) => field(record(entry), "isDefault", "is_default") === true);
+  const defaultModelId = stringValue(field(envelope, "defaultModelId", "default_model_id"))
+    ?? stringValue(field(envelope, "defaultModel", "default_model"))
+    ?? (defaultModel
+      ? stringValue(record(defaultModel).id) ?? stringValue(record(defaultModel).model) ?? stringValue(record(defaultModel).slug)
+      : undefined);
   return { models, ...(defaultModelId ? { defaultModelId } : {}) };
 }
 

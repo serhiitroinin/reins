@@ -37,6 +37,12 @@ three independent discovery calls. Their availability can differ and their
 refresh cadence usually does too. Discovery failures use explicit safe
 messages; raw provider errors are not returned to a product.
 
+Available results may include fetch and expiry timestamps, which the shared
+freshness helper classifies without exposing cache implementation details.
+Unavailable results may include a safe adapter error code for diagnostics.
+Observed native limit snapshots are timestamped and account-scoped so one
+login can never inherit another login's quota display.
+
 An engine profile owns its permission vocabulary. The core does not pretend a
 Claude approval policy and a Codex sandbox mode mean the same thing. Permission
 modes can require a versioned consent; a stored grant whose version no longer
@@ -47,7 +53,10 @@ Common settings are adapter-declared toggle, select, or number controls with
 open identifiers and turn, session, or account scope. Models can override the
 engine controls where available values differ. Effort remains a first-class
 model attribute because its options and default are model-specific, but effort
-option ids are still open strings.
+option ids are still open strings. A shared resolver accepts only advertised
+values and an advertised default. Model lifecycle metadata is additive:
+availability and legacy status do not turn provider identifiers into a closed
+core enum.
 
 Limits are snapshots, separate from per-turn token and cost usage events. A
 snapshot can represent rolling rate windows, credits, spend, context, or an
