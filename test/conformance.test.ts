@@ -10,6 +10,7 @@ describe("adapter conformance", () => {
     expect(report.cases.map((entry) => entry.name)).toEqual([
       "identity and capabilities",
       "host input policy",
+      "ordered typed context",
       "host execution admission",
       "event lifecycle",
       "unsafe error redaction",
@@ -22,6 +23,23 @@ describe("adapter conformance", () => {
       "interaction round trip",
       "resume checkpoint",
     ]);
+  });
+
+  test("gates ordered typed context on the adapter profile", async () => {
+    const report = await runAdapterConformance({
+      fixture: createConformanceFixture({
+        contextReferenceSupport: "unsupported",
+        hangScenario: "typed-context",
+      }),
+      timeoutMs: 100,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.cases.find((entry) => entry.name === "ordered typed context")).toEqual({
+      name: "ordered typed context",
+      status: "skipped",
+      message: "adapter profile does not report context-reference input support",
+    });
   });
 
   test("a broken adapter receives a named conformance failure", async () => {
