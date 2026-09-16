@@ -1,8 +1,9 @@
 # Fold Harness
 
 Fold Harness is a provider-neutral TypeScript runtime for building
-domain-specific products on top of agent harnesses such as Claude Code, Codex,
-OpenCode, and ACP-compatible agents.
+domain-specific products on top of Claude Code and Codex. Its adapter and
+capability contracts remain open so additional providers can be added without
+changing product-facing runtime APIs.
 
 The project is being extracted from [Fold](https://github.com/serhiitroinin/fold).
 Its first releases focus on these boundaries:
@@ -12,7 +13,8 @@ Its first releases focus on these boundaries:
 - durable session and run lifecycle;
 - turn-scoped application context with explicit failure behavior;
 - application-owned tools, policy, and human interactions;
-- adapter conformance across native and ACP-backed agents.
+- shared conformance for native Claude and Codex adapters, plus an open adapter
+  contract for future providers.
 
 This repository remains private while the extraction API is changing. Preview
 releases are published publicly on npm for Fold and other early consumers.
@@ -117,7 +119,44 @@ leaving a field out means the host has not adopted enforcement for that
 dimension yet. A supplied controls object is exact, so model-specific options
 such as `{ "openai:service-tier": "fast" }` need no provider branch in core.
 The opaque, non-secret `sessionBinding` pins host-owned connection authority
-for that logical runtime session.
+for that logical runtime session. When a provider is resumable, the binding is
+stored beside its private checkpoint and checked again after a process restart.
+
+## Session recovery and diagnostics
+
+Resumable adapters declare an open checkpoint format. The runtime wraps the
+opaque provider token in a versioned `HarnessSessionCheckpoint`, persists it
+as soon as the adapter announces it, and offers it only to adapters that
+declare that format as current or compatible. A changed host binding or
+incompatible adapter format fails before provider communication. Recovery is
+an explicit host decision:
+
+```ts
+await harness.resetSession(session, adapterId);
+```
+
+Reset closes an inactive live adapter session and removes its durable state.
+It refuses a busy session, so it cannot race an active turn. Checkpoint tokens
+remain private persistence data; they never enter the event or diagnostics
+contracts.
+
+Hosts can observe sanitized operational failures without coupling logging to
+provider SDK errors:
+
+```ts
+const harness = createHarness({
+  adapters,
+  persistence,
+  onDiagnostic(diagnostic) {
+    operations.enqueue(diagnostic);
+  },
+});
+```
+
+Diagnostics contain stable runtime identity, phase, safe code, and safe
+message only. The runtime never includes prompts, credentials, tool results,
+checkpoint tokens, or raw provider errors, never persists diagnostics, and
+ignores a failing observer.
 
 Same-turn follow-ups reuse the frozen snapshot. A replacement inherits it
 unless the host supplies a complete newly admitted `replacement.admission`.
@@ -394,7 +433,7 @@ availability, legacy status, and open-string effort options.
 catalog and falls back only to an advertised default; it never invents a
 provider value.
 
-This is also the extension path for aggregating engines such as OpenCode: a
+This is also the extension path for future native or aggregating engines: a
 model may carry a provider-like `group`, while all adapter, model, control,
 permission, and limit identifiers remain open strings. New providers do not
 require a core-package enum release.
@@ -403,16 +442,17 @@ require a core-package enum release.
 
 The package is pre-release software. Fold is the first dogfood consumer.
 
-Fold's Codex and Claude lanes consume the complete package adapters. Both keep
-process creation, credentials, sandbox policy, vault context, and product event
-projection in Fold.
+Fold's Codex and Claude lanes consume the complete package adapters. Codex also
+runs through `HarnessRuntime`; Claude currently drives the package adapter
+directly, and moving that lane under the same runtime lifecycle is the next
+dogfood milestone. Both keep process creation, credentials, sandbox policy,
+vault context, and product event projection in Fold.
 
-The generic ACP v1 adapter has also been live-tested against Claude Agent ACP,
-Codex ACP, and OpenCode. Native Claude and Codex adapters remain the enhanced
-paths where their provider-specific limits, subagents, compaction, security
-posture, and lifecycle detail matter. ACP is the interoperability path for new
-agents; it is not treated as a lowest-common-denominator replacement for those
-features. See [ACP v1 compatibility](docs/ACP_V1.md).
+Native Claude and Codex adapters are the production focus because their
+provider-specific limits, subagents, compaction, Fast controls, security
+posture, and lifecycle detail matter. The generic ACP v1 adapter remains an
+interoperability extension point, not a lowest-common-denominator replacement
+for those native paths. See [ACP v1 compatibility](docs/ACP_V1.md).
 
 ## Codex adapter boundary
 

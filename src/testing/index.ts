@@ -59,6 +59,7 @@ export function createScriptedAdapter(options: ScriptedAdapterOptions): {
   };
   const adapter: HarnessAdapter = {
     id: options.id ?? "scripted",
+    checkpoint: { format: "fold-harness:scripted/session@1" },
     capabilities: () => options.capabilities ?? scriptedCapabilities,
     async open({ resumeToken }) {
       state.openedWith.push(resumeToken);

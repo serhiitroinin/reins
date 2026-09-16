@@ -87,13 +87,38 @@ export interface HarnessAdapterSession {
   close?(): Promise<void>;
 }
 
+/**
+ * Versioned, private provider state used only to resume one logical session.
+ *
+ * `format` is adapter-owned and open-ended. It identifies the meaning of the
+ * opaque token, not the package or provider release. Tokens may be sensitive;
+ * checkpoints never enter events or diagnostics.
+ */
+export interface HarnessSessionCheckpoint {
+  schemaVersion: 1;
+  format: string;
+  token: string;
+}
+
+/** Declares which persisted checkpoint formats an adapter can safely open. */
+export interface HarnessAdapterCheckpointContract {
+  /** Format written for every new checkpoint. */
+  format: string;
+  /** Older formats this adapter can still open. The current format is implicit. */
+  compatibleFormats?: readonly string[];
+}
+
 export interface HarnessAdapterOpenRequest {
   session: HarnessSessionKey;
   resumeToken: string | null;
+  /** Runtime-owned durable write for provider checkpoints announced mid-turn. */
+  persistCheckpoint?(resumeToken: string | null): Promise<void>;
 }
 
 export interface HarnessAdapter {
   readonly id: string;
+  /** Required whenever an adapter session can return a resume checkpoint. */
+  readonly checkpoint?: HarnessAdapterCheckpointContract;
   capabilities(): Promise<HarnessCapabilities> | HarnessCapabilities;
   profile?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessEngineProfile>> | HarnessDiscovery<HarnessEngineProfile>;
   models?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>> | HarnessDiscovery<HarnessModelCatalog>;
@@ -104,7 +129,9 @@ export interface HarnessAdapter {
 export interface StoredHarnessSession {
   key: HarnessSessionKey;
   adapterId: string;
-  resumeToken: string | null;
+  checkpoint: HarnessSessionCheckpoint | null;
+  /** Opaque, non-secret host fingerprint that must remain stable on resume. */
+  sessionBinding?: string;
   updatedAt: string;
 }
 
@@ -215,7 +242,38 @@ export interface HarnessRuntime {
   models(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>>;
   limits(adapterId: string, request?: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessLimitSnapshot>>;
   start(request: HarnessRunRequest, options?: HarnessStartOptions): HarnessRun;
+  /** Close and forget an inactive provider session and its durable checkpoint. */
+  resetSession(session: HarnessSessionKey, adapterId: string): Promise<void>;
   close(): Promise<void>;
+}
+
+export type HarnessDiagnosticPhase =
+  | "discovery"
+  | "event-store"
+  | "session-load"
+  | "session-open"
+  | "context"
+  | "turn"
+  | "checkpoint"
+  | "cancellation"
+  | "follow-up"
+  | "interaction"
+  | "session-reset"
+  | "session-close";
+
+/** Sanitized, process-local operational information. Never persisted by the runtime. */
+export interface HarnessDiagnostic {
+  schemaVersion: 1;
+  timestamp: string;
+  severity: "warning" | "error";
+  phase: HarnessDiagnosticPhase;
+  code: string;
+  message: string;
+  adapterId: string;
+  session?: HarnessSessionKey;
+  runId?: string;
+  turnId?: string;
+  retryable?: boolean;
 }
 
 export interface HarnessRuntimeOptions {
@@ -224,6 +282,8 @@ export interface HarnessRuntimeOptions {
   tools?: HarnessToolHost;
   contextSources?: readonly HarnessContextSource<HarnessContextContribution, HarnessContextPrepareRequest>[];
   onContextError?: HarnessContextPreparationOptions<HarnessContextContribution, HarnessContextPrepareRequest>["onError"];
+  /** Best-effort and sanitized; callback failures never affect runtime work. */
+  onDiagnostic?: (diagnostic: HarnessDiagnostic) => void | Promise<void>;
   createId?: () => string;
   now?: () => Date;
 }
@@ -241,6 +301,10 @@ export class HarnessRuntimeError extends Error {
       | "TURN_NOT_ACTIVE"
       | "ADMISSION_MISMATCH"
       | "INVALID_INPUT"
+      | "SESSION_CHECKPOINT_INVALID"
+      | "SESSION_CHECKPOINT_INCOMPATIBLE"
+      | "SESSION_CHECKPOINT_STALE"
+      | "SESSION_BINDING_MISMATCH"
       | "RUNTIME_CLOSED",
     message: string,
   ) {
@@ -271,7 +335,10 @@ export class HarnessAdapterInterruptedError extends Error {
 
 interface ManagedSession {
   adapter: HarnessAdapter;
+  key: HarnessSessionKey;
   session: HarnessAdapterSession;
+  sessionBinding?: string;
+  generation: number;
   active: boolean;
 }
 
@@ -506,9 +573,58 @@ function safeError(error: unknown): { code: string; message: string; retryable?:
   return { code: "ADAPTER_ERROR", message: "The adapter turn failed." };
 }
 
+function safeDiagnosticError(
+  error: unknown,
+  fallback: { code: string; message: string },
+): { code: string; message: string; retryable?: boolean } {
+  if (
+    error instanceof HarnessRuntimeError
+    || error instanceof HarnessAdapterError
+    || error instanceof HarnessContextPreparationError
+  ) return safeError(error);
+  return fallback;
+}
+
+interface NormalizedCheckpointContract {
+  format: string;
+  compatibleFormats: ReadonlySet<string>;
+}
+
+function checkpointContract(adapter: HarnessAdapter): NormalizedCheckpointContract | null {
+  if (!adapter.checkpoint) return null;
+  const format = adapter.checkpoint.format;
+  if (format.trim().length === 0) throw new Error(`${adapter.id} checkpoint format cannot be empty`);
+  const compatibleFormats = new Set([format]);
+  for (const compatible of adapter.checkpoint.compatibleFormats ?? []) {
+    if (compatible.trim().length === 0) {
+      throw new Error(`${adapter.id} compatible checkpoint format cannot be empty`);
+    }
+    compatibleFormats.add(compatible);
+  }
+  return { format, compatibleFormats };
+}
+
+function assertStoredCheckpoint(checkpoint: HarnessSessionCheckpoint): void {
+  if (
+    checkpoint.schemaVersion !== 1
+    || typeof checkpoint.format !== "string"
+    || checkpoint.format.trim().length === 0
+    || typeof checkpoint.token !== "string"
+    || checkpoint.token.length === 0
+  ) {
+    throw new HarnessRuntimeError(
+      "SESSION_CHECKPOINT_INVALID",
+      "The saved harness session checkpoint is invalid. Reset the session before retrying.",
+    );
+  }
+}
+
 export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const adapters = new Map(options.adapters.map((adapter) => [adapter.id, adapter]));
   if (adapters.size !== options.adapters.length) throw new Error("adapter identifiers must be unique");
+  const checkpointContracts = new Map(
+    options.adapters.map((adapter) => [adapter.id, checkpointContract(adapter)]),
+  );
   const createId = options.createId ?? (() => crypto.randomUUID());
   const now = options.now ?? (() => new Date());
   const tools = options.tools ?? emptyToolHost;
@@ -516,7 +632,49 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const opened = new Map<string, Promise<ManagedSession>>();
   const reserved = new Set<string>();
   const sessionBindings = new Map<string, string>();
+  const sessionGenerations = new Map<string, number>();
+  const sessionMutationTails = new Map<string, Promise<void>>();
+  const activeRuns = new Set<{
+    sessionId: string;
+    controller: AbortController;
+    done: Promise<HarnessTurnStatus>;
+  }>();
+  const reportedFailures = new WeakSet<object>();
   let closed = false;
+  let closeWork: Promise<void> | null = null;
+
+  const reportDiagnostic = (diagnostic: Omit<HarnessDiagnostic, "schemaVersion" | "timestamp">): void => {
+    if (!options.onDiagnostic) return;
+    const value: HarnessDiagnostic = Object.freeze({
+      schemaVersion: 1,
+      timestamp: now().toISOString(),
+      ...diagnostic,
+      ...(diagnostic.session ? { session: Object.freeze({ ...diagnostic.session }) } : {}),
+    });
+    try {
+      void Promise.resolve(options.onDiagnostic(value)).catch(() => undefined);
+    } catch {
+      // Diagnostics are observational. A host callback cannot affect a turn.
+    }
+  };
+
+  const reportFailure = (
+    error: unknown,
+    context: Pick<HarnessDiagnostic, "phase" | "adapterId"> &
+      Partial<Pick<HarnessDiagnostic, "session" | "runId" | "turnId">>,
+    fallback: { code: string; message: string },
+  ): void => {
+    if (typeof error === "object" && error !== null) {
+      if (reportedFailures.has(error)) return;
+      reportedFailures.add(error);
+    }
+    const failure = safeDiagnosticError(error, fallback);
+    reportDiagnostic({
+      severity: "error",
+      ...context,
+      ...failure,
+    });
+  };
 
   const adapterFor = (id: string): HarnessAdapter => {
     const adapter = adapters.get(id);
@@ -533,6 +691,10 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     try {
       return await method(request);
     } catch (error) {
+      reportFailure(error, { phase: "discovery", adapterId }, {
+        code: "DISCOVERY_FAILED",
+        message: `${adapterId} discovery failed.`,
+      });
       if (error instanceof HarnessAdapterError) {
         return {
           status: "unavailable",
@@ -545,29 +707,164 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     }
   };
 
-  const open = (key: HarnessSessionKey, adapter: HarnessAdapter): Promise<ManagedSession> => {
+  const serializeSessionMutation = <T>(id: string, operation: () => Promise<T>): Promise<T> => {
+    const previous = sessionMutationTails.get(id) ?? Promise.resolve();
+    const result = previous.then(operation, operation);
+    const tail = result.then(() => undefined, () => undefined);
+    sessionMutationTails.set(id, tail);
+    void tail.then(() => {
+      if (sessionMutationTails.get(id) === tail) sessionMutationTails.delete(id);
+    });
+    return result;
+  };
+
+  const saveCheckpointRecord = async (
+    adapter: HarnessAdapter,
+    key: HarnessSessionKey,
+    sessionBinding: string | undefined,
+    resumeToken: string | null,
+  ): Promise<void> => {
+    const contract = checkpointContracts.get(adapter.id) ?? null;
+    if (resumeToken !== null && resumeToken.length === 0) {
+      throw new HarnessRuntimeError("SESSION_CHECKPOINT_INVALID", "The adapter returned an empty session checkpoint.");
+    }
+    if (resumeToken !== null && contract === null) {
+      throw new HarnessRuntimeError(
+        "SESSION_CHECKPOINT_INVALID",
+        `${adapter.id} returned a checkpoint without declaring its format.`,
+      );
+    }
+    await options.persistence.sessions.save({
+      key,
+      adapterId: adapter.id,
+      checkpoint: resumeToken === null ? null : {
+        schemaVersion: 1,
+        format: contract!.format,
+        token: resumeToken,
+      },
+      ...(sessionBinding !== undefined ? { sessionBinding } : {}),
+      updatedAt: now().toISOString(),
+    });
+  };
+
+  const saveCheckpoint = (
+    id: string,
+    generation: number,
+    adapter: HarnessAdapter,
+    key: HarnessSessionKey,
+    sessionBinding: string | undefined,
+    resumeToken: string | null,
+  ): Promise<void> => serializeSessionMutation(id, async () => {
+    if (sessionGenerations.get(id) !== generation || closed) {
+      throw new HarnessRuntimeError(
+        "SESSION_CHECKPOINT_STALE",
+        "The adapter checkpoint belongs to a session that is no longer active.",
+      );
+    }
+    await saveCheckpointRecord(adapter, key, sessionBinding, resumeToken);
+  });
+
+  const open = (
+    key: HarnessSessionKey,
+    adapter: HarnessAdapter,
+    requestedBinding: string | undefined,
+  ): Promise<ManagedSession> => {
     const id = harnessSessionKey(key, adapter.id);
     const known = opened.get(id);
     if (known) return known;
-    const created = options.persistence.sessions.load(key, adapter.id)
-      .then(async (stored) => ({
-        adapter,
-        session: await adapter.open({ session: key, resumeToken: stored?.resumeToken ?? null }),
-        active: false,
-      }));
+    const generation = (sessionGenerations.get(id) ?? 0) + 1;
+    sessionGenerations.set(id, generation);
+    const created = (async (): Promise<ManagedSession> => {
+      let stored: StoredHarnessSession | null;
+      try {
+        stored = await options.persistence.sessions.load(key, adapter.id);
+      } catch (error) {
+        reportFailure(error, { phase: "session-load", adapterId: adapter.id, session: key }, {
+          code: "SESSION_LOAD_FAILED",
+          message: "The saved harness session could not be loaded.",
+        });
+        throw error;
+      }
+      if (stored?.sessionBinding !== undefined) {
+        if (stored.sessionBinding.length === 0) {
+          throw new HarnessRuntimeError(
+            "SESSION_CHECKPOINT_INVALID",
+            "The saved harness session binding is invalid. Reset the session before retrying.",
+          );
+        }
+        if (stored.sessionBinding !== requestedBinding) {
+          throw new HarnessRuntimeError(
+            "SESSION_BINDING_MISMATCH",
+            "The admitted execution does not match the saved harness session. Reset the session before retrying.",
+          );
+        }
+      }
+      let resumeToken: string | null = null;
+      if (stored?.checkpoint) {
+        assertStoredCheckpoint(stored.checkpoint);
+        const contract = checkpointContracts.get(adapter.id) ?? null;
+        if (!contract?.compatibleFormats.has(stored.checkpoint.format)) {
+          throw new HarnessRuntimeError(
+            "SESSION_CHECKPOINT_INCOMPATIBLE",
+            "The saved harness session is incompatible with this adapter version. Reset the session before retrying.",
+          );
+        }
+        resumeToken = stored.checkpoint.token;
+      }
+      try {
+        const persistCheckpoint = async (resumeToken: string | null): Promise<void> => {
+          try {
+            await saveCheckpoint(
+              id,
+              generation,
+              adapter,
+              key,
+              sessionBindings.get(id) ?? requestedBinding ?? stored?.sessionBinding,
+              resumeToken,
+            );
+          } catch (error) {
+            reportFailure(error, { phase: "checkpoint", adapterId: adapter.id, session: key }, {
+              code: "CHECKPOINT_SAVE_FAILED",
+              message: "The harness session checkpoint could not be saved.",
+            });
+            throw error;
+          }
+        };
+        return {
+          adapter,
+          key: { ...key },
+          session: await adapter.open({ session: key, resumeToken, persistCheckpoint }),
+          ...(requestedBinding !== undefined
+            ? { sessionBinding: requestedBinding }
+              : stored?.sessionBinding !== undefined
+              ? { sessionBinding: stored.sessionBinding }
+              : {}),
+          generation,
+          active: false,
+        };
+      } catch (error) {
+        reportFailure(error, { phase: "session-open", adapterId: adapter.id, session: key }, {
+          code: "SESSION_OPEN_FAILED",
+          message: `${adapter.id} session could not be opened.`,
+        });
+        throw error;
+      }
+    })();
     opened.set(id, created);
-    void created.catch(() => opened.delete(id));
+    void created.catch((error) => {
+      reportFailure(error, { phase: "session-load", adapterId: adapter.id, session: key }, {
+        code: "SESSION_RECOVERY_FAILED",
+        message: "The saved harness session could not be recovered.",
+      });
+      opened.delete(id);
+    });
     return created;
   };
 
   const persistCheckpoint = async (managed: ManagedSession, key: HarnessSessionKey): Promise<void> => {
     const resumeToken = await managed.session.checkpoint?.() ?? null;
-    await options.persistence.sessions.save({
-      key,
-      adapterId: managed.adapter.id,
-      resumeToken,
-      updatedAt: now().toISOString(),
-    });
+    const id = harnessSessionKey(key, managed.adapter.id);
+    await saveCheckpoint(id, managed.generation, managed.adapter, key, managed.sessionBinding, resumeToken);
   };
 
   const prepareContext = (
@@ -642,13 +939,15 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       const turnId = startOptions.turnId ?? createId();
       const controller = startOptions.controller ?? new AbortController();
       const suppliedContext = startOptions.context;
-      if (knownSessionBinding === undefined && admission?.sessionBinding !== undefined) {
-        sessionBindings.set(sessionId, admission.sessionBinding);
-      }
+      // Reserve before the first event-store await. Otherwise close/reset can
+      // observe no work, return, and let this run open a provider session
+      // afterwards. A competing run still gets its durable SESSION_BUSY
+      // terminal envelope instead of throwing synchronously from start().
+      const ownsReservation = !reserved.has(sessionId);
+      if (ownsReservation) reserved.add(sessionId);
       const queue = new AsyncQueue<HarnessEvent>();
       let managed: ManagedSession | null = null;
       let opening: Promise<ManagedSession> | null = null;
-      let ownsReservation = false;
       let phase: "opening" | "running" | "sealing" | "sealed" = "opening";
       let stopping = false;
       let cancellationWork: Promise<void> | null = null;
@@ -684,7 +983,18 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         // cancellation path as `run.cancel()`. The public cancel method can
         // still observe a dispatch failure; the listener itself must not
         // create an unhandled rejection.
-        void dispatchCancellation().catch(() => undefined);
+        void dispatchCancellation().catch((error) => {
+          reportFailure(error, {
+            phase: "cancellation",
+            adapterId: adapter.id,
+            session: runRequest.session,
+            runId,
+            turnId,
+          }, {
+            code: "CANCELLATION_FAILED",
+            message: "The adapter could not cancel the active turn.",
+          });
+        });
       };
       controller.signal.addEventListener("abort", onAbort, { once: true });
       if (controller.signal.aborted) onAbort();
@@ -705,14 +1015,29 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             (payload.kind === "interaction-resolved" || payload.kind === "interaction-invalidated")
             && !openInteractions.has(payload.interactionId)
           ) return;
-          const event = await options.persistence.events.append({
-            schemaVersion: 1,
-            session: runRequest.session,
-            runId,
-            turnId,
-            adapterId: adapter.id,
-            payload,
-          });
+          let event: HarnessEvent;
+          try {
+            event = await options.persistence.events.append({
+              schemaVersion: 1,
+              session: runRequest.session,
+              runId,
+              turnId,
+              adapterId: adapter.id,
+              payload,
+            });
+          } catch (error) {
+            reportFailure(error, {
+              phase: "event-store",
+              adapterId: adapter.id,
+              session: runRequest.session,
+              runId,
+              turnId,
+            }, {
+              code: "EVENT_STORE_FAILED",
+              message: "The harness event could not be persisted.",
+            });
+            throw error;
+          }
           if (payload.kind === "interaction-requested") {
             openInteractions.add(payload.interaction.id);
           } else if (
@@ -738,13 +1063,17 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             ...(runRequest.accountId ? { accountId: runRequest.accountId } : {}),
           });
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
-          if (reserved.has(sessionId)) {
+          if (!ownsReservation) {
             throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           }
-          reserved.add(sessionId);
-          ownsReservation = true;
-          opening = open(runRequest.session, adapter);
+          opening = open(runRequest.session, adapter, admission?.sessionBinding);
           managed = await opening;
+          if (managed.sessionBinding === undefined && admission?.sessionBinding !== undefined) {
+            managed.sessionBinding = admission.sessionBinding;
+          }
+          if (managed.sessionBinding !== undefined) {
+            sessionBindings.set(sessionId, managed.sessionBinding);
+          }
           if (controller.signal.aborted) {
             if (opened.get(sessionId) === opening) opened.delete(sessionId);
             try {
@@ -756,8 +1085,23 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          const context = suppliedContext
-            ?? await prepareContext(runRequest, runId, turnId, controller.signal);
+          let context: HarnessPreparedContext<HarnessContextContribution>;
+          try {
+            context = suppliedContext
+              ?? await prepareContext(runRequest, runId, turnId, controller.signal);
+          } catch (error) {
+            reportFailure(error, {
+              phase: "context",
+              adapterId: adapter.id,
+              session: runRequest.session,
+              runId,
+              turnId,
+            }, {
+              code: "CONTEXT_PREPARATION_FAILED",
+              message: "Harness context preparation failed.",
+            });
+            throw error;
+          }
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           const toolContext = {
             session: runRequest.session,
@@ -787,7 +1131,21 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           // checkpoint and terminal envelope are still becoming durable.
           phase = "sealing";
           if (controller.signal.aborted) status = "interrupted";
-          await persistCheckpoint(managed, runRequest.session);
+          try {
+            await persistCheckpoint(managed, runRequest.session);
+          } catch (error) {
+            reportFailure(error, {
+              phase: "checkpoint",
+              adapterId: adapter.id,
+              session: runRequest.session,
+              runId,
+              turnId,
+            }, {
+              code: "CHECKPOINT_SAVE_FAILED",
+              message: "The harness session checkpoint could not be saved.",
+            });
+            throw error;
+          }
         } catch (error) {
           // The provider iterable has already settled on every catch path.
           // Close follow-up admission before persisting a public error.
@@ -797,6 +1155,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           else {
             status = "error";
+            reportFailure(error, {
+              phase: "turn",
+              adapterId: adapter.id,
+              session: runRequest.session,
+              runId,
+              turnId,
+            }, {
+              code: "ADAPTER_ERROR",
+              message: "The adapter turn failed.",
+            });
             const failure = safeError(error);
             await emit({ kind: "error", ...failure });
           }
@@ -831,6 +1199,13 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         return status;
       })();
 
+      const trackedRun = { sessionId, controller, done };
+      activeRuns.add(trackedRun);
+      void done.then(
+        () => activeRuns.delete(trackedRun),
+        () => activeRuns.delete(trackedRun),
+      );
+
       const performCancellation = (preserveReplacement = false): Promise<void> => {
         cancellationWork ??= (async () => {
           stopping = true;
@@ -846,6 +1221,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           try {
             await dispatchCancellation();
           } catch (error) {
+            reportFailure(error, {
+              phase: "cancellation",
+              adapterId: adapter.id,
+              session: runRequest.session,
+              runId,
+              turnId,
+            }, {
+              code: "CANCELLATION_FAILED",
+              message: "The adapter could not cancel the active turn.",
+            });
             cancellationError = error;
           }
           // A cancellation dispatch failure cannot release the session
@@ -911,7 +1296,17 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             let capabilities: HarnessCapabilities;
             try {
               capabilities = await adapter.capabilities();
-            } catch {
+            } catch (error) {
+              reportFailure(error, {
+                phase: "follow-up",
+                adapterId: adapter.id,
+                session: runRequest.session,
+                runId,
+                turnId,
+              }, {
+                code: "FOLLOW_UP_CAPABILITIES_FAILED",
+                message: "The adapter could not describe follow-up support.",
+              });
               throw new HarnessRuntimeError("FOLLOW_UP_FAILED", "The adapter could not describe follow-up support.");
             }
             ensureActiveTurn(admittedFollowUp.expectedTurnId);
@@ -956,6 +1351,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                   signal: controller.signal,
                 });
               } catch (error) {
+                reportFailure(error, {
+                  phase: "follow-up",
+                  adapterId: adapter.id,
+                  session: runRequest.session,
+                  runId,
+                  turnId,
+                }, {
+                  code: "FOLLOW_UP_FAILED",
+                  message: "The adapter could not accept the follow-up.",
+                });
                 if (error instanceof HarnessRuntimeError || error instanceof HarnessAdapterError) throw error;
                 throw new HarnessRuntimeError("FOLLOW_UP_FAILED", "The adapter could not accept the follow-up.");
               }
@@ -1097,6 +1502,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               // still prevents a concurrent retry from reaching the provider.
             } catch (error) {
               respondingInteractions.delete(interactionId);
+              reportFailure(error, {
+                phase: "interaction",
+                adapterId: adapter.id,
+                session: runRequest.session,
+                runId,
+                turnId,
+              }, {
+                code: "INTERACTION_FAILED",
+                message: "The adapter could not answer the interaction.",
+              });
               if (
                 error instanceof HarnessAdapterError
                 && error.code === "INTERACTION_NOT_ACTIVE"
@@ -1118,14 +1533,129 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       return publicRun;
     },
 
-    async close() {
-      if (closed) return;
+    async resetSession(session, adapterId) {
+      if (closed) throw new HarnessRuntimeError("RUNTIME_CLOSED", "The harness runtime is closed.");
+      adapterFor(adapterId);
+      const id = harnessSessionKey(session, adapterId);
+      if (reserved.has(id)) {
+        throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
+      }
+      reserved.add(id);
+      try {
+        sessionGenerations.set(id, (sessionGenerations.get(id) ?? 0) + 1);
+        let closeError: unknown;
+        let closeFailed = false;
+        const known = opened.get(id);
+        if (known) {
+          let managed: ManagedSession | null = null;
+          try {
+            managed = await known;
+          } catch {
+            if (opened.get(id) === known) opened.delete(id);
+          }
+          if (managed) {
+            if (managed.active) {
+              throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
+            }
+            // Retire the cached object before close. Once reset begins, a
+            // close failure leaves the provider session's state uncertain and
+            // it must never be reused by a later turn.
+            if (opened.get(id) === known) opened.delete(id);
+            try {
+              await managed.session.close?.();
+            } catch (error) {
+              closeFailed = true;
+              reportFailure(error, { phase: "session-reset", adapterId, session }, {
+                code: "SESSION_CLOSE_FAILED",
+                message: "The harness session could not be closed for reset.",
+              });
+              closeError = error;
+            }
+          }
+        }
+        try {
+          // Removal follows every earlier checkpoint write for this session.
+          // The generation was retired above, so a late writer queued during
+          // close is refused before it can run.
+          await serializeSessionMutation(
+            id,
+            () => options.persistence.sessions.remove(session, adapterId),
+          );
+        } catch (error) {
+          reportFailure(error, { phase: "session-reset", adapterId, session }, {
+            code: "SESSION_RESET_FAILED",
+            message: "The saved harness session could not be reset.",
+          });
+          throw error;
+        }
+        sessionBindings.delete(id);
+        if (closeFailed) throw closeError;
+      } finally {
+        reserved.delete(id);
+      }
+    },
+
+    close() {
+      if (closeWork) return closeWork;
       closed = true;
-      const sessions = await Promise.allSettled(opened.values());
-      await Promise.all(sessions.flatMap((entry) =>
-        entry.status === "fulfilled" && entry.value.session.close ? [entry.value.session.close()] : []));
-      opened.clear();
-      sessionBindings.clear();
+      closeWork = (async () => {
+        const runs = [...activeRuns];
+        const retiringIds = new Set([
+          ...opened.keys(),
+          ...sessionMutationTails.keys(),
+          ...runs.map((run) => run.sessionId),
+        ]);
+        for (const id of retiringIds) {
+          sessionGenerations.set(id, (sessionGenerations.get(id) ?? 0) + 1);
+        }
+        for (const run of runs) {
+          if (!run.controller.signal.aborted) run.controller.abort();
+        }
+
+        // A run is registered before its first persistence await. Waiting for
+        // every registered run prevents a delayed turn-start append from
+        // opening a provider session after close() has returned.
+        await Promise.allSettled(runs.map((run) => run.done));
+
+        // A session may have entered `opened` while an already-started run was
+        // unwinding. Snapshot only after the run barrier, then retire it too.
+        for (const id of opened.keys()) {
+          if (!retiringIds.has(id)) {
+            sessionGenerations.set(id, (sessionGenerations.get(id) ?? 0) + 1);
+          }
+        }
+        const sessions = await Promise.allSettled(opened.values());
+        const closes = sessions.flatMap((entry) => {
+          if (entry.status !== "fulfilled" || !entry.value.session.close) return [];
+          const managed = entry.value;
+          return [Promise.resolve()
+            .then(() => managed.session.close?.())
+            .catch((error) => {
+              reportFailure(error, {
+                phase: "session-close",
+                adapterId: managed.adapter.id,
+                session: managed.key,
+              }, {
+                code: "SESSION_CLOSE_FAILED",
+                message: "The harness session could not be closed.",
+              });
+              throw error;
+            })];
+        });
+        try {
+          const closeResults = await Promise.allSettled(closes);
+          await Promise.allSettled([...sessionMutationTails.values()]);
+          const failedClose = closeResults.find((result) => result.status === "rejected");
+          if (failedClose?.status === "rejected") throw failedClose.reason;
+        } finally {
+          opened.clear();
+          sessionBindings.clear();
+          sessionGenerations.clear();
+          sessionMutationTails.clear();
+          activeRuns.clear();
+        }
+      })();
+      return closeWork;
     },
   };
   return runtime;

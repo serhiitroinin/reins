@@ -98,7 +98,8 @@ hosts can replace that mapping when a provider supports a richer native form.
 
 `createHarness` caches one adapter session per tenant, actor, thread, and
 adapter. One turn runs in that session at a time. A persisted resume token is
-offered when a process opens the session again.
+offered when a process opens the session again only through a versioned
+checkpoint envelope whose adapter-owned format is declared compatible.
 
 The host supplies event and session stores. The in-memory implementation is a
 reference for tests and prototypes; production applications should implement
@@ -117,17 +118,19 @@ incrementally adoptable snapshot of the selected adapter, account, model,
 effort, resolved permission grant, exact generic controls, input policy, and
 an opaque host session-binding fingerprint. Nullable selection pins use
 `null` to distinguish an admitted absence from an unenforced field. Controls
-remain open typed identifiers, so Fast/service tier and future Grok or
-OpenCode settings need no core provider branch.
+remain open typed identifiers, so Codex Fast/service tier and future provider
+settings need no core provider branch.
 
 The runtime copies admission synchronously and validates every supplied pin
 plus input policy before ID allocation, context preparation, event
 persistence, session reservation, or adapter opening. A non-empty session
 binding is stable for the logical runtime session and prevents a later
-admitted turn from silently changing host-owned connection authority. A start
-that omits admission entirely retains the pre-admission behavior; the legacy
-top-level input-policy option is folded into the private snapshot for
-compatibility.
+admitted turn from silently changing host-owned connection authority. The
+non-secret fingerprint is stored beside a resumable checkpoint and enforced
+after restart; the underlying admitted account, settings, policy, and other
+inputs are not persisted. A start that omits admission entirely retains the
+pre-admission behavior; the legacy top-level input-policy option is folded
+into the private snapshot for compatibility.
 
 Same-turn follow-ups reuse the private admission. Replacement follow-ups
 inherit it unless the host supplies an explicit new snapshot, which replaces
@@ -137,10 +140,27 @@ presence requires explicit readmission, and omitted execution fields are
 cleared rather than inherited. The replacement is validated before IDs,
 context preparation, or cancellation and checked again after asynchronous
 preparation. Admission never enters `HarnessRunRequest`, wire schemas, native
-bindings, adapters, persistence, or events. The runtime never derives it from
+bindings, adapters, or events. Apart from the opaque session-binding
+fingerprint, it does not enter persistence. The runtime never derives it from
 a provider name or lets an untrusted request select its constraints;
 account/catalog lookup, settings resolution, and fingerprint composition stay
 host responsibilities.
+
+Each resumable adapter declares one current checkpoint format and may declare
+older compatible formats. The runtime stores that open identifier with a
+schema-versioned opaque token. Unknown, malformed, or incompatible state is
+never offered to a provider. The host can call `resetSession` to close and
+forget an inactive session before intentionally starting fresh. Adapters also
+receive a runtime-owned checkpoint writer so a provider-created session is
+durable before a long turn completes or fails; late writers from a reset or
+closed adapter generation are refused.
+
+The optional diagnostic observer receives process-local, sanitized lifecycle
+failures. It has a versioned envelope, adapter/session/run identity where
+available, a phase, and the same explicitly safe error code/message boundary
+used elsewhere. It never receives raw exceptions, prompts, credentials, tool
+results, or checkpoint tokens; it is not an event store, and callback failure
+cannot change runtime behavior.
 
 The runtime also snapshots the admitted request synchronously, including
 session identity, input bytes, inline context, settings, configuration, and
@@ -259,9 +279,9 @@ provider SDK types into the core protocol.
 Codex App Server communication uses a shared newline JSON-RPC peer.
 Its model mapper exposes App Server reasoning options, modalities, and service
 tiers through the generic catalog. In particular, Fast is a model-declared
-service-tier control rather than a universal boolean. OpenCode-style adapters
-may group models from multiple underlying providers, and Grok-specific
-behavior can be added as namespaced controls without changing the runtime.
+service-tier control rather than a universal boolean. Future adapters may
+group models from multiple underlying providers or add namespaced controls
+without changing the runtime.
 The low-level module serializes initialize, thread, resume, and turn requests,
 but only from host-supplied product identity, sandbox, approval, model, effort,
 image, and generic control decisions.
@@ -281,11 +301,12 @@ mapper.
 `createCodexAppServerAdapter` composes that client and consumer into the public
 runtime contract. It owns the wire lifecycle, dynamic tool round trips,
 context trust labels, cancellation, checkpoints, and transport termination.
-After App Server accepts a turn, its optional `onCheckpoint` hook lets the host
-durably store the resumable thread id before the turn completes or fails. The
-hook is never called for a refused thread or turn opening, and an asynchronous
-hook is awaited so persistence failures cannot be mistaken for a durable
-checkpoint.
+After App Server accepts a turn, the adapter first calls the runtime-owned
+checkpoint writer so the resumable thread id is durable before the turn
+completes or fails. Its optional `onCheckpoint` hook remains available for
+additional host observation. Neither callback is called for a refused thread
+or turn opening, and asynchronous work is awaited so a failed write cannot be
+mistaken for a durable checkpoint.
 Its connection factory is injected per turn. The process, environment,
 credentials, account selection, MCP configuration, sandbox posture, domain
 context, and persistence remain host decisions.

@@ -102,6 +102,9 @@ export interface CodexAppServerAdapterOptions {
 
 const unsupported = { support: "unsupported" as const };
 
+/** Persisted token format understood by the native Codex adapter. */
+export const CODEX_APP_SERVER_CHECKPOINT_FORMAT = "openai:codex-app-server/thread-id@1";
+
 /** Conservative capabilities of the injected adapter itself. */
 export const CODEX_APP_SERVER_CAPABILITIES: HarnessCapabilities = {
   resume: { support: "stable" },
@@ -351,6 +354,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
 
   return {
     id,
+    checkpoint: { format: CODEX_APP_SERVER_CHECKPOINT_FORMAT },
     capabilities: () => options.capabilities ?? CODEX_APP_SERVER_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultProfile(id), request),
     models: (request) => discovery(options.models, request),
@@ -364,7 +368,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
           }
         : { status: "unsupported" },
 
-    async open({ session, resumeToken }) {
+    async open({ session, resumeToken, persistCheckpoint }) {
       let checkpoint = resumeToken;
       let active: ActiveTurn | null = null;
       let closed = false;
@@ -527,6 +531,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
               current.turnId = turnId;
               // A thread becomes resumable only after the provider accepted its turn.
               checkpoint = threadId;
+              await persistCheckpoint?.(checkpoint);
               await options.onCheckpoint?.(checkpoint, connectRequest);
 
               const end = await settled.promise;

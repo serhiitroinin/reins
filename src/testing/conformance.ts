@@ -328,6 +328,12 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
     check(fixture.adapterId.trim().length > 0, "adapter id must not be empty");
     capabilities = await adapter("basic").capabilities();
     validateCapabilities(capabilities);
+    if (capabilities.resume.support !== "unsupported") {
+      check(
+        fixture.adapter.checkpoint?.format.trim().length,
+        "a resumable adapter must declare a checkpoint format",
+      );
+    }
   });
 
   await runCase("host input policy", async (defer) => {
@@ -735,13 +741,19 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
   else await runCase("resume checkpoint", async (defer) => {
     const persistence = createMemoryPersistence();
     const initial = scopedRuntime(defer, timeoutMs, { adapters: [adapter("resume-initial")], persistence });
-    const first = initial.start(request(fixture.adapterId));
+    const admission = { sessionBinding: "conformance:session-binding@1" };
+    const first = initial.start(request(fixture.adapterId), { admission });
     await collect(first.events);
     check(await first.done === "completed", "initial resumable turn did not complete");
+    const saved = await persistence.sessions.load(SESSION, fixture.adapterId);
+    check(saved?.checkpoint?.schemaVersion === 1, "resume checkpoint schema was not persisted");
+    check(saved.checkpoint.format === fixture.adapter.checkpoint?.format, "adapter checkpoint format changed in persistence");
+    check(saved.checkpoint.token === CONFORMANCE.resumeToken, "adapter checkpoint token changed in persistence");
+    check(saved.sessionBinding === admission.sessionBinding, "host session binding was not persisted");
     await initial.runtime.close();
 
     const restored = scopedRuntime(defer, timeoutMs, { adapters: [adapter("resume-restored")], persistence });
-    const second = restored.start(request(fixture.adapterId));
+    const second = restored.start(request(fixture.adapterId), { admission });
     const events = await collect(second.events);
     check(await second.done === "completed", "restored turn did not complete");
     check(events.some((event) => event.payload.kind === "assistant-text" && event.payload.text === CONFORMANCE.resumedText), "stored resume token did not reach the reopened adapter");

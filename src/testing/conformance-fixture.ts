@@ -63,6 +63,7 @@ export function createConformanceFixture(options: {
     } satisfies AdapterConformanceFixture["discovery"];
   const adapter: HarnessAdapter = {
         id: adapterId,
+        checkpoint: { format: "fold-harness:conformance/session@1" },
         capabilities: () => conformanceCapabilities,
         profile: () => discovery.profile,
         models: () => discovery.models,
