@@ -217,6 +217,40 @@ describe("harness runtime", () => {
     });
   });
 
+  test("does not pin a requested binding that durable recovery rejects", async () => {
+    const persistence = createMemoryPersistence();
+    await persistence.sessions.save({
+      key: request.session,
+      adapterId: "scripted",
+      checkpoint: null,
+      sessionBinding: "account:a",
+      updatedAt: "2026-09-17T00:00:00.000Z",
+    });
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opens += 1;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+
+    const refused = harness.start(request, { admission: { sessionBinding: "account:b" } });
+    const refusedEvents = await collect(refused.events);
+    expect(await refused.done).toBe("error");
+    expect(refusedEvents.find((event) => event.payload.kind === "error")?.payload).toMatchObject({
+      kind: "error",
+      code: "SESSION_BINDING_MISMATCH",
+    });
+
+    const recovered = harness.start(request, { admission: { sessionBinding: "account:a" } });
+    await collect(recovered.events);
+    expect(await recovered.done).toBe("completed");
+    expect(opens).toBe(1);
+  });
+
   test("refuses incompatible checkpoints until the host explicitly resets the session", async () => {
     const persistence = createMemoryPersistence();
     await persistence.sessions.save({
@@ -289,6 +323,126 @@ describe("harness runtime", () => {
     });
     await run.cancel();
     await events;
+  });
+
+  test("close cancels a synchronously tracked run before delayed event persistence can open it", async () => {
+    const persistence = createMemoryPersistence();
+    const append = persistence.events.append.bind(persistence.events);
+    let appendStarted!: () => void;
+    const started = new Promise<void>((resolve) => { appendStarted = resolve; });
+    let releaseAppend!: () => void;
+    const blockedAppend = new Promise<void>((resolve) => { releaseAppend = resolve; });
+    persistence.events.append = async (event) => {
+      if (event.payload.kind === "turn-started") {
+        appendStarted();
+        await blockedAppend;
+      }
+      return append(event);
+    };
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opens += 1;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    let closeSettled = false;
+    const closing = harness.close().finally(() => { closeSettled = true; });
+    await Bun.sleep(0);
+    expect(closeSettled).toBe(false);
+
+    releaseAppend();
+    await closing;
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+    expect(opens).toBe(0);
+  });
+
+  test("reset orders removal after an in-flight checkpoint write", async () => {
+    const persistence = createMemoryPersistence();
+    const save = persistence.sessions.save.bind(persistence.sessions);
+    let saveStarted!: () => void;
+    const started = new Promise<void>((resolve) => { saveStarted = resolve; });
+    let releaseSave!: () => void;
+    const blockedSave = new Promise<void>((resolve) => { releaseSave = resolve; });
+    persistence.sessions.save = async (session) => {
+      if (session.checkpoint?.token === "late-checkpoint") {
+        saveStarted();
+        await blockedSave;
+      }
+      await save(session);
+    };
+    let persistLate!: (checkpoint: string | null) => Promise<void>;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      checkpoint: { format: "test:scripted/session@1" },
+      capabilities: () => capabilities,
+      async open({ persistCheckpoint }) {
+        persistLate = persistCheckpoint!;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    await collect(run.events);
+    expect(await run.done).toBe("completed");
+
+    const lateWrite = persistLate("late-checkpoint");
+    await started;
+    let resetSettled = false;
+    const reset = harness.resetSession(request.session, "scripted")
+      .finally(() => { resetSettled = true; });
+    await Bun.sleep(0);
+    expect(resetSettled).toBe(false);
+
+    releaseSave();
+    await lateWrite;
+    await reset;
+    expect(await persistence.sessions.load(request.session, "scripted")).toBeNull();
+  });
+
+  test("reset retires a cached session even when provider close fails", async () => {
+    const persistence = createMemoryPersistence();
+    const checkpointWriters: Array<(checkpoint: string | null) => Promise<void>> = [];
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      checkpoint: { format: "test:scripted/session@1" },
+      capabilities: () => capabilities,
+      async open({ persistCheckpoint }) {
+        opens += 1;
+        checkpointWriters.push(persistCheckpoint!);
+        return {
+          async *run() {},
+          async close() { throw new Error("provider close failed"); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const first = harness.start(request);
+    await collect(first.events);
+    expect(await first.done).toBe("completed");
+
+    await expect(harness.resetSession(request.session, "scripted")).rejects.toThrow("provider close failed");
+    expect(await persistence.sessions.load(request.session, "scripted")).toBeNull();
+    await expect(checkpointWriters[0]!("stale-checkpoint")).rejects.toMatchObject({
+      code: "SESSION_CHECKPOINT_STALE",
+    });
+
+    const second = harness.start(request);
+    await collect(second.events);
+    expect(await second.done).toBe("completed");
+    expect(opens).toBe(2);
   });
 
   test("reports only sanitized diagnostics and ignores a failing observer", async () => {
