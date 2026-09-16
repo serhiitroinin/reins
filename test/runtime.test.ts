@@ -1091,6 +1091,48 @@ describe("harness runtime", () => {
     expect((await events).at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "interrupted" });
   });
 
+  test("reports a sanitized cancellation diagnostic when a supplied controller aborts", async () => {
+    const controller = new AbortController();
+    const diagnostics: Array<{ phase: string; code: string; message: string }> = [];
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => { running = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run(turn) {
+            running();
+            if (!turn.signal.aborted) {
+              await new Promise<void>((resolve) => {
+                turn.signal.addEventListener("abort", () => resolve(), { once: true });
+              });
+            }
+          },
+          async cancel() { throw new Error("private provider cancellation transcript"); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    });
+    const run = harness.start(request, { controller });
+    const events = collect(run.events);
+    await started;
+
+    controller.abort();
+
+    expect(await run.done).toBe("interrupted");
+    await events;
+    await Bun.sleep(0);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ phase: "cancellation", code: "CANCELLATION_FAILED" }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private provider");
+  });
+
   test("waits for provider drain when adapter cancellation rejects", async () => {
     let releaseDrain!: () => void;
     const draining = new Promise<void>((resolve) => { releaseDrain = resolve; });

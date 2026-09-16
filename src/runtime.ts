@@ -947,7 +947,18 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         // cancellation path as `run.cancel()`. The public cancel method can
         // still observe a dispatch failure; the listener itself must not
         // create an unhandled rejection.
-        void dispatchCancellation().catch(() => undefined);
+        void dispatchCancellation().catch((error) => {
+          reportFailure(error, {
+            phase: "cancellation",
+            adapterId: adapter.id,
+            session: runRequest.session,
+            runId,
+            turnId,
+          }, {
+            code: "CANCELLATION_FAILED",
+            message: "The adapter could not cancel the active turn.",
+          });
+        });
       };
       controller.signal.addEventListener("abort", onAbort, { once: true });
       if (controller.signal.aborted) onAbort();
