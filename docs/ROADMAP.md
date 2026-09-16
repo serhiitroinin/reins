@@ -48,6 +48,9 @@
   preconditions, serialized Stop/follow-up control, portable cancellation
   dispatch/drain/terminal sealing, native Claude injection, Codex
   `turn/steer`, ACP replacement behavior, and shared conformance coverage.
+- Host-resolved input policies enforced by the runtime before initial provider
+  work and active-turn mutation, with immutable per-run snapshots and explicit
+  replacement overrides.
 
 ## Next
 

@@ -19,7 +19,7 @@ import {
   type HarnessSteeringStrategy,
   type HarnessTurnStatus,
 } from "./protocol.js";
-import { validateHarnessInlineContext } from "./input.js";
+import { validateHarnessInlineContext, validateHarnessInput } from "./input.js";
 import {
   HarnessContextPreparationError,
   prepareHarnessContext,
@@ -33,6 +33,7 @@ import type {
   HarnessDiscovery,
   HarnessDiscoveryRequest,
   HarnessEngineProfile,
+  HarnessInputPolicy,
   HarnessLimitSnapshot,
   HarnessModelCatalog,
 } from "./profile.js";
@@ -162,6 +163,8 @@ export interface HarnessStartOptions {
   turnId?: string;
   controller?: AbortController;
   context?: HarnessPreparedContext<HarnessContextContribution>;
+  /** Host-resolved engine/model policy admitted for this run. */
+  inputPolicy?: HarnessInputPolicy;
 }
 
 export interface HarnessRuntime {
@@ -227,6 +230,22 @@ interface ManagedSession {
   adapter: HarnessAdapter;
   session: HarnessAdapterSession;
   active: boolean;
+}
+
+/** Keep admission stable even if a discovery cache mutates after `start()`. */
+function snapshotInputPolicy(policy: HarnessInputPolicy | undefined): HarnessInputPolicy | undefined {
+  if (policy === undefined) return undefined;
+  return {
+    ...policy,
+    ...(policy.modalities ? {
+      modalities: Object.fromEntries(Object.entries(policy.modalities).map(([id, constraint]) => [id, {
+        ...constraint,
+        ...(constraint.mediaTypes ? { mediaTypes: [...constraint.mediaTypes] } : {}),
+        ...(constraint.extensions ? { extensions: { ...constraint.extensions } } : {}),
+      }])),
+    } : {}),
+    ...(policy.extensions ? { extensions: { ...policy.extensions } } : {}),
+  };
 }
 
 class AsyncQueue<T> implements AsyncIterable<T> {
@@ -390,7 +409,8 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         throw new Error("a host-supplied turnId cannot be empty");
       }
       const adapter = adapterFor(request.adapterId);
-      const inputValidation = validateHarnessInlineContext(request.inlineContext, request.input);
+      const inputPolicy = snapshotInputPolicy(startOptions.inputPolicy);
+      const inputValidation = validateHarnessInput(request.input, inputPolicy, request.inlineContext);
       if (!inputValidation.valid) {
         throw new HarnessRuntimeError(
           "INVALID_INPUT",
@@ -631,6 +651,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           return publicCancelWork;
         },
         followUp(followUpRequest, followUpOptions = {}) {
+          const replacementInputPolicy = snapshotInputPolicy(followUpOptions.replacement?.inputPolicy);
           return serializeControl(async () => {
             ensureActiveTurn(followUpRequest.expectedTurnId);
             const inputValidation = validateHarnessInlineContext(
@@ -660,6 +681,22 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept an active-turn follow-up.");
             }
 
+            const replacement = followUpOptions.replacement ?? {};
+            const followUpInputPolicy = strategy === "replacement-turn"
+              ? replacementInputPolicy ?? inputPolicy
+              : inputPolicy;
+            const policyValidation = validateHarnessInput(
+              followUpRequest.input,
+              followUpInputPolicy,
+              followUpRequest.inlineContext,
+            );
+            if (!policyValidation.valid) {
+              throw new HarnessRuntimeError(
+                "INVALID_INPUT",
+                policyValidation.issues[0]?.message ?? "The harness input is invalid.",
+              );
+            }
+
             if (strategy === "same-turn") {
               const target = ensureActiveTurn(followUpRequest.expectedTurnId);
               if (!target.session.steer) {
@@ -682,7 +719,6 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               return { strategy, run: publicRun };
             }
 
-            const replacement = followUpOptions.replacement ?? {};
             if (replacement.runId !== undefined && replacement.runId.length === 0) {
               throw new Error("a host-supplied replacement runId cannot be empty");
             }
@@ -748,6 +784,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                   turnId: replacementTurnId,
                   controller: replacementController,
                   context: replacementContext,
+                  ...(followUpInputPolicy ? { inputPolicy: followUpInputPolicy } : {}),
                 }),
               };
             } finally {

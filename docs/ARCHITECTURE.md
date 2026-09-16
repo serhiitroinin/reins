@@ -103,6 +103,16 @@ state and is passed by identity to the adapter and tool boundary without being
 persisted. These values are not part of `HarnessRunRequest` or its JSON-safe
 wire representation.
 
+The same runtime-only options accept a host-resolved `inputPolicy`. The runtime
+copies the policy synchronously and validates the initial input before ID
+allocation, context preparation, event persistence, or adapter opening.
+Same-turn follow-ups reuse that private snapshot. Replacement follow-ups
+inherit it unless the host supplies a newly admitted override, which is copied
+and validated before the old provider turn is cancelled. The runtime never
+derives policy from a provider name or lets an untrusted wire request select
+its own constraints; account/catalog lookup and policy composition remain host
+responsibilities.
+
 Cancellation changes the terminal status to `interrupted` and asks the
 adapter to settle. Events the adapter yields while settling are still durable:
 partial text and terminal tool states describe work that already happened and
@@ -162,9 +172,10 @@ features; queueing a message never implies that an adapter can steer.
 the caller's expected active turn id. Same-turn steering reuses the original
 run, turn, signal, context, and tool host and sends only the new untrusted
 input. It emits no second runtime start or intermediate completion.
-Replacement steering prepares the fresh turn context before touching the old
-provider turn, rechecks admission, then crosses the full cancellation, drain,
-and terminal boundary before calling `start` with new run and turn ids. A
+Replacement steering validates the fresh input and prepares the fresh turn
+context before touching the old provider turn, rechecks active-turn admission,
+then crosses the full cancellation, drain, and terminal boundary before
+calling `start` with new run and turn ids. A
 replacement must not reuse the old run id, turn id, or abort controller. A
 failed preparation leaves the original turn alive. Follow-up and Stop
 operations are serialized per run, and unknown provider failures become safe
