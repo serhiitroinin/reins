@@ -5,7 +5,8 @@ import {
   createAcpV1Adapter,
   type AcpV1Adapter,
 } from "../adapters/acp-v1-adapter.js";
-import type { AcpV1ByteConnection } from "../adapters/acp-v1.js";
+import { defaultAcpV1Prompt, type AcpV1ByteConnection } from "../adapters/acp-v1.js";
+import { harnessContextReferenceText } from "../input.js";
 import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
 import { CONFORMANCE } from "./conformance.js";
 
@@ -93,6 +94,16 @@ function conformanceAgent(
           : { outcome: "cancelled" });
         return { stopReason: "end_turn" };
       }
+      if (scenario === "typed-context") {
+        const mapped = params.prompt.flatMap((block) => block.type === "text" ? [block.text] : []);
+        const expected = CONFORMANCE.typedContextInput.map((input) => input.type === "context-reference"
+          ? harnessContextReferenceText(input, CONFORMANCE.typedInlineContext)
+          : input.text);
+        await emitText(JSON.stringify(mapped) === JSON.stringify(expected)
+          ? CONFORMANCE.typedContextText
+          : "typed-context-mismatch");
+        return { stopReason: "end_turn" };
+      }
       const promptText = params.prompt.find((block) => block.type === "text")?.text;
       await emitText(
         scenario === "resume-restored"
@@ -138,6 +149,12 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
           defaultModeId: "host",
           modes: [{ id: "host", label: "Managed by host", posture: "restricted" }],
         },
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable" },
+            "context-reference": { support: "stable" },
+          },
+        },
       },
     },
     models: {
@@ -160,6 +177,9 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
       return fakeConnection(conformanceAgent(scenario, state, () => ++steeringPrompts), state);
     },
     async mapPrompt(request) {
+      if (scenario === "typed-context") {
+        return defaultAcpV1Prompt(request.input, request.context, request.inlineContext);
+      }
       if (scenario === "steering") {
         const input = request.input.find((entry) => entry.type === "text");
         return [{ type: "text", text: input?.type === "text" ? input.text : "follow-up-missing" }];
@@ -201,6 +221,7 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
     adapter,
     discovery,
     state,
+    providerOpens: () => state.connections,
     useScenario(value) {
       if (value !== scenario) steeringPrompts = 0;
       scenario = value;
