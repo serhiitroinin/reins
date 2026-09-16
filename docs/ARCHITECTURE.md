@@ -236,6 +236,14 @@ failed preparation leaves the original turn alive. Follow-up and Stop
 operations are serialized per run, and unknown provider failures become safe
 runtime errors.
 
+Active subagent control follows the same boundary. `HarnessRun.stopSubagent`
+accepts only the task id emitted by the adapter, validates the active run from
+inside the serialized control lane, and calls an optional adapter-session
+method. It neither exposes the provider session nor assigns task identity.
+Adapters return whether they accepted the targeted stop; unsupported control,
+ended turns, and unsafe failures become stable sanitized runtime errors. The
+parent turn remains active.
+
 ## Tools
 
 Tools use JSON Schema at the provider boundary and an application-owned

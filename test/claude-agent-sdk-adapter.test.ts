@@ -608,6 +608,35 @@ describe("Claude Agent SDK adapter", () => {
     await runtime.close();
   });
 
+  test("stops an active Claude subagent through the provider-neutral runtime", async () => {
+    const state = { interrupts: 0, closes: 0, stops: [] as string[] };
+    let finishTurn: (() => void) | undefined;
+    const adapter = createClaudeAgentSdkAdapter({
+      connect(request) {
+        return scriptedConnection((_request, _input, messages) => {
+          messages.push({ type: "assistant", message: { content: [{ type: "text", text: "working" }] } });
+          finishTurn = () => messages.push({ type: "result", subtype: "success", is_error: false });
+        }, request, state);
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "runtime-stop" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "delegate" }],
+    });
+    const events = collect(run.events);
+    while (!finishTurn) await Bun.sleep(0);
+
+    expect(await run.stopSubagent("agent-7")).toBe(true);
+    finishTurn();
+
+    expect(await run.done).toBe("completed");
+    expect(state.stops).toEqual(["agent-7"]);
+    await events;
+    await runtime.close();
+  });
+
   test("reuses one provider stream across turns and exposes bounded subagent stop", async () => {
     const state = { interrupts: 0, closes: 0, stops: [] as string[] };
     let sends = 0;

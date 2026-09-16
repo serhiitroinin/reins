@@ -83,6 +83,8 @@ export interface HarnessAdapterSession {
    * provider session before resolving.
    */
   cancel?(): Promise<void>;
+  /** Stop one active provider subagent without cancelling its parent turn. */
+  stopSubagent?(taskId: string): Promise<boolean>;
   checkpoint?(): Promise<string | null> | string | null;
   close?(): Promise<void>;
 }
@@ -159,6 +161,8 @@ export interface HarnessRun {
   cancel(): Promise<void>;
   followUp(request: HarnessFollowUpRequest, options?: HarnessFollowUpOptions): Promise<HarnessFollowUpResult>;
   respond(interactionId: string, response: HarnessInteractionResponse): Promise<void>;
+  /** Stop one active subagent while leaving this run open. */
+  stopSubagent(taskId: string): Promise<boolean>;
 }
 
 export interface HarnessFollowUpRequest {
@@ -258,6 +262,7 @@ export type HarnessDiagnosticPhase =
   | "cancellation"
   | "follow-up"
   | "interaction"
+  | "subagent"
   | "session-reset"
   | "session-close";
 
@@ -295,6 +300,9 @@ export class HarnessRuntimeError extends Error {
       | "SESSION_BUSY"
       | "INTERACTION_UNSUPPORTED"
       | "INTERACTION_NOT_ACTIVE"
+      | "INVALID_SUBAGENT_ID"
+      | "SUBAGENT_CONTROL_UNSUPPORTED"
+      | "SUBAGENT_CONTROL_FAILED"
       | "FOLLOW_UP_UNSUPPORTED"
       | "FOLLOW_UP_FAILED"
       | "STALE_TURN"
@@ -1536,6 +1544,42 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                 });
               }
               throw error;
+            }
+          });
+        },
+        stopSubagent(taskId) {
+          if (taskId.trim().length === 0) {
+            return Promise.reject(new HarnessRuntimeError(
+              "INVALID_SUBAGENT_ID",
+              "A subagent task id cannot be empty.",
+            ));
+          }
+          return serializeControl(async () => {
+            const target = ensureActiveTurn(turnId);
+            if (!target.session.stopSubagent) {
+              throw new HarnessRuntimeError(
+                "SUBAGENT_CONTROL_UNSUPPORTED",
+                `${adapter.id} cannot stop active subagents.`,
+              );
+            }
+            try {
+              return await target.session.stopSubagent(taskId);
+            } catch (error) {
+              reportFailure(error, {
+                phase: "subagent",
+                adapterId: adapter.id,
+                session: runRequest.session,
+                runId,
+                turnId,
+              }, {
+                code: "SUBAGENT_CONTROL_FAILED",
+                message: "The adapter could not stop the active subagent.",
+              });
+              if (error instanceof HarnessRuntimeError || error instanceof HarnessAdapterError) throw error;
+              throw new HarnessRuntimeError(
+                "SUBAGENT_CONTROL_FAILED",
+                "The adapter could not stop the active subagent.",
+              );
             }
           });
         },

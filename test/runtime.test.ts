@@ -1415,6 +1415,135 @@ describe("harness runtime", () => {
     expect(invocations).toBe(2);
   });
 
+  test("serializes subagent stops and revalidates the active turn before dispatch", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let finishRun!: () => void;
+    const running = new Promise<void>((resolve) => { finishRun = resolve; });
+    let firstStopStarted!: () => void;
+    const stopping = new Promise<void>((resolve) => { firstStopStarted = resolve; });
+    let finishFirstStop!: () => void;
+    const firstStopWaiting = new Promise<void>((resolve) => { finishFirstStop = resolve; });
+    const stopped: string[] = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        subagents: { support: "stable" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent(taskId) {
+            stopped.push(taskId);
+            firstStopStarted();
+            await firstStopWaiting;
+            return true;
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    const first = run.stopSubagent("agent-1");
+    await stopping;
+    const queued = run.stopSubagent("agent-2");
+    finishRun();
+    expect(await run.done).toBe("completed");
+    finishFirstStop();
+
+    expect(await first).toBe(true);
+    await expect(queued).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(stopped).toEqual(["agent-1"]);
+    await events;
+  });
+
+  test("refuses invalid or unsupported subagent control without mutating the provider", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let release!: () => void;
+    const running = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await expect(run.stopSubagent("  ")).rejects.toMatchObject({ code: "INVALID_SUBAGENT_ID" });
+    await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
+      code: "SUBAGENT_CONTROL_UNSUPPORTED",
+    });
+
+    await run.cancel();
+    await events;
+  });
+
+  test("sanitizes subagent control failures in errors and diagnostics", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let release!: () => void;
+    const running = new Promise<void>((resolve) => { release = resolve; });
+    const diagnostics: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        subagents: { support: "stable" },
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent() {
+            throw new Error("private provider subagent transcript");
+          },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
+      code: "SUBAGENT_CONTROL_FAILED",
+      message: "The adapter could not stop the active subagent.",
+    });
+    await Bun.sleep(0);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ phase: "subagent", code: "SUBAGENT_CONTROL_FAILED" }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private provider");
+
+    await run.cancel();
+    await events;
+  });
+
   test("steers a declared same-turn follow-up without a second lifecycle envelope", async () => {
     let ready = false;
     let acceptFollowUp!: () => void;
