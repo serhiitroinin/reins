@@ -1,5 +1,16 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.23
+
+### Patch Changes
+
+- 93511ba: Add a runtime-only `HarnessAdmission` snapshot that validates selected
+  execution identity, resolved permissions and generic controls, input policy,
+  and stable host session bindings before runtime or provider side effects.
+  Snapshot admitted requests and require explicit readmission for replacement
+  execution changes.
+- 73a90b6: Expose portable model lifecycle, availability, context-window, engine/catalog selection requirements, freshness, safe diagnostic, and effort-resolution metadata. Timestamp native limit snapshots and isolate them by account.
+
 ## 0.1.0-next.22
 
 ### Patch Changes
