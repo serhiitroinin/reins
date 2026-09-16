@@ -139,7 +139,7 @@ describe("ACP v1 adapter", () => {
 
     expect(report.passed).toBe(true);
     expect(report.cases.filter((entry) => entry.status === "failed")).toEqual([]);
-    expect(fixture.state.cancellations).toBe(2);
+    expect(fixture.state.cancellations).toBe(3);
     expect(fixture.state.loadedSessions).toContain("conformance-resume-token");
     expect(fixture.state.permissionOutcomes).toEqual([{ outcome: "selected", optionId: "continue" }]);
   });

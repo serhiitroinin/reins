@@ -31,6 +31,7 @@ import {
   type HarnessAdapterFollowUpRequest,
   type HarnessAdapterRunRequest,
   type HarnessAdapterSession,
+  type HarnessAdapterSubagentControlRequest,
 } from "../runtime.js";
 import type { HarnessToolDescriptor, HarnessToolResult, HarnessTurnTools } from "../tools.js";
 import {
@@ -86,7 +87,7 @@ export interface ClaudeAgentSdkConnection {
   interrupt(): Promise<void> | void;
   /** Must make `messages` settle and release the host-owned provider process. */
   close(): Promise<void> | void;
-  stopSubagent?(taskId: string): Promise<void> | void;
+  stopSubagent?(taskId: string): Promise<boolean | void> | boolean | void;
 }
 
 export interface ClaudeAgentSdkConnectRequest {
@@ -165,13 +166,14 @@ export interface ClaudeAgentSdkAdapterSession extends HarnessAdapterSession {
   cancel(): Promise<void>;
   checkpoint(): string | null;
   close(): Promise<void>;
-  stopSubagent(taskId: string): Promise<boolean>;
+  stopSubagent(request: HarnessAdapterSubagentControlRequest): Promise<boolean>;
 }
 
 export interface ClaudeAgentSdkAdapter extends HarnessAdapter {
   open(request: {
     session: HarnessSessionKey;
     resumeToken: string | null;
+    signal: AbortSignal;
     persistCheckpoint?(resumeToken: string | null): Promise<void>;
   }): Promise<ClaudeAgentSdkAdapterSession>;
 }
@@ -191,7 +193,7 @@ export const CLAUDE_AGENT_SDK_CAPABILITIES: HarnessCapabilities = {
   thinking: { support: "stable" },
   plans: { support: "stable" },
   usage: { support: "stable" },
-  subagents: { support: "stable" },
+  subagents: { support: "stable", controls: ["stop"] },
   shell: unsupported,
   filesystem: unsupported,
   network: unsupported,
@@ -905,13 +907,38 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           return turn.cancelling;
         },
         checkpoint: () => checkpoint,
-        async stopSubagent(taskId) {
+        async stopSubagent({ taskId, signal }) {
           const stop = connection?.stopSubagent;
-          if (!stop || !active || active.finished) return false;
+          if (!stop || !active || active.finished || signal.aborted) return false;
           try {
-            await stop.call(connection, taskId);
-            return true;
-          } catch {
+            const stopping = Promise.resolve(stop.call(connection, taskId));
+            const stopped = await new Promise<boolean | void>((resolve, reject) => {
+              let settled = false;
+              const abort = (): void => {
+                if (settled) return;
+                settled = true;
+                reject(new HarnessAdapterInterruptedError());
+              };
+              signal.addEventListener("abort", abort, { once: true });
+              if (signal.aborted) abort();
+              void stopping.then(
+                (value) => {
+                  signal.removeEventListener("abort", abort);
+                  if (settled) return;
+                  settled = true;
+                  resolve(value);
+                },
+                (error) => {
+                  signal.removeEventListener("abort", abort);
+                  if (settled) return;
+                  settled = true;
+                  reject(error);
+                },
+              );
+            });
+            return stopped !== false;
+          } catch (error) {
+            if (error instanceof HarnessAdapterInterruptedError || error instanceof HarnessAdapterError) throw error;
             return false;
           }
         },

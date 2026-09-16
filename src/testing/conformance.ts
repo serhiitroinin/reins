@@ -15,6 +15,7 @@ import {
   createMemoryPersistence,
 } from "../stores.js";
 import {
+  harnessSubagentControls,
   type HarnessCapabilities,
   type HarnessEvent,
   type HarnessInlineContext,
@@ -39,6 +40,10 @@ export type AdapterConformanceScenario =
   | "context"
   | "typed-context"
   | "steering"
+  | "subagent-stop"
+  | "subagent-stop-false"
+  | "subagent-stop-safe-error"
+  | "subagent-stop-race"
   | "discovery";
 
 export interface AdapterConformanceDiscovery {
@@ -55,6 +60,8 @@ export interface AdapterConformanceFixture {
   useScenario(scenario: AdapterConformanceScenario): void;
   /** Count provider transport openings so rejected input can be proven pre-provider. */
   providerOpens(): number;
+  /** Count provider-level subagent stop dispatches for race assertions. */
+  subagentControls(): number;
   discovery: AdapterConformanceDiscovery;
 }
 
@@ -121,6 +128,7 @@ export const CONFORMANCE = {
   typedInlineContext: TYPED_INLINE_CONTEXT,
   typedContextText: "typed-context-ok",
   followUpText: "conformance-follow-up",
+  subagentTaskId: "conformance-subagent",
   resumeToken: "conformance-resume-token",
   interaction: {
     id: "conformance-interaction",
@@ -253,6 +261,12 @@ function validateCapabilities(value: HarnessCapabilities): void {
     if (value.steering.preferred) {
       check(value.steering.strategies.includes(value.steering.preferred), "preferred steering strategy is not declared");
     }
+  }
+  const subagentControls = value.subagents.controls ?? [];
+  check(new Set(subagentControls).size === subagentControls.length, "duplicate subagent control");
+  check(subagentControls.every((control) => control === "stop"), "invalid subagent control");
+  if (value.subagents.support === "unsupported") {
+    check(subagentControls.length === 0, "unsupported subagents cannot declare controls");
   }
 }
 
@@ -625,6 +639,129 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
     check(tail.at(-1)?.payload.kind === "turn-completed", "cancelled turn did not seal its stream");
     await first.cancel();
   });
+
+  const supportsSubagentStop = capabilities !== undefined
+    && harnessSubagentControls(capabilities.subagents).includes("stop");
+  if (supportsSubagentStop) {
+    skip("active subagent stop unsupported", "adapter reports active subagent stop support");
+  } else await runCase("active subagent stop unsupported", async (defer) => {
+    const harness = scopedRuntime(defer, timeoutMs, {
+      adapters: [adapter("cancel")],
+      persistence: createMemoryPersistence(),
+    });
+    const run = harness.start(request(fixture.adapterId));
+    const iterator = run.events[Symbol.asyncIterator]();
+    await iterator.next();
+    await iterator.next();
+    let failure: unknown;
+    try {
+      await run.stopSubagent(CONFORMANCE.subagentTaskId);
+    } catch (error) {
+      failure = error;
+    }
+    check(
+      failure instanceof HarnessRuntimeError && failure.code === "SUBAGENT_CONTROL_UNSUPPORTED",
+      "an undeclared subagent stop reached the provider",
+    );
+    check(fixture.subagentControls() === 0, "an unsupported subagent stop mutated the provider");
+    await run.cancel();
+  });
+
+  if (!supportsSubagentStop) {
+    skip("active subagent stop accepted", "adapter reports active subagent stop as unsupported");
+    skip("active subagent stop false", "adapter reports active subagent stop as unsupported");
+    skip("active subagent stop safe error", "adapter reports active subagent stop as unsupported");
+    skip("active subagent stop cancellation race", "adapter reports active subagent stop as unsupported");
+  } else {
+    await runCase("active subagent stop accepted", async (defer) => {
+      const harness = scopedRuntime(defer, timeoutMs, {
+        adapters: [adapter("subagent-stop")],
+        persistence: createMemoryPersistence(),
+      });
+      const run = harness.start(request(fixture.adapterId));
+      const iterator = run.events[Symbol.asyncIterator]();
+      await iterator.next();
+      await iterator.next();
+      check(await run.stopSubagent(CONFORMANCE.subagentTaskId), "the adapter refused a supported subagent stop");
+      for (;;) {
+        if ((await iterator.next()).done) break;
+      }
+      check(await run.done === "completed", "the parent turn did not remain valid after subagent stop");
+      let endedFailure: unknown;
+      try {
+        await run.stopSubagent(CONFORMANCE.subagentTaskId);
+      } catch (error) {
+        endedFailure = error;
+      }
+      check(
+        endedFailure instanceof HarnessRuntimeError && endedFailure.code === "TURN_NOT_ACTIVE",
+        "an ended turn accepted a stale subagent stop",
+      );
+    });
+
+    await runCase("active subagent stop false", async (defer) => {
+      const harness = scopedRuntime(defer, timeoutMs, {
+        adapters: [adapter("subagent-stop-false")],
+        persistence: createMemoryPersistence(),
+      });
+      const run = harness.start(request(fixture.adapterId));
+      const iterator = run.events[Symbol.asyncIterator]();
+      await iterator.next();
+      await iterator.next();
+      check(
+        await run.stopSubagent("stale-subagent") === false,
+        "the adapter did not preserve a safe false subagent-stop result",
+      );
+      await run.cancel();
+    });
+
+    await runCase("active subagent stop safe error", async (defer) => {
+      const harness = scopedRuntime(defer, timeoutMs, {
+        adapters: [adapter("subagent-stop-safe-error")],
+        persistence: createMemoryPersistence(),
+      });
+      const run = harness.start(request(fixture.adapterId));
+      const iterator = run.events[Symbol.asyncIterator]();
+      await iterator.next();
+      await iterator.next();
+      let failure: unknown;
+      try {
+        await run.stopSubagent(CONFORMANCE.subagentTaskId);
+      } catch (error) {
+        failure = error;
+      }
+      check(
+        failure instanceof HarnessAdapterError
+          && failure.code === CONFORMANCE.safeError.code
+          && failure.message === CONFORMANCE.safeError.message,
+        "a safe subagent-stop error changed at the runtime boundary",
+      );
+      await run.cancel();
+    });
+
+    await runCase("active subagent stop cancellation race", async (defer) => {
+      const harness = scopedRuntime(defer, timeoutMs, {
+        adapters: [adapter("subagent-stop-race")],
+        persistence: createMemoryPersistence(),
+      });
+      const run = harness.start(request(fixture.adapterId));
+      const iterator = run.events[Symbol.asyncIterator]();
+      await iterator.next();
+      await iterator.next();
+      const controlsBefore = fixture.subagentControls();
+      const stopping = run.stopSubagent(CONFORMANCE.subagentTaskId).catch((error) => error);
+      while (fixture.subagentControls() === controlsBefore) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      await run.cancel();
+      const failure = await stopping;
+      check(
+        failure instanceof HarnessRuntimeError && failure.code === "TURN_NOT_ACTIVE",
+        "cancellation did not retire an in-flight subagent stop",
+      );
+      check(await run.done === "interrupted", "the cancellation race did not interrupt the parent turn");
+    });
+  }
 
   if (
     !capabilities?.steering

@@ -9,7 +9,7 @@ import {
 } from "../adapters/claude-agent-sdk-adapter.js";
 import { createPushableAsyncIterable } from "../transports/async-iterable.js";
 import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
-import { CONFORMANCE } from "./conformance.js";
+import { CONFORMANCE, conformanceSafeError } from "./conformance.js";
 
 export interface ClaudeAgentSdkFixtureState {
   connects: number;
@@ -18,6 +18,7 @@ export interface ClaudeAgentSdkFixtureState {
   interruptions: number;
   closes: number;
   toolDecisions: Array<{ behavior: string }>;
+  subagentStops: string[];
 }
 
 const capabilities: HarnessCapabilities = {
@@ -40,6 +41,7 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
     interruptions: 0,
     closes: 0,
     toolDecisions: [],
+    subagentStops: [],
   };
   const discovery = {
     profile: {
@@ -101,6 +103,10 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
             return;
           }
           if (current === "cancel") {
+            assistant(CONFORMANCE.waitingText);
+            return;
+          }
+          if (current.startsWith("subagent-stop")) {
             assistant(CONFORMANCE.waitingText);
             return;
           }
@@ -167,6 +173,14 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
           state.interruptions += 1;
           messages.push({ type: "result", subtype: "interrupted", is_error: true });
         },
+        stopSubagent(taskId) {
+          state.subagentStops.push(taskId);
+          if (current === "subagent-stop-false") return false;
+          if (current === "subagent-stop-safe-error") throw conformanceSafeError();
+          if (current === "subagent-stop-race") return new Promise(() => undefined);
+          complete();
+          return true;
+        },
         close() {
           if (closed) return;
           closed = true;
@@ -204,6 +218,7 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
     discovery,
     state,
     providerOpens: () => state.connects,
+    subagentControls: () => state.subagentStops.length,
     useScenario(value) {
       scenario = value;
     },

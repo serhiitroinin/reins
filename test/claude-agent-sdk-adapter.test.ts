@@ -73,7 +73,7 @@ describe("Claude Agent SDK adapter", () => {
 
     expect(report.passed).toBe(true);
     expect(report.cases.filter((entry) => entry.status === "failed")).toEqual([]);
-    expect(fixture.state.interruptions).toBe(1);
+    expect(fixture.state.interruptions).toBe(4);
     expect(fixture.state.closes).toBeGreaterThan(0);
     expect(fixture.state.toolDecisions).toEqual([{ behavior: "allow", updatedInput: {} }]);
     expect(fixture.state.resumeTokens).toContain("conformance-resume-token");
@@ -325,6 +325,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "close-pending" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     const turn = collect(session.run(adapterRequest("close-pending", "one"))).catch((error) => error);
 
@@ -388,6 +389,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "interaction-race" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     const controller = new AbortController();
     const stream = session.run(adapterRequest("interaction-race", "one", { signal: controller.signal }));
@@ -436,6 +438,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "binding" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     await collect(session.run(adapterRequest("binding", "one", {
       accountId: "account-a",
@@ -492,6 +495,7 @@ describe("Claude Agent SDK adapter", () => {
       const session = await adapter.open({
         session: { tenantId: "tenant", actorId: "actor", threadId: `identity-${index}` },
         resumeToken: null,
+        signal: new AbortController().signal,
       });
       await collect(session.run(adapterRequest(`identity-${index}`, "one", base)));
       await expect(collect(session.run(adapterRequest(`identity-${index}`, "two", {
@@ -520,6 +524,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "key" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     await collect(session.run(adapterRequest("key", "one", {
       accountId: "account-a",
@@ -560,6 +565,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "send-failure" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
 
     await expect(collect(session.run(adapterRequest("send-failure", "one")))).rejects.toThrow("private send failure");
@@ -608,6 +614,35 @@ describe("Claude Agent SDK adapter", () => {
     await runtime.close();
   });
 
+  test("stops an active Claude subagent through the provider-neutral runtime", async () => {
+    const state = { interrupts: 0, closes: 0, stops: [] as string[] };
+    let finishTurn: (() => void) | undefined;
+    const adapter = createClaudeAgentSdkAdapter({
+      connect(request) {
+        return scriptedConnection((_request, _input, messages) => {
+          messages.push({ type: "assistant", message: { content: [{ type: "text", text: "working" }] } });
+          finishTurn = () => messages.push({ type: "result", subtype: "success", is_error: false });
+        }, request, state);
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "runtime-stop" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "delegate" }],
+    });
+    const events = collect(run.events);
+    while (!finishTurn) await Bun.sleep(0);
+
+    expect(await run.stopSubagent("agent-7")).toBe(true);
+    finishTurn();
+
+    expect(await run.done).toBe("completed");
+    expect(state.stops).toEqual(["agent-7"]);
+    await events;
+    await runtime.close();
+  });
+
   test("reuses one provider stream across turns and exposes bounded subagent stop", async () => {
     const state = { interrupts: 0, closes: 0, stops: [] as string[] };
     let sends = 0;
@@ -625,6 +660,7 @@ describe("Claude Agent SDK adapter", () => {
     const opened = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "multi" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     const request = (turnId: string) => ({
       session: { tenantId: "tenant", actorId: "actor", threadId: "multi" },
@@ -642,7 +678,12 @@ describe("Claude Agent SDK adapter", () => {
     const iterator = second[Symbol.asyncIterator]();
     const first = iterator.next();
     await Bun.sleep(0);
-    expect(await opened.stopSubagent("agent-7")).toBe(true);
+    expect(await opened.stopSubagent({
+      taskId: "agent-7",
+      runId: "run-two",
+      turnId: "two",
+      signal: new AbortController().signal,
+    })).toBe(true);
     finishSecond();
     expect(await first).toEqual({ done: false, value: { kind: "assistant-text", text: "turn-2" } });
     expect(await iterator.next()).toEqual({ done: true, value: undefined });

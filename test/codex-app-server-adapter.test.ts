@@ -123,7 +123,7 @@ describe("Codex App Server adapter", () => {
       status: "skipped",
       message: "adapter reports interactions as unsupported",
     });
-    expect(fixture.state.interruptions).toBe(1);
+    expect(fixture.state.interruptions).toBe(2);
     expect(fixture.state.closes).toBeGreaterThan(0);
     expect(fixture.state.toolResponses).toContainEqual({
       success: true,

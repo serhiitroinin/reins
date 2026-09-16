@@ -60,6 +60,20 @@ export interface HarnessSteeringCapability extends HarnessCapability {
   preferred?: HarnessSteeringStrategy;
 }
 
+export type HarnessSubagentControl = "stop";
+
+export interface HarnessSubagentCapability extends HarnessCapability {
+  /** Absent in older v1 documents and interpreted as no controllable actions. */
+  controls?: readonly HarnessSubagentControl[];
+}
+
+/** Conservative active controls for old or unsupported capability documents. */
+export function harnessSubagentControls(
+  capability: HarnessSubagentCapability,
+): readonly HarnessSubagentControl[] {
+  return capability.support === "unsupported" ? [] : capability.controls ?? [];
+}
+
 export interface HarnessCapabilities {
   resume: HarnessCapability;
   cancel: HarnessCapability;
@@ -69,7 +83,7 @@ export interface HarnessCapabilities {
   thinking: HarnessCapability;
   plans: HarnessCapability;
   usage: HarnessCapability;
-  subagents: HarnessCapability;
+  subagents: HarnessSubagentCapability;
   shell: HarnessCapability;
   filesystem: HarnessCapability;
   network: HarnessCapability;

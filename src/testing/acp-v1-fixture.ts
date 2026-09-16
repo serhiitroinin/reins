@@ -222,6 +222,7 @@ export function createAcpV1ConformanceFixture(): AdapterConformanceFixture & {
     discovery,
     state,
     providerOpens: () => state.connections,
+    subagentControls: () => 0,
     useScenario(value) {
       if (value !== scenario) steeringPrompts = 0;
       scenario = value;

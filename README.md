@@ -264,6 +264,26 @@ so late updates cannot cross turn boundaries. Waiting remains queue policy, neve
 provider capability. Stale, unsupported, and already-stopping turns fail with
 safe typed runtime errors and do not mutate provider state.
 
+Adapters that declare `capabilities.subagents.controls: ["stop"]` may expose
+active subagent control without leaking their provider session to the product.
+The task id is an opaque adapter-owned value the product obtains from its
+chosen provider event projection:
+
+```ts
+const stopped = await activeRun.stopSubagent(taskId);
+```
+
+The call is serialized with the run's other controls and revalidates that the
+turn is still active immediately before provider dispatch. It returns `true`
+when the adapter accepted the stop and `false` when it safely could not stop
+that task. Missing support, an ended turn, and unsafe provider failures surface
+as typed, sanitized runtime errors; stopping a subagent does not cancel its
+parent turn. The adapter request includes a turn-scoped abort signal. Cancel,
+normal turn completion, and runtime close retire a pending stop immediately;
+adapters must observe that signal and suppress work after retirement. The core
+runtime checks only that the id is non-empty; it does not track provider tasks
+or infer their lifecycle from extension events.
+
 ## Non-Fold terminal host
 
 The [incident terminal example](examples/incident-terminal/README.md) is a

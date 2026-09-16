@@ -308,6 +308,7 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
     discovery,
     state,
     providerOpens: () => state.connections,
+    subagentControls: () => 0,
     useScenario(value) {
       scenario = value;
     },

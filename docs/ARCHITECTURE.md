@@ -177,7 +177,13 @@ Cancellation has three ordered boundaries: dispatch to the adapter, drain the
 provider turn, then persist and close the runtime terminal envelope. A session
 remains reserved through all three. External aborts use the same dispatch path,
 cancellation failures do not bypass the drain, and a session that finishes
-opening after cancellation is closed without running.
+opening after cancellation is closed without running. `HarnessAdapterOpenRequest`
+therefore carries the owning abort signal. Runtime shutdown retires a pending
+checkpoint load or provider open without waiting forever, closes already
+resolved sessions independently, and closes a session that a non-conforming
+adapter resolves after retirement. A late persistence rejection remains
+observed but cannot revive or fail the retired turn. Adapters must stop opening
+on abort and release any partially allocated provider resources before settling.
 
 ## Context sources
 
@@ -236,6 +242,20 @@ failed preparation leaves the original turn alive. Follow-up and Stop
 operations are serialized per run, and unknown provider failures become safe
 runtime errors.
 
+Active subagent control follows the same boundary. `HarnessRun.stopSubagent`
+accepts a non-empty opaque adapter task id, validates the active run from
+inside the serialized control lane, enforces the declared `"stop"` control,
+and calls an optional adapter-session method. It neither exposes the provider
+session nor tracks or assigns task identity; products obtain ids from the
+provider event projection they chose to support.
+Adapters return whether they accepted the targeted stop; unsupported control,
+ended turns, and unsafe failures become stable sanitized runtime errors. The
+parent turn remains active. The adapter receives a turn-scoped abort signal.
+Turn completion, cancellation, and runtime close retire the control lane, so a
+hung provider promise cannot hold `run.cancel()` or shutdown. A late provider
+settlement is ignored, and adapters must use the signal to prevent late side
+effects.
+
 ## Tools
 
 Tools use JSON Schema at the provider boundary and an application-owned
@@ -274,7 +294,9 @@ without accidentally exposing application state through a new transport.
 
 An adapter opens or resumes a provider session and exposes an `AsyncIterable`
 of normalized events. It must state its real capabilities and must not leak
-provider SDK types into the core protocol.
+provider SDK types into the core protocol. Opening is cancellation-aware: the
+adapter must observe `HarnessAdapterOpenRequest.signal`, reject or otherwise
+settle promptly on abort, and never publish a usable session after retirement.
 
 Codex App Server communication uses a shared newline JSON-RPC peer.
 Its model mapper exposes App Server reasoning options, modalities, and service

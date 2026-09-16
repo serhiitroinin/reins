@@ -79,7 +79,7 @@ public struct FHCapabilities: Codable {
     public let resume: FHCancel
     public let shell: FHCancel
     public let steering: FHSteering?
-    public let subagents: FHCancel
+    public let subagents: FHSubagents
     public let thinking: FHCancel
     public let tools: FHCancel
     public let usage: FHCancel
@@ -101,7 +101,7 @@ public struct FHCapabilities: Codable {
         case usage = "usage"
     }
 
-    public init(cancel: FHCancel, extensions: [String: FHCancel]?, filesystem: FHCancel, images: FHCancel, interactions: FHInteractions, network: FHCancel, plans: FHCancel, resume: FHCancel, shell: FHCancel, steering: FHSteering?, subagents: FHCancel, thinking: FHCancel, tools: FHCancel, usage: FHCancel) {
+    public init(cancel: FHCancel, extensions: [String: FHCancel]?, filesystem: FHCancel, images: FHCancel, interactions: FHInteractions, network: FHCancel, plans: FHCancel, resume: FHCancel, shell: FHCancel, steering: FHSteering?, subagents: FHSubagents, thinking: FHCancel, tools: FHCancel, usage: FHCancel) {
         self.cancel = cancel
         self.extensions = extensions
         self.filesystem = filesystem
@@ -256,6 +256,32 @@ public struct FHSteering: Codable {
 public enum FHPreferred: String, Codable {
     case replacementTurn = "replacement-turn"
     case sameTurn = "same-turn"
+}
+
+// MARK: - FHSubagents
+public struct FHSubagents: Codable {
+    public let constraints: [String: FHProtocolSchema]?
+    public let controls: [FHControl]?
+    public let description: String?
+    public let support: FHSupport
+
+    public enum CodingKeys: String, CodingKey {
+        case constraints = "constraints"
+        case controls = "controls"
+        case description = "description"
+        case support = "support"
+    }
+
+    public init(constraints: [String: FHProtocolSchema]?, controls: [FHControl]?, description: String?, support: FHSupport) {
+        self.constraints = constraints
+        self.controls = controls
+        self.description = description
+        self.support = support
+    }
+}
+
+public enum FHControl: String, Codable {
+    case stop = "stop"
 }
 
 // MARK: - FHDiscovery

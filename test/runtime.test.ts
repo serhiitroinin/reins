@@ -368,6 +368,194 @@ describe("harness runtime", () => {
     expect(opens).toBe(0);
   });
 
+  test("cancel retires a session checkpoint load that never resolves", async () => {
+    const persistence = createMemoryPersistence();
+    let loadStarted!: () => void;
+    const started = new Promise<void>((resolve) => { loadStarted = resolve; });
+    let rejectLoad!: (error: unknown) => void;
+    persistence.sessions.load = () => {
+      loadStarted();
+      return new Promise((_resolve, reject) => { rejectLoad = reject; });
+    };
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opens += 1;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await run.cancel();
+
+    expect(opens).toBe(0);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+    rejectLoad(new Error("late private persistence failure"));
+    await Bun.sleep(0);
+  });
+
+  test("close retires a session checkpoint load that never resolves", async () => {
+    const persistence = createMemoryPersistence();
+    let loadStarted!: () => void;
+    const started = new Promise<void>((resolve) => { loadStarted = resolve; });
+    persistence.sessions.load = async () => {
+      loadStarted();
+      return new Promise(() => undefined);
+    };
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opens += 1;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await harness.close();
+
+    expect(opens).toBe(0);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+  });
+
+  test("close releases an active iterator through session close when cancellation is unsupported", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let releaseRun!: () => void;
+    const blockedRun = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let closeCalls = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        cancel: unsupported,
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await blockedRun;
+          },
+          async close() {
+            closeCalls += 1;
+            releaseRun();
+          },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+    });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await harness.close();
+
+    expect(closeCalls).toBe(1);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+  });
+
+  test("close retires an adapter open that never resolves", async () => {
+    let openStarted!: () => void;
+    const started = new Promise<void>((resolve) => { openStarted = resolve; });
+    let openAborted = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open({ signal }) {
+        openStarted();
+        signal.addEventListener("abort", () => { openAborted = true; }, { once: true });
+        return new Promise(() => undefined);
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await harness.close();
+
+    expect(openAborted).toBe(true);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+  });
+
+  test("a pending adapter open cannot block close of an already resolved session", async () => {
+    let resolvedRunStarted!: () => void;
+    const resolvedStarted = new Promise<void>((resolve) => { resolvedRunStarted = resolve; });
+    let releaseResolvedRun!: () => void;
+    const resolvedRunning = new Promise<void>((resolve) => { releaseResolvedRun = resolve; });
+    let pendingOpenStarted!: () => void;
+    const pendingStarted = new Promise<void>((resolve) => { pendingOpenStarted = resolve; });
+    let resolvedCloses = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open({ session }) {
+        if (session.threadId === "pending") {
+          pendingOpenStarted();
+          return new Promise(() => undefined);
+        }
+        return {
+          async *run() {
+            resolvedRunStarted();
+            await resolvedRunning;
+          },
+          async close() {
+            resolvedCloses += 1;
+            releaseResolvedRun();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const resolved = harness.start({
+      ...request,
+      session: { ...request.session, threadId: "resolved" },
+    });
+    const resolvedEvents = collect(resolved.events);
+    await resolvedStarted;
+    const pending = harness.start({
+      ...request,
+      session: { ...request.session, threadId: "pending" },
+    });
+    const pendingEvents = collect(pending.events);
+    await pendingStarted;
+
+    await harness.close();
+
+    expect(resolvedCloses).toBe(1);
+    expect(await resolved.done).toBe("interrupted");
+    expect(await pending.done).toBe("interrupted");
+    await Promise.all([resolvedEvents, pendingEvents]);
+  });
+
   test("reset orders removal after an in-flight checkpoint write", async () => {
     const persistence = createMemoryPersistence();
     const save = persistence.sessions.save.bind(persistence.sessions);
@@ -1201,14 +1389,15 @@ describe("harness runtime", () => {
     let cancellationSettled = false;
     const cancellation = run.cancel().finally(() => { cancellationSettled = true; });
     await Bun.sleep(0);
-    expect(cancellationSettled).toBe(false);
+    expect(cancellationSettled).toBe(true);
+    await cancellation;
+    expect(ran).toBe(false);
+    expect(await run.done).toBe("interrupted");
 
     finishOpening();
-    await cancellation;
+    while (!closed) await Bun.sleep(0);
 
-    expect(ran).toBe(false);
     expect(closed).toBe(true);
-    expect(await run.done).toBe("interrupted");
     expect((await events).map((event) => event.payload.kind)).toEqual(["turn-started", "turn-completed"]);
   });
 
@@ -1370,6 +1559,290 @@ describe("harness runtime", () => {
     await collect(next.events);
     expect(await next.done).toBe("completed");
     expect(invocations).toBe(2);
+  });
+
+  test("serializes subagent stops and revalidates the active turn before dispatch", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let finishRun!: () => void;
+    const running = new Promise<void>((resolve) => { finishRun = resolve; });
+    let firstStopStarted!: () => void;
+    const stopping = new Promise<void>((resolve) => { firstStopStarted = resolve; });
+    let finishFirstStop!: () => void;
+    const firstStopWaiting = new Promise<void>((resolve) => { finishFirstStop = resolve; });
+    const stopped: string[] = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        subagents: { support: "stable", controls: ["stop"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent({ taskId }) {
+            stopped.push(taskId);
+            firstStopStarted();
+            await firstStopWaiting;
+            return true;
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    const first = run.stopSubagent("agent-1");
+    const firstResult = first.catch((error) => error);
+    await stopping;
+    const queued = run.stopSubagent("agent-2");
+    finishRun();
+    expect(await run.done).toBe("completed");
+    finishFirstStop();
+
+    expect(await firstResult).toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    await expect(queued).rejects.toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(stopped).toEqual(["agent-1"]);
+    await events;
+  });
+
+  test("cancel retires a hung subagent control without accepting its late result", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let releaseRun!: () => void;
+    const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let controlStarted!: () => void;
+    const controlling = new Promise<void>((resolve) => { controlStarted = resolve; });
+    let finishControl!: () => void;
+    let controlAborted = false;
+    let lateEffects = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({ ...capabilities, subagents: { support: "stable", controls: ["stop"] } }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          stopSubagent({ signal }) {
+            controlStarted();
+            signal.addEventListener("abort", () => { controlAborted = true; }, { once: true });
+            return new Promise<boolean>((resolve) => {
+              finishControl = () => {
+                if (!signal.aborted) lateEffects += 1;
+                resolve(true);
+              };
+            });
+          },
+          async cancel() { releaseRun(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+    const control = run.stopSubagent("agent-1").catch((error) => error);
+    await controlling;
+
+    await run.cancel();
+
+    expect(await control).toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(controlAborted).toBe(true);
+    finishControl();
+    await Bun.sleep(0);
+    expect(lateEffects).toBe(0);
+    await events;
+  });
+
+  test("close retires a hung subagent control and drains its parent run", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let releaseRun!: () => void;
+    const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let controlStarted!: () => void;
+    const controlling = new Promise<void>((resolve) => { controlStarted = resolve; });
+    let finishControl!: () => void;
+    let controlAborted = false;
+    let lateEffects = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        cancel: unsupported,
+        subagents: { support: "stable", controls: ["stop"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          stopSubagent({ signal }) {
+            controlStarted();
+            signal.addEventListener("abort", () => { controlAborted = true; }, { once: true });
+            return new Promise<boolean>((resolve) => {
+              finishControl = () => {
+                if (!signal.aborted) lateEffects += 1;
+                resolve(true);
+              };
+            });
+          },
+          async close() { releaseRun(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+    const control = run.stopSubagent("agent-1").catch((error) => error);
+    await controlling;
+
+    await harness.close();
+
+    expect(await control).toMatchObject({ code: "TURN_NOT_ACTIVE" });
+    expect(controlAborted).toBe(true);
+    finishControl();
+    await Bun.sleep(0);
+    expect(lateEffects).toBe(0);
+    expect(await run.done).toBe("interrupted");
+    await events;
+  });
+
+  test("refuses invalid or unsupported subagent control without mutating the provider", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let release!: () => void;
+    const running = new Promise<void>((resolve) => { release = resolve; });
+    let stopCalls = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent() {
+            stopCalls += 1;
+            return true;
+          },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await expect(run.stopSubagent("  ")).rejects.toMatchObject({ code: "INVALID_SUBAGENT_ID" });
+    await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
+      code: "SUBAGENT_CONTROL_UNSUPPORTED",
+    });
+    expect(stopCalls).toBe(0);
+
+    await run.cancel();
+    await events;
+  });
+
+  test("sanitizes subagent control failures in errors and diagnostics", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let release!: () => void;
+    const running = new Promise<void>((resolve) => { release = resolve; });
+    const diagnostics: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        subagents: { support: "stable", controls: ["stop"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent() {
+            throw new Error("private provider subagent transcript");
+          },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
+      code: "SUBAGENT_CONTROL_FAILED",
+      message: "The adapter could not stop the active subagent.",
+    });
+    await Bun.sleep(0);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ phase: "subagent", code: "SUBAGENT_CONTROL_FAILED" }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private provider");
+
+    await run.cancel();
+    await events;
+  });
+
+  test("sanitizes subagent capability discovery failures", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let release!: () => void;
+    const running = new Promise<void>((resolve) => { release = resolve; });
+    const diagnostics: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities() { throw new Error("private capability credential"); },
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent() { return true; },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
+      code: "SUBAGENT_CONTROL_FAILED",
+      message: "The adapter could not describe subagent control support.",
+    });
+    await Bun.sleep(0);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ phase: "subagent", code: "SUBAGENT_CAPABILITIES_FAILED" }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private capability");
+
+    await run.cancel();
+    await events;
   });
 
   test("steers a declared same-turn follow-up without a second lifecycle envelope", async () => {
