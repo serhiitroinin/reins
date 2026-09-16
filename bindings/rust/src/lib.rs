@@ -64,7 +64,7 @@ pub struct Capabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steering: Option<Steering>,
 
-    pub subagents: Cancel,
+    pub subagents: Subagents,
 
     pub thinking: Cancel,
 
@@ -157,6 +157,26 @@ pub enum Preferred {
 
     #[serde(rename = "same-turn")]
     SameTurn,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Subagents {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Vec<Control>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    pub support: Support,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Control {
+    Stop,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

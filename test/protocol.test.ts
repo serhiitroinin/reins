@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   harnessInteractionRecovery,
   harnessSessionKey,
+  harnessSubagentControls,
   isHarnessEvent,
   type HarnessEvent,
   type HarnessRunRequest,
@@ -59,5 +60,11 @@ describe("harness protocol", () => {
       support: "stable",
       recovery: "provider-replay",
     })).toBe("provider-replay");
+  });
+
+  test("treats old subagent capabilities as observation-only", () => {
+    expect(harnessSubagentControls({ support: "stable" })).toEqual([]);
+    expect(harnessSubagentControls({ support: "stable", controls: ["stop"] })).toEqual(["stop"]);
+    expect(harnessSubagentControls({ support: "unsupported", controls: ["stop"] })).toEqual([]);
   });
 });

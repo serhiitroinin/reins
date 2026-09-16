@@ -16,7 +16,7 @@ export const conformanceCapabilities: HarnessCapabilities = {
   thinking: unsupported,
   plans: unsupported,
   usage: unsupported,
-  subagents: unsupported,
+  subagents: { support: "stable", controls: ["stop"] },
   shell: unsupported,
   filesystem: unsupported,
   network: unsupported,
@@ -34,6 +34,7 @@ export function createConformanceFixture(options: {
   const adapterId = "conformance";
   let scenario: AdapterConformanceScenario = "basic";
   let opens = 0;
+  let subagentControls = 0;
 
   const discovery = {
       profile: {
@@ -84,6 +85,11 @@ export function createConformanceFixture(options: {
               if (current === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
               if (current === "safe-error") throw conformanceSafeError();
               if (current === "cancel") {
+                yield { kind: "assistant-text", text: CONFORMANCE.waitingText };
+                await blocked;
+                return;
+              }
+              if (current.startsWith("subagent-stop")) {
                 yield { kind: "assistant-text", text: CONFORMANCE.waitingText };
                 await blocked;
                 return;
@@ -144,6 +150,19 @@ export function createConformanceFixture(options: {
               release?.();
               return Promise.resolve();
             },
+            stopSubagent(request) {
+              subagentControls += 1;
+              if (current === "subagent-stop-false") return Promise.resolve(false);
+              if (current === "subagent-stop-safe-error") throw conformanceSafeError();
+              if (current === "subagent-stop-race") {
+                return new Promise<boolean>((resolve) => {
+                  request.signal.addEventListener("abort", () => resolve(false), { once: true });
+                });
+              }
+              if (request.taskId !== CONFORMANCE.subagentTaskId) return Promise.resolve(false);
+              release?.();
+              return Promise.resolve(true);
+            },
             cancel() {
               options.onCancel?.();
               release?.();
@@ -164,6 +183,7 @@ export function createConformanceFixture(options: {
     adapter,
     discovery,
     providerOpens: () => opens,
+    subagentControls: () => subagentControls,
     useScenario(value) {
       scenario = value;
     },

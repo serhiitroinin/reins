@@ -2,5 +2,6 @@
 "@serhiitroinin/fold-harness": minor
 ---
 
-Expose serialized, provider-neutral active subagent stop control on
-`HarnessRun`, including the Claude Agent SDK path and sanitized failures.
+Expose cancellation-aware, provider-neutral active subagent stop control on
+`HarnessRun`, with explicit capability discovery, the Claude Agent SDK path,
+sanitized failures, abortable adapter opening, and expanded conformance tests.

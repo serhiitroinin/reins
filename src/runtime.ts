@@ -7,6 +7,7 @@
 
 import {
   harnessSessionKey,
+  harnessSubagentControls,
   type HarnessCapabilities,
   type HarnessContextValue,
   type HarnessEvent,
@@ -1054,6 +1055,31 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         return result;
       };
 
+      const awaitActiveControl = <T>(operation: Promise<T>): Promise<T> => new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const retire = (): void => {
+          if (settled) return;
+          settled = true;
+          reject(new HarnessAdapterInterruptedError());
+        };
+        controlLifetime.signal.addEventListener("abort", retire, { once: true });
+        if (controlLifetime.signal.aborted) retire();
+        void operation.then(
+          (value) => {
+            controlLifetime.signal.removeEventListener("abort", retire);
+            if (settled) return;
+            settled = true;
+            resolve(value);
+          },
+          (error) => {
+            controlLifetime.signal.removeEventListener("abort", retire);
+            if (settled) return;
+            settled = true;
+            reject(error);
+          },
+        );
+      });
+
       const dispatchCancellation = (): Promise<void> => {
         cancellationDispatch ??= (async () => {
           if (managed?.session.cancel) await managed.session.cancel();
@@ -1628,8 +1654,35 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             ));
           }
           return serializeControl(async () => {
+            ensureActiveTurn(turnId);
+            let capabilities: HarnessCapabilities;
+            try {
+              capabilities = await awaitActiveControl(Promise.resolve(adapter.capabilities()));
+            } catch (error) {
+              if (error instanceof HarnessAdapterInterruptedError && controlLifetime.signal.aborted) {
+                throw new HarnessRuntimeError(
+                  "TURN_NOT_ACTIVE",
+                  "This harness turn is no longer accepting subagent controls.",
+                );
+              }
+              reportFailure(error, {
+                phase: "subagent",
+                adapterId: adapter.id,
+                session: runRequest.session,
+                runId,
+                turnId,
+              }, {
+                code: "SUBAGENT_CAPABILITIES_FAILED",
+                message: "The adapter could not describe subagent control support.",
+              });
+              throw new HarnessRuntimeError(
+                "SUBAGENT_CONTROL_FAILED",
+                "The adapter could not describe subagent control support.",
+              );
+            }
             const target = ensureActiveTurn(turnId);
-            if (!target.session.stopSubagent) {
+            const supportsStop = harnessSubagentControls(capabilities.subagents).includes("stop");
+            if (!supportsStop || !target.session.stopSubagent) {
               throw new HarnessRuntimeError(
                 "SUBAGENT_CONTROL_UNSUPPORTED",
                 `${adapter.id} cannot stop active subagents.`,
@@ -1642,30 +1695,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                 turnId,
                 signal: controlLifetime.signal,
               }));
-              return await new Promise<boolean>((resolve, reject) => {
-                let settled = false;
-                const retire = (): void => {
-                  if (settled) return;
-                  settled = true;
-                  reject(new HarnessAdapterInterruptedError());
-                };
-                controlLifetime.signal.addEventListener("abort", retire, { once: true });
-                if (controlLifetime.signal.aborted) retire();
-                void operation.then(
-                  (value) => {
-                    controlLifetime.signal.removeEventListener("abort", retire);
-                    if (settled) return;
-                    settled = true;
-                    resolve(value);
-                  },
-                  (error) => {
-                    controlLifetime.signal.removeEventListener("abort", retire);
-                    if (settled) return;
-                    settled = true;
-                    reject(error);
-                  },
-                );
-              });
+              return await awaitActiveControl(operation);
             } catch (error) {
               if (error instanceof HarnessAdapterInterruptedError && controlLifetime.signal.aborted) {
                 throw new HarnessRuntimeError(

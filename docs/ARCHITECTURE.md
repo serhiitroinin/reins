@@ -242,9 +242,11 @@ operations are serialized per run, and unknown provider failures become safe
 runtime errors.
 
 Active subagent control follows the same boundary. `HarnessRun.stopSubagent`
-accepts only the task id emitted by the adapter, validates the active run from
-inside the serialized control lane, and calls an optional adapter-session
-method. It neither exposes the provider session nor assigns task identity.
+accepts a non-empty opaque adapter task id, validates the active run from
+inside the serialized control lane, enforces the declared `"stop"` control,
+and calls an optional adapter-session method. It neither exposes the provider
+session nor tracks or assigns task identity; products obtain ids from the
+provider event projection they chose to support.
 Adapters return whether they accepted the targeted stop; unsupported control,
 ended turns, and unsafe failures become stable sanitized runtime errors. The
 parent turn remains active. The adapter receives a turn-scoped abort signal.

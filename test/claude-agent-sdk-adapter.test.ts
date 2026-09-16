@@ -73,7 +73,7 @@ describe("Claude Agent SDK adapter", () => {
 
     expect(report.passed).toBe(true);
     expect(report.cases.filter((entry) => entry.status === "failed")).toEqual([]);
-    expect(fixture.state.interruptions).toBe(1);
+    expect(fixture.state.interruptions).toBe(4);
     expect(fixture.state.closes).toBeGreaterThan(0);
     expect(fixture.state.toolDecisions).toEqual([{ behavior: "allow", updatedInput: {} }]);
     expect(fixture.state.resumeTokens).toContain("conformance-resume-token");

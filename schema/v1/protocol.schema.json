@@ -55,6 +55,20 @@
       },
       "required": ["support", "strategies"]
     },
+    "HarnessSubagentCapability": {
+      "type": "object",
+      "properties": {
+        "support": { "enum": ["stable", "experimental", "unsupported"] },
+        "description": { "type": "string" },
+        "constraints": { "$ref": "#/$defs/JsonObject" },
+        "controls": {
+          "type": "array",
+          "items": { "enum": ["stop"] },
+          "uniqueItems": true
+        }
+      },
+      "required": ["support"]
+    },
     "HarnessInteractionCapability": {
       "type": "object",
       "properties": {
@@ -76,7 +90,7 @@
         "thinking": { "$ref": "#/$defs/HarnessCapability" },
         "plans": { "$ref": "#/$defs/HarnessCapability" },
         "usage": { "$ref": "#/$defs/HarnessCapability" },
-        "subagents": { "$ref": "#/$defs/HarnessCapability" },
+        "subagents": { "$ref": "#/$defs/HarnessSubagentCapability" },
         "shell": { "$ref": "#/$defs/HarnessCapability" },
         "filesystem": { "$ref": "#/$defs/HarnessCapability" },
         "network": { "$ref": "#/$defs/HarnessCapability" },

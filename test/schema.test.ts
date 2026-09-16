@@ -228,6 +228,18 @@ describe("versioned JSON Schema", () => {
       ...capabilities,
       steering: { support: "stable", strategies: ["wait"] },
     })).toBe(false);
+    expect(validateCapabilities({
+      ...capabilities,
+      subagents: { support: "stable" },
+    })).toBe(true);
+    expect(validateCapabilities({
+      ...capabilities,
+      subagents: { support: "stable", controls: ["stop"] },
+    })).toBe(true);
+    expect(validateCapabilities({
+      ...capabilities,
+      subagents: { support: "stable", controls: ["terminate"] },
+    })).toBe(false);
   });
 
   test("keeps provider-specific models, controls, permissions, and limits as data", () => {

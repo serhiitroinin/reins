@@ -1508,7 +1508,7 @@ describe("harness runtime", () => {
       id: "scripted",
       capabilities: () => ({
         ...capabilities,
-        subagents: { support: "stable" },
+        subagents: { support: "stable", controls: ["stop"] },
       }),
       async open() {
         return {
@@ -1556,7 +1556,7 @@ describe("harness runtime", () => {
     let lateEffects = 0;
     const adapter: HarnessAdapter = {
       id: "scripted",
-      capabilities: () => ({ ...capabilities, subagents: { support: "stable" } }),
+      capabilities: () => ({ ...capabilities, subagents: { support: "stable", controls: ["stop"] } }),
       async open() {
         return {
           async *run() {
@@ -1609,7 +1609,7 @@ describe("harness runtime", () => {
       capabilities: () => ({
         ...capabilities,
         cancel: unsupported,
-        subagents: { support: "stable" },
+        subagents: { support: "stable", controls: ["stop"] },
       }),
       async open() {
         return {
@@ -1654,6 +1654,7 @@ describe("harness runtime", () => {
     const started = new Promise<void>((resolve) => { runStarted = resolve; });
     let release!: () => void;
     const running = new Promise<void>((resolve) => { release = resolve; });
+    let stopCalls = 0;
     const adapter: HarnessAdapter = {
       id: "scripted",
       capabilities: () => capabilities,
@@ -1662,6 +1663,10 @@ describe("harness runtime", () => {
           async *run() {
             runStarted();
             await running;
+          },
+          async stopSubagent() {
+            stopCalls += 1;
+            return true;
           },
           async cancel() { release(); },
         };
@@ -1676,6 +1681,7 @@ describe("harness runtime", () => {
     await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
       code: "SUBAGENT_CONTROL_UNSUPPORTED",
     });
+    expect(stopCalls).toBe(0);
 
     await run.cancel();
     await events;
@@ -1691,7 +1697,7 @@ describe("harness runtime", () => {
       id: "scripted",
       capabilities: () => ({
         ...capabilities,
-        subagents: { support: "stable" },
+        subagents: { support: "stable", controls: ["stop"] },
       }),
       async open() {
         return {
@@ -1724,6 +1730,49 @@ describe("harness runtime", () => {
       expect.objectContaining({ phase: "subagent", code: "SUBAGENT_CONTROL_FAILED" }),
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain("private provider");
+
+    await run.cancel();
+    await events;
+  });
+
+  test("sanitizes subagent capability discovery failures", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let release!: () => void;
+    const running = new Promise<void>((resolve) => { release = resolve; });
+    const diagnostics: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities() { throw new Error("private capability credential"); },
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await running;
+          },
+          async stopSubagent() { return true; },
+          async cancel() { release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await expect(run.stopSubagent("agent-1")).rejects.toMatchObject({
+      code: "SUBAGENT_CONTROL_FAILED",
+      message: "The adapter could not describe subagent control support.",
+    });
+    await Bun.sleep(0);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ phase: "subagent", code: "SUBAGENT_CAPABILITIES_FAILED" }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private capability");
 
     await run.cancel();
     await events;
