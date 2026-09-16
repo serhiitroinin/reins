@@ -368,6 +368,49 @@ describe("harness runtime", () => {
     expect(opens).toBe(0);
   });
 
+  test("close releases an active iterator through session close when cancellation is unsupported", async () => {
+    let runStarted!: () => void;
+    const started = new Promise<void>((resolve) => { runStarted = resolve; });
+    let releaseRun!: () => void;
+    const blockedRun = new Promise<void>((resolve) => { releaseRun = resolve; });
+    let closeCalls = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        cancel: unsupported,
+      }),
+      async open() {
+        return {
+          async *run() {
+            runStarted();
+            await blockedRun;
+          },
+          async close() {
+            closeCalls += 1;
+            releaseRun();
+          },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+    });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await harness.close();
+
+    expect(closeCalls).toBe(1);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+  });
+
   test("reset orders removal after an in-flight checkpoint write", async () => {
     const persistence = createMemoryPersistence();
     const save = persistence.sessions.save.bind(persistence.sessions);

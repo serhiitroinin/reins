@@ -634,6 +634,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const sessionBindings = new Map<string, string>();
   const sessionGenerations = new Map<string, number>();
   const sessionMutationTails = new Map<string, Promise<void>>();
+  const sessionCloseWork = new WeakMap<HarnessAdapterSession, Promise<void>>();
   const activeRuns = new Set<{
     sessionId: string;
     controller: AbortController;
@@ -642,6 +643,15 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const reportedFailures = new WeakSet<object>();
   let closed = false;
   let closeWork: Promise<void> | null = null;
+
+  const closeAdapterSession = (session: HarnessAdapterSession): Promise<void> => {
+    const known = sessionCloseWork.get(session);
+    if (known) return known;
+    if (!session.close) return Promise.resolve();
+    const work = Promise.resolve().then(() => session.close!());
+    sessionCloseWork.set(session, work);
+    return work;
+  };
 
   const reportDiagnostic = (diagnostic: Omit<HarnessDiagnostic, "schemaVersion" | "timestamp">): void => {
     if (!options.onDiagnostic) return;
@@ -1077,7 +1087,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           if (controller.signal.aborted) {
             if (opened.get(sessionId) === opening) opened.delete(sessionId);
             try {
-              await managed.session.close?.();
+              await closeAdapterSession(managed.session);
             } finally {
               managed = null;
             }
@@ -1562,7 +1572,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             // it must never be reused by a later turn.
             if (opened.get(id) === known) opened.delete(id);
             try {
-              await managed.session.close?.();
+              await closeAdapterSession(managed.session);
             } catch (error) {
               closeFailed = true;
               reportFailure(error, { phase: "session-reset", adapterId, session }, {
@@ -1612,25 +1622,14 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           if (!run.controller.signal.aborted) run.controller.abort();
         }
 
-        // A run is registered before its first persistence await. Waiting for
-        // every registered run prevents a delayed turn-start append from
-        // opening a provider session after close() has returned.
-        await Promise.allSettled(runs.map((run) => run.done));
-
-        // A session may have entered `opened` while an already-started run was
-        // unwinding. Snapshot only after the run barrier, then retire it too.
-        for (const id of opened.keys()) {
-          if (!retiringIds.has(id)) {
-            sessionGenerations.set(id, (sessionGenerations.get(id) ?? 0) + 1);
-          }
-        }
-        const sessions = await Promise.allSettled(opened.values());
-        const closes = sessions.flatMap((entry) => {
-          if (entry.status !== "fulfilled" || !entry.value.session.close) return [];
-          const managed = entry.value;
-          return [Promise.resolve()
-            .then(() => managed.session.close?.())
-            .catch((error) => {
+        const closeSessions = async (
+          sessions: readonly Promise<ManagedSession>[],
+        ): Promise<PromiseSettledResult<void>[]> => {
+          const resolved = await Promise.allSettled(sessions);
+          return Promise.allSettled(resolved.flatMap((entry) => {
+            if (entry.status !== "fulfilled" || !entry.value.session.close) return [];
+            const managed = entry.value;
+            return [closeAdapterSession(managed.session).catch((error) => {
               reportFailure(error, {
                 phase: "session-close",
                 adapterId: managed.adapter.id,
@@ -1641,11 +1640,31 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               });
               throw error;
             })];
-        });
+          }));
+        };
+
+        // Closing starts before the run barrier. Some adapters can only drain
+        // an active iterator by closing its provider session, particularly
+        // when turn cancellation is unsupported.
+        const initialCloseResults = closeSessions([...opened.values()]);
         try {
-          const closeResults = await Promise.allSettled(closes);
+          const [, firstCloseResults] = await Promise.all([
+            Promise.allSettled(runs.map((run) => run.done)),
+            initialCloseResults,
+          ]);
+
+          // A run registered before close may have entered `opened` while its
+          // turn-start event was settling. Retire that late cache entry too;
+          // closeAdapterSession makes the operation idempotent per session.
+          for (const id of opened.keys()) {
+            if (!retiringIds.has(id)) {
+              sessionGenerations.set(id, (sessionGenerations.get(id) ?? 0) + 1);
+            }
+          }
+          const lateCloseResults = await closeSessions([...opened.values()]);
           await Promise.allSettled([...sessionMutationTails.values()]);
-          const failedClose = closeResults.find((result) => result.status === "rejected");
+          const failedClose = [...firstCloseResults, ...lateCloseResults]
+            .find((result) => result.status === "rejected");
           if (failedClose?.status === "rejected") throw failedClose.reason;
         } finally {
           opened.clear();
