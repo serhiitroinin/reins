@@ -155,7 +155,7 @@ describe("Codex App Server adapter", () => {
       }],
     });
 
-    const run = runtime.start({
+    const request = {
       session: { tenantId: "tenant", actorId: "actor", threadId: "thread" },
       adapterId: fixture.adapterId,
       input: [{ type: "text", text: "Summarize it." }],
@@ -164,6 +164,19 @@ describe("Codex App Server adapter", () => {
       settings: {
         permission: { modeId: "read-only" },
         controls: { [CODEX_SERVICE_TIER_CONTROL_ID]: "fast" },
+      },
+    } as const;
+    const run = runtime.start(request, {
+      admission: {
+        adapterId: fixture.adapterId,
+        accountId: null,
+        model: "gpt-test",
+        effort: "high",
+        settings: {
+          permission: { modeId: "read-only" },
+          controls: { [CODEX_SERVICE_TIER_CONTROL_ID]: "fast" },
+        },
+        sessionBinding: "codex-test-binding",
       },
     });
 

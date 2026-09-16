@@ -586,6 +586,10 @@ describe("harness runtime", () => {
     await collect(run.events);
     expect(await run.done).toBe("completed");
     expect(opened).toBe(1);
+    const persisted = await persistence.events.list(request.session, request.adapterId);
+    expect(JSON.stringify(persisted)).not.toContain("binding-a");
+    expect(JSON.stringify(persisted)).not.toContain("vendor:fast");
+    expect(JSON.stringify(persisted)).not.toContain("grant-2");
   });
 
   test("pins an admitted session binding while preserving no-admission compatibility", async () => {
@@ -1359,7 +1363,7 @@ describe("harness runtime", () => {
       model: "model-a",
       settings: { controls: { "vendor:fast": false } },
       sessionBinding: "binding-a",
-    } as const;
+    };
     const run = harness.start(mutableRequest, {
       runId: "initial-run",
       turnId: "initial-turn",
@@ -1369,6 +1373,8 @@ describe("harness runtime", () => {
     const events = collect(run.events);
     while (!ready) await Bun.sleep(0);
 
+    admission.model = "model-b";
+    admission.settings.controls["vendor:fast"] = true;
     mutableRequest.model = "model-b";
     mutableRequest.settings.controls["vendor:fast"] = true;
     await expect(run.followUp({
