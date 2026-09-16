@@ -118,8 +118,8 @@ incrementally adoptable snapshot of the selected adapter, account, model,
 effort, resolved permission grant, exact generic controls, input policy, and
 an opaque host session-binding fingerprint. Nullable selection pins use
 `null` to distinguish an admitted absence from an unenforced field. Controls
-remain open typed identifiers, so Fast/service tier and future Grok or
-OpenCode settings need no core provider branch.
+remain open typed identifiers, so Codex Fast/service tier and future provider
+settings need no core provider branch.
 
 The runtime copies admission synchronously and validates every supplied pin
 plus input policy before ID allocation, context preparation, event
@@ -279,9 +279,9 @@ provider SDK types into the core protocol.
 Codex App Server communication uses a shared newline JSON-RPC peer.
 Its model mapper exposes App Server reasoning options, modalities, and service
 tiers through the generic catalog. In particular, Fast is a model-declared
-service-tier control rather than a universal boolean. OpenCode-style adapters
-may group models from multiple underlying providers, and Grok-specific
-behavior can be added as namespaced controls without changing the runtime.
+service-tier control rather than a universal boolean. Future adapters may
+group models from multiple underlying providers or add namespaced controls
+without changing the runtime.
 The low-level module serializes initialize, thread, resume, and turn requests,
 but only from host-supplied product identity, sandbox, approval, model, effort,
 image, and generic control decisions.

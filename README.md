@@ -1,8 +1,9 @@
 # Fold Harness
 
 Fold Harness is a provider-neutral TypeScript runtime for building
-domain-specific products on top of agent harnesses such as Claude Code, Codex,
-OpenCode, and ACP-compatible agents.
+domain-specific products on top of Claude Code and Codex. Its adapter and
+capability contracts remain open so additional providers can be added without
+changing product-facing runtime APIs.
 
 The project is being extracted from [Fold](https://github.com/serhiitroinin/fold).
 Its first releases focus on these boundaries:
@@ -12,7 +13,8 @@ Its first releases focus on these boundaries:
 - durable session and run lifecycle;
 - turn-scoped application context with explicit failure behavior;
 - application-owned tools, policy, and human interactions;
-- adapter conformance across native and ACP-backed agents.
+- shared conformance for native Claude and Codex adapters, plus an open adapter
+  contract for future providers.
 
 This repository remains private while the extraction API is changing. Preview
 releases are published publicly on npm for Fold and other early consumers.
@@ -431,7 +433,7 @@ availability, legacy status, and open-string effort options.
 catalog and falls back only to an advertised default; it never invents a
 provider value.
 
-This is also the extension path for aggregating engines such as OpenCode: a
+This is also the extension path for future native or aggregating engines: a
 model may carry a provider-like `group`, while all adapter, model, control,
 permission, and limit identifiers remain open strings. New providers do not
 require a core-package enum release.
@@ -444,12 +446,11 @@ Fold's Codex and Claude lanes consume the complete package adapters. Both keep
 process creation, credentials, sandbox policy, vault context, and product event
 projection in Fold.
 
-The generic ACP v1 adapter has also been live-tested against Claude Agent ACP,
-Codex ACP, and OpenCode. Native Claude and Codex adapters remain the enhanced
-paths where their provider-specific limits, subagents, compaction, security
-posture, and lifecycle detail matter. ACP is the interoperability path for new
-agents; it is not treated as a lowest-common-denominator replacement for those
-features. See [ACP v1 compatibility](docs/ACP_V1.md).
+Native Claude and Codex adapters are the production focus because their
+provider-specific limits, subagents, compaction, Fast controls, security
+posture, and lifecycle detail matter. The generic ACP v1 adapter remains an
+interoperability extension point, not a lowest-common-denominator replacement
+for those native paths. See [ACP v1 compatibility](docs/ACP_V1.md).
 
 ## Codex adapter boundary
 

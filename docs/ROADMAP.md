@@ -1,5 +1,10 @@
 # Extraction roadmap
 
+The production focus through the prerelease series is the native Claude Agent
+SDK and Codex App Server paths. Generic adapter contracts stay open, but new
+provider integrations are deferred until those two paths are hardened and
+fully dogfooded by Fold.
+
 ## Implemented
 
 - Provider-neutral protocol and capability contract.
@@ -79,3 +84,4 @@
 - A database implementation selected by the package.
 - A universal sandbox claim.
 - Direct API model loops presented as equivalent to native agent sessions.
+- New provider-specific integrations beyond Claude Code and Codex.
