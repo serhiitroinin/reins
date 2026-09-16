@@ -368,6 +368,73 @@ describe("harness runtime", () => {
     expect(opens).toBe(0);
   });
 
+  test("cancel retires a session checkpoint load that never resolves", async () => {
+    const persistence = createMemoryPersistence();
+    let loadStarted!: () => void;
+    const started = new Promise<void>((resolve) => { loadStarted = resolve; });
+    let rejectLoad!: (error: unknown) => void;
+    persistence.sessions.load = () => {
+      loadStarted();
+      return new Promise((_resolve, reject) => { rejectLoad = reject; });
+    };
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opens += 1;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await run.cancel();
+
+    expect(opens).toBe(0);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+    rejectLoad(new Error("late private persistence failure"));
+    await Bun.sleep(0);
+  });
+
+  test("close retires a session checkpoint load that never resolves", async () => {
+    const persistence = createMemoryPersistence();
+    let loadStarted!: () => void;
+    const started = new Promise<void>((resolve) => { loadStarted = resolve; });
+    persistence.sessions.load = async () => {
+      loadStarted();
+      return new Promise(() => undefined);
+    };
+    let opens = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opens += 1;
+        return { async *run() {} };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await harness.close();
+
+    expect(opens).toBe(0);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+  });
+
   test("close releases an active iterator through session close when cancellation is unsupported", async () => {
     let runStarted!: () => void;
     const started = new Promise<void>((resolve) => { runStarted = resolve; });

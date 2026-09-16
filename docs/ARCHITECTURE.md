@@ -179,10 +179,11 @@ remains reserved through all three. External aborts use the same dispatch path,
 cancellation failures do not bypass the drain, and a session that finishes
 opening after cancellation is closed without running. `HarnessAdapterOpenRequest`
 therefore carries the owning abort signal. Runtime shutdown retires a pending
-open without waiting forever, closes already resolved sessions independently,
-and closes a session that a non-conforming adapter resolves after retirement.
-Adapters must stop opening on abort and release any partially allocated
-provider resources before settling.
+checkpoint load or provider open without waiting forever, closes already
+resolved sessions independently, and closes a session that a non-conforming
+adapter resolves after retirement. A late persistence rejection remains
+observed but cannot revive or fail the retired turn. Adapters must stop opening
+on abort and release any partially allocated provider resources before settling.
 
 ## Context sources
 

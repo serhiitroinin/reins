@@ -813,12 +813,43 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     const created = (async (): Promise<ManagedSession> => {
       let stored: StoredHarnessSession | null;
       try {
-        stored = await options.persistence.sessions.load(key, adapter.id);
-      } catch (error) {
-        reportFailure(error, { phase: "session-load", adapterId: adapter.id, session: key }, {
-          code: "SESSION_LOAD_FAILED",
-          message: "The saved harness session could not be loaded.",
+        if (signal.aborted) throw new HarnessAdapterInterruptedError();
+        const loading = Promise.resolve(options.persistence.sessions.load(key, adapter.id));
+        stored = await new Promise<StoredHarnessSession | null>((resolve, reject) => {
+          let retired = false;
+          const abort = (): void => {
+            if (retired) return;
+            retired = true;
+            signal.removeEventListener("abort", abort);
+            reject(new HarnessAdapterInterruptedError());
+          };
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+          // Keep both handlers attached after retirement. A persistence
+          // implementation may ignore cancellation and reject much later;
+          // that failure must not become an unhandled rejection.
+          void loading.then(
+            (value) => {
+              signal.removeEventListener("abort", abort);
+              if (retired) return;
+              retired = true;
+              resolve(value);
+            },
+            (error) => {
+              signal.removeEventListener("abort", abort);
+              if (retired) return;
+              retired = true;
+              reject(error);
+            },
+          );
         });
+      } catch (error) {
+        if (!(error instanceof HarnessAdapterInterruptedError)) {
+          reportFailure(error, { phase: "session-load", adapterId: adapter.id, session: key }, {
+            code: "SESSION_LOAD_FAILED",
+            message: "The saved harness session could not be loaded.",
+          });
+        }
         throw error;
       }
       if (stored?.sessionBinding !== undefined) {
