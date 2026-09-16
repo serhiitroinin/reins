@@ -370,6 +370,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
 - `@serhiitroinin/fold-harness/wire` — JSON-safe run request encoding for
   transports and native hosts.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
+- `@serhiitroinin/fold-harness/admission` — discovery-driven request
+  normalization and fail-closed runtime admission.
 - `@serhiitroinin/fold-harness/input` — typed inline-context resolution and
   provider-neutral input-policy validation.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
@@ -433,6 +435,35 @@ Products can call `harness.profile()`, `harness.models()`, and
 `unsupported`, so a model picker does not have to wait for account limits and a
 provider without usage APIs does not need a fake response.
 
+When a turn is ready to run, `discoverHarnessAdmission()` performs the profile
+and model reads together and returns the one normalized request/admission pair
+the runtime accepts. Hosts do not need provider branches for model defaults,
+effort, consent versions, permission modes, or controls such as Codex Fast.
+Any stale or invalid selection returns typed issues and no runnable admission,
+before provider traffic.
+
+```ts
+import { discoverHarnessAdmission } from "@serhiitroinin/fold-harness/admission";
+
+const resolved = await discoverHarnessAdmission(harness, request, {
+  sessionBinding: hostAuthorityFingerprint,
+  signal: controller.signal,
+});
+if (!resolved.valid) {
+  renderConfigurationIssues(resolved.issues);
+  return;
+}
+const run = harness.start(resolved.request, {
+  controller,
+  admission: resolved.admission,
+});
+```
+
+Account ids and the session-binding fingerprint remain opaque host-owned
+identities; the package never reads credentials or a product vault. Limits
+also stay an independent discovery stream because usage display is not turn
+authorization.
+
 Successful discovery may carry independent `fetchedAt` and `expiresAt`
 timestamps. `harnessDiscoveryFreshness()` turns those into `fresh`, `stale`, or
 `unknown` without teaching a UI about an adapter's cache. An unavailable result
@@ -462,11 +493,9 @@ require a core-package enum release.
 
 The package is pre-release software. Fold is the first dogfood consumer.
 
-Fold's Codex and Claude lanes consume the complete package adapters. Codex also
-runs through `HarnessRuntime`; Claude currently drives the package adapter
-directly, and moving that lane under the same runtime lifecycle is the next
-dogfood milestone. Both keep process creation, credentials, sandbox policy,
-vault context, and product event projection in Fold.
+Fold's Codex and Claude lanes consume the complete package adapters and run
+through `HarnessRuntime`. Both keep process creation, credentials, sandbox
+policy, vault context, and product event projection in Fold.
 
 Native Claude and Codex adapters are the production focus because their
 provider-specific limits, subagents, compaction, Fast controls, security

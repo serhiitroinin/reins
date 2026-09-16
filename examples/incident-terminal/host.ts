@@ -4,6 +4,7 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
+  discoverHarnessAdmission,
   resolveHarnessConfiguration,
   type HarnessAdapter,
   type HarnessAdapterRunRequest,
@@ -499,7 +500,7 @@ export class IncidentHarnessHost {
   }
 
   async turn(prompt: string, options: { cancelAfterFirstAssistant?: boolean } = {}): Promise<HarnessTurnStatus> {
-    const run = this.harness.start({
+    const request = {
       session: { tenantId: "example-co", actorId: "operator-ada", threadId: "incident-console" },
       adapterId: ADAPTER_ID,
       input: [{ type: "text", text: prompt }],
@@ -512,7 +513,14 @@ export class IncidentHarnessHost {
           "example:service-tier": "fast",
         },
       },
+    } as const;
+    const resolved = await discoverHarnessAdmission(this.harness, request, {
+      sessionBinding: "example-account|operator-policy:1",
     });
+    if (!resolved.valid) {
+      throw new Error(`Admission failed: ${resolved.issues.map(({ message }) => message).join(" ")}`);
+    }
+    const run = this.harness.start(resolved.request, { admission: resolved.admission });
     await this.consume(run, options);
     return run.done;
   }

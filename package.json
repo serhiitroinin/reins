@@ -65,6 +65,11 @@
       "bun": "./src/profile.ts",
       "import": "./dist/profile.js"
     },
+    "./admission": {
+      "types": "./src/admission.ts",
+      "bun": "./src/admission.ts",
+      "import": "./dist/admission.js"
+    },
     "./input": {
       "types": "./src/input.ts",
       "bun": "./src/input.ts",

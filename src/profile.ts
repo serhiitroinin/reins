@@ -261,7 +261,23 @@ export interface ResolvedHarnessConfiguration {
   issues: readonly HarnessConfigurationIssue[];
 }
 
+function validControlValue(control: HarnessControl, value: HarnessControlValue): boolean {
+  return control.kind === "toggle"
+    ? typeof value === "boolean"
+    : control.kind === "select"
+      ? typeof value === "string"
+        && control.options.some((option) => option.id === value && option.unavailableReason === undefined)
+      : typeof value === "number"
+        && Number.isFinite(value)
+        && (control.min === undefined || value >= control.min)
+        && (control.max === undefined || value <= control.max);
+}
+
 function defaultControlValue(control: HarnessControl): HarnessControlValue | undefined {
+  if (control.unavailableReason !== undefined || control.defaultValue === undefined) return undefined;
+  if (!validControlValue(control, control.defaultValue)) {
+    throw new Error(`control ${control.id} defaultValue must name an available value`);
+  }
   return control.defaultValue;
 }
 
@@ -324,11 +340,12 @@ export function resolveHarnessConfiguration(
   const modes = new Map(profile.permissions.modes.map((mode) => [mode.id, mode]));
   const fallback = modes.get(profile.permissions.defaultModeId);
   if (!fallback) throw new Error("permission profile defaultModeId must name a mode");
+  if (fallback.unavailableReason) throw new Error("permission profile defaultModeId must name an available mode");
   if (fallback.consent) throw new Error("the default permission mode cannot require consent");
 
   let permission = requested.permission;
   let selected = permission ? modes.get(permission.modeId) : fallback;
-  if (!selected) {
+  if (!selected || selected.unavailableReason !== undefined) {
     issues.push({
       path: "permission.modeId",
       code: "unknown-permission",
@@ -355,16 +372,9 @@ export function resolveHarnessConfiguration(
   const values: Record<string, HarnessControlValue> = {};
   for (const control of definitions) {
     const value = requested.controls?.[control.id];
-    const valid = value === undefined
-      ? false
-      : control.kind === "toggle"
-        ? typeof value === "boolean"
-        : control.kind === "select"
-          ? typeof value === "string" && control.options.some((option) => option.id === value && !option.unavailableReason)
-          : typeof value === "number"
-            && Number.isFinite(value)
-            && (control.min === undefined || value >= control.min)
-            && (control.max === undefined || value <= control.max);
+    const valid = value !== undefined
+      && control.unavailableReason === undefined
+      && validControlValue(control, value);
     if (valid) values[control.id] = value as HarnessControlValue;
     else {
       const fallbackValue = defaultControlValue(control);

@@ -62,6 +62,23 @@ Limits are snapshots, separate from per-turn token and cost usage events. A
 snapshot can represent rolling rate windows, credits, spend, context, or an
 unknown future kind without embedding a provider response type.
 
+`discoverHarnessAdmission()` is the executable bridge from discovery to the
+runtime. It reads the engine profile and account-scoped model catalog
+concurrently, resolves only advertised model and effort defaults, validates
+permission consent plus generic controls, merges input policy, and validates
+the actual typed input. Success returns both the normalized
+`HarnessRunRequest` and the exact `HarnessAdmission` that pins it. Failure
+returns safe typed issues and no admission, so a stale picker cannot reach an
+adapter. A pure `resolveHarnessAdmission()` variant accepts an already-fetched
+snapshot for hosts whose UI owns discovery caching.
+
+The resolver treats account ids and session bindings as opaque host-owned
+identities and validates only that supplied values are non-empty. Credential
+lookup, authorization, and the contents of the non-secret binding fingerprint
+remain outside the package. Limit snapshots are deliberately not folded into
+admission: a usage display and a hard execution authorization are different
+contracts.
+
 Engine and model discovery may also declare input policy. The engine provides
 defaults and a selected model overrides only fields it knows. Support and
 limits are separate: an absent modality, maximum, or media-type list means
@@ -143,8 +160,9 @@ preparation. Admission never enters `HarnessRunRequest`, wire schemas, native
 bindings, adapters, or events. Apart from the opaque session-binding
 fingerprint, it does not enter persistence. The runtime never derives it from
 a provider name or lets an untrusted request select its constraints;
-account/catalog lookup, settings resolution, and fingerprint composition stay
-host responsibilities.
+credential lookup and fingerprint composition stay host responsibilities.
+Hosts may use the package admission resolver for catalog lookup, settings
+resolution, and input validation, or provide an equivalent admitted snapshot.
 
 Each resumable adapter declares one current checkpoint format and may declare
 older compatible formats. The runtime stores that open identifier with a

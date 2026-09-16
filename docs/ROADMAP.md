@@ -72,27 +72,29 @@ fully dogfooded by Fold.
 - Versioned adapter checkpoint formats, restart-stable host session bindings,
   runtime-owned early checkpoint writes, explicit inactive-session reset, and
   sanitized provider-neutral lifecycle diagnostics.
+- Discovery-to-admission resolution that concurrently reads account-scoped
+  profile/model data and validates model, effort, consent, generic controls,
+  input policy, account identity, and session binding into one exact runnable
+  request/admission pair.
+- Fold's native Claude lane under `createHarness`, including runtime admission,
+  persistence, diagnostics, interactions, cancellation, steering, checkpoint
+  recovery, session reset, and subagent control.
 
 ## Next
 
-1. Move Fold's native Claude lane under `createHarness`, including runtime
-   admission, persistence, diagnostics, interactions, cancellation, steering,
-   and session binding, while leaving process, credentials, tools, and product
-   projection in Fold.
-2. Harden native Claude and Codex recovery against expired or provider-rejected
-   checkpoints. The host must explicitly retain-and-fail or reset-and-retry;
-   the runtime never silently discards conversation state.
-3. Add a discovery-to-admission resolver that validates account, model,
-   model-specific effort, provider permission, generic controls such as Codex
-   Fast, input policy, and session-binding inputs before provider traffic.
-   Fold's discovery routes and native turns should consume the same resolver.
-4. Expand the native conformance and opt-in live smoke matrix across fresh and
+1. Make Fold's discovery routes and both native turn lanes consume the shared
+   discovery-to-admission resolver, removing their remaining duplicated
+   model, effort, permission, and control checks.
+2. Put a bounded package-level persistence projection in front of extension
+   event payloads so a future adapter cannot accidentally persist an unbounded
+   or provider-raw body.
+3. Expand the native conformance and opt-in live smoke matrix across fresh and
    resumed turns, tools, interactions, limits, Fast, steering, cancellation,
    provider death, malformed traffic, and checkpoint rejection.
-5. Specify a transport-neutral runtime command surface and optional headless
+4. Specify a transport-neutral runtime command surface and optional headless
    sidecar so Swift, Rust, and other native hosts can operate the TypeScript
    runtime rather than only consume its protocol value types.
-6. Add portable activity or attention vocabulary only where Claude/Codex hosts
+5. Add portable activity or attention vocabulary only where Claude/Codex hosts
    have a concrete non-Fold consumer and conformance case.
 
 ## Deliberately outside the first release

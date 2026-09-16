@@ -176,4 +176,44 @@ describe("engine profiles", () => {
       permissions: { ...profile.permissions, defaultModeId: "workspace-write" },
     })).toThrow("cannot require consent");
   });
+
+  test("never admits unavailable permission modes or controls", () => {
+    expect(resolveHarnessConfiguration({
+      ...profile,
+      permissions: {
+        ...profile.permissions,
+        modes: profile.permissions.modes.map((mode) => mode.id === "workspace-write"
+          ? { ...mode, unavailableReason: "disabled by policy" }
+          : mode),
+      },
+    }, {
+      permission: { modeId: "workspace-write", consentVersion: "shell-grant-2" },
+    })).toMatchObject({
+      permission: { modeId: "read-only" },
+      issues: [{ code: "unknown-permission", path: "permission.modeId" }],
+    });
+
+    expect(resolveHarnessConfiguration({
+      ...profile,
+      controls: profile.controls?.map((control) => ({
+        ...control,
+        unavailableReason: "not enabled for this account",
+      })),
+    }, { controls: { "openai:verbosity": "high" } })).toEqual({
+      permission: { modeId: "read-only" },
+      controls: {},
+      issues: [{
+        code: "invalid-value",
+        path: "controls.openai:verbosity",
+        message: "The value for Verbosity is no longer available.",
+      }],
+    });
+  });
+
+  test("refuses malformed control defaults instead of admitting provider-invalid values", () => {
+    expect(() => resolveHarnessConfiguration({
+      ...profile,
+      controls: profile.controls?.map((control) => ({ ...control, defaultValue: "missing" })),
+    })).toThrow("defaultValue");
+  });
 });
