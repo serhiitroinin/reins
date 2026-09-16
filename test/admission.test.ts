@@ -408,7 +408,7 @@ describe("discovery-driven admission", () => {
     await runtime.close();
   });
 
-  test("rejects malformed envelope values before discovery can authorize them", () => {
+  test("rejects malformed envelope values before discovery can authorize them", async () => {
     expect(resolveHarnessAdmission({
       request: request(" ", { accountId: "" }),
       discovery: { profile: { status: "available", value: codexProfile } },
@@ -421,5 +421,26 @@ describe("discovery-driven admission", () => {
         { code: "invalid-session-binding" },
       ],
     });
+
+    let discoveryCalls = 0;
+    const discovered = await discoverHarnessAdmission({
+      profile() {
+        discoveryCalls += 1;
+        return { status: "available", value: codexProfile };
+      },
+      models() {
+        discoveryCalls += 1;
+        return { status: "available", value: codexModels };
+      },
+    }, request(" ", { accountId: "" }), { sessionBinding: " " });
+    expect(discovered).toMatchObject({
+      valid: false,
+      issues: [
+        { code: "invalid-adapter" },
+        { code: "invalid-account" },
+        { code: "invalid-session-binding" },
+      ],
+    });
+    expect(discoveryCalls).toBe(0);
   });
 });

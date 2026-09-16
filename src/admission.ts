@@ -114,6 +114,33 @@ function availableModel(model: HarnessModel): boolean {
   return model.availability !== "unavailable" && model.unavailableReason === undefined;
 }
 
+function admissionEnvelopeIssues(
+  request: HarnessRunRequest,
+  sessionBinding: string | undefined,
+): HarnessAdmissionIssue[] {
+  const issues: HarnessAdmissionIssue[] = [];
+  if (typeof request.adapterId !== "string" || request.adapterId.trim().length === 0) {
+    issues.push(issue("adapterId", "invalid-adapter", "An adapter id is required."));
+  }
+  if (
+    request.accountId !== undefined
+    && (typeof request.accountId !== "string" || request.accountId.trim().length === 0)
+  ) {
+    issues.push(issue("accountId", "invalid-account", "An account id cannot be empty."));
+  }
+  if (
+    sessionBinding !== undefined
+    && (typeof sessionBinding !== "string" || sessionBinding.trim().length === 0)
+  ) {
+    issues.push(issue(
+      "sessionBinding",
+      "invalid-session-binding",
+      "A session binding cannot be empty.",
+    ));
+  }
+  return issues;
+}
+
 function selectedModel(
   request: HarnessRunRequest,
   profile: HarnessEngineProfile,
@@ -194,20 +221,7 @@ function selectedModel(
  */
 export function resolveHarnessAdmission(input: ResolveHarnessAdmissionInput): HarnessAdmissionResult {
   const { request, discovery, sessionBinding } = input;
-  const envelopeIssues: HarnessAdmissionIssue[] = [];
-  if (request.adapterId.trim().length === 0) {
-    envelopeIssues.push(issue("adapterId", "invalid-adapter", "An adapter id is required."));
-  }
-  if (request.accountId !== undefined && request.accountId.trim().length === 0) {
-    envelopeIssues.push(issue("accountId", "invalid-account", "An account id cannot be empty."));
-  }
-  if (sessionBinding !== undefined && sessionBinding.trim().length === 0) {
-    envelopeIssues.push(issue(
-      "sessionBinding",
-      "invalid-session-binding",
-      "A session binding cannot be empty.",
-    ));
-  }
+  const envelopeIssues = admissionEnvelopeIssues(request, sessionBinding);
   if (envelopeIssues.length > 0) return invalid(envelopeIssues);
 
   if (discovery.profile.status === "unsupported") {
@@ -336,6 +350,8 @@ export async function discoverHarnessAdmission(
   request: HarnessRunRequest,
   options: DiscoverHarnessAdmissionOptions = {},
 ): Promise<HarnessAdmissionResult> {
+  const envelopeIssues = admissionEnvelopeIssues(request, options.sessionBinding);
+  if (envelopeIssues.length > 0) return invalid(envelopeIssues);
   if (options.signal?.aborted) {
     return invalid([issue("discovery", "discovery-aborted", "Admission discovery was cancelled.")]);
   }
