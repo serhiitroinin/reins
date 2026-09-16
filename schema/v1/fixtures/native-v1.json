@@ -129,6 +129,7 @@
   "engineProfile": {
     "id": "opencode:acp",
     "label": "OpenCode",
+    "modelSelection": "required",
     "description": "Multi-provider ACP agent",
     "permissions": {
       "kind": "provider-policy",
@@ -179,12 +180,16 @@
     "extensions": { "future:remote-uri": true }
   },
   "modelCatalog": {
+    "selection": "optional",
     "defaultModelId": "gpt-5.6-luna",
     "models": [
       {
         "id": "gpt-5.6-luna",
         "label": "GPT-5.6 Luna",
         "group": { "id": "openai", "label": "OpenAI" },
+        "availability": "available",
+        "legacy": false,
+        "contextWindowTokens": 256000,
         "inputModalities": ["text", "image"],
         "inputPolicy": {
           "modalities": {
@@ -222,6 +227,7 @@
   },
   "modelCatalogDiscovery": {
     "status": "unavailable",
+    "code": "ACCOUNT_REFRESH_REQUIRED",
     "message": "Refresh the provider account.",
     "retryable": true
   },

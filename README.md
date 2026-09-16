@@ -372,12 +372,25 @@ Products can call `harness.profile()`, `harness.models()`, and
 `unsupported`, so a model picker does not have to wait for account limits and a
 provider without usage APIs does not need a fake response.
 
+Successful discovery may carry independent `fetchedAt` and `expiresAt`
+timestamps. `harnessDiscoveryFreshness()` turns those into `fresh`, `stale`, or
+`unknown` without teaching a UI about an adapter's cache. An unavailable result
+may expose an adapter-authored safe `code` for diagnostics; raw provider errors
+remain private. Limits observed from native streams are timestamped and scoped
+to the account that produced them.
+
 The profile describes its permission modes and generic typed controls. Model
 entries can add or replace controls whose choices vary by model. For example,
 the Codex App Server mapper turns its per-model service tiers into an
 `openai:service-tier` select control with Standard and Fast choices. A host
 submits the selected value through `HarnessRunSettings`; only the Codex adapter
 knows that it becomes `serviceTierForTurn` on the wire.
+
+Model entries can declare a default catalog selection, context window,
+availability, legacy status, and open-string effort options.
+`resolveHarnessEffort()` validates a stored effort against the current model
+catalog and falls back only to an advertised default; it never invents a
+provider value.
 
 This is also the extension path for aggregating engines such as OpenCode: a
 model may carry a provider-like `group`, while all adapter, model, control,

@@ -86,6 +86,7 @@ const capabilities: HarnessCapabilities = {
 const profile: HarnessEngineProfile = {
   id: "opencode:acp",
   label: "OpenCode",
+  modelSelection: "required",
   permissions: {
     kind: "provider-policy",
     selectable: true,
@@ -113,6 +114,7 @@ const profile: HarnessEngineProfile = {
 };
 
 const models: HarnessModelCatalog = {
+  selection: "required",
   defaultModelId: "gpt-5.6-luna",
   models: [
     {

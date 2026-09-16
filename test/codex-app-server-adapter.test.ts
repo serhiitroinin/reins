@@ -19,6 +19,7 @@ async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
 function checkpointConnection(
   requests: Array<{ method: string; params: Record<string, unknown> }>,
   refuseTurn = false,
+  rateLimits?: Record<string, unknown>,
 ) {
   const output = createPushableAsyncIterable<string>();
   let closed = false;
@@ -43,6 +44,13 @@ function checkpointConnection(
         send({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: "turn refused" } });
       } else if (message.method === "turn/start") {
         send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "provider-turn" } } });
+        if (rateLimits) {
+          send({
+            jsonrpc: "2.0",
+            method: "account/rateLimits/updated",
+            params: { rateLimits },
+          });
+        }
         send({
           jsonrpc: "2.0",
           method: "turn/completed",
@@ -471,6 +479,37 @@ describe("Codex App Server adapter", () => {
         approvalPolicy: "never",
       },
     });
+    await runtime.close();
+  });
+
+  test("timestamps observed limits and keeps them scoped to the provider account", async () => {
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "limits-test", version: "1" },
+      now: () => new Date("2026-09-16T12:00:00.000Z"),
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => checkpointConnection([], false, {
+        limitId: "codex",
+        normalModelSlug: "gpt-test",
+        primary: { usedPercent: 25, windowDurationMins: 300 },
+        planType: "plus",
+      }),
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "limits" },
+      adapterId: adapter.id,
+      accountId: "account-a",
+      input: [{ type: "text", text: "hello" }],
+    });
+
+    await collect(run.events);
+    expect(await run.done).toBe("completed");
+    expect(await adapter.limits?.({ accountId: "account-a" })).toMatchObject({
+      status: "available",
+      fetchedAt: "2026-09-16T12:00:00.000Z",
+      value: { limits: [{ id: "codex:primary", usedPercent: 25 }] },
+    });
+    expect(await adapter.limits?.({ accountId: "account-b" })).toEqual({ status: "unsupported" });
     await runtime.close();
   });
 

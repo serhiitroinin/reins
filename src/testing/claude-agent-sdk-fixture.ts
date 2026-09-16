@@ -53,6 +53,12 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
           defaultModeId: "default",
           modes: [{ id: "default", label: "Ask", posture: "standard" }],
         },
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable" },
+            "context-reference": { support: "stable" },
+          },
+        },
       },
     },
     models: {
@@ -147,6 +153,13 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
             complete();
             return;
           }
+          if (current === "typed-context") {
+            const inputMatches = JSON.stringify(input.input) === JSON.stringify(CONFORMANCE.typedContextInput);
+            const contextMatches = JSON.stringify(input.inlineContext) === JSON.stringify(CONFORMANCE.typedInlineContext);
+            assistant(inputMatches && contextMatches ? CONFORMANCE.typedContextText : "typed-context-mismatch");
+            complete();
+            return;
+          }
           assistant(CONFORMANCE.text);
           complete();
         },
@@ -190,6 +203,7 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
     adapter,
     discovery,
     state,
+    providerOpens: () => state.connects,
     useScenario(value) {
       scenario = value;
     },

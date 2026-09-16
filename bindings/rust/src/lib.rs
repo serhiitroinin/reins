@@ -192,6 +192,9 @@ pub struct EngineProfile {
 
     pub label: String,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_selection: Option<Selection>,
+
     pub permissions: Permissions,
 }
 
@@ -325,6 +328,14 @@ pub struct ModalityValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Selection {
+    Optional,
+
+    Required,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Permissions {
     pub default_mode_id: String,
@@ -373,6 +384,9 @@ pub struct Consent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineProfileDiscovery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
 
@@ -722,6 +736,9 @@ pub struct LimitElement {
 #[serde(rename_all = "camelCase")]
 pub struct LimitSnapshotDiscovery {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -746,11 +763,17 @@ pub struct ModelCatalog {
     pub default_model_id: Option<String>,
 
     pub models: Vec<ModelElement>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelElement {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub availability: Option<Availability>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<i64>,
 
@@ -783,7 +806,18 @@ pub struct ModelElement {
     pub label: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Availability {
+    Available,
+
+    Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -805,6 +839,9 @@ pub struct Group {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalogDiscovery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
 

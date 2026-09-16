@@ -1,7 +1,7 @@
 /** Reference adapter fixture for the public conformance runner. */
 
 import type { HarnessAdapter, HarnessAdapterSession } from "../runtime.js";
-import type { HarnessCapabilities, HarnessInteractionResponse } from "../protocol.js";
+import type { CapabilitySupport, HarnessCapabilities, HarnessInteractionResponse } from "../protocol.js";
 import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
 import { CONFORMANCE, conformanceSafeError } from "./conformance.js";
 
@@ -26,12 +26,14 @@ export const conformanceCapabilities: HarnessCapabilities = {
 
 export function createConformanceFixture(options: {
   basicText?: string;
+  contextReferenceSupport?: CapabilitySupport;
   hangScenario?: AdapterConformanceScenario;
   onCancel?: () => void;
   onClose?: () => void;
 } = {}): AdapterConformanceFixture {
   const adapterId = "conformance";
   let scenario: AdapterConformanceScenario = "basic";
+  let opens = 0;
 
   const discovery = {
       profile: {
@@ -44,6 +46,12 @@ export function createConformanceFixture(options: {
             selectable: false,
             defaultModeId: "host",
             modes: [{ id: "host", label: "Managed by host", posture: "standard" }],
+          },
+          inputPolicy: {
+            modalities: {
+              text: { support: "stable" },
+              "context-reference": { support: options.contextReferenceSupport ?? "stable" },
+            },
           },
         },
       },
@@ -60,6 +68,7 @@ export function createConformanceFixture(options: {
         models: () => discovery.models,
         limits: () => discovery.limits,
         async open({ resumeToken }) {
+          opens += 1;
           const current = scenario;
           let release: (() => void) | undefined;
           let interactionResponse: HarnessInteractionResponse | undefined;
@@ -111,6 +120,15 @@ export function createConformanceFixture(options: {
                 yield { kind: "assistant-text", text: content?.type === "text" ? content.text : "" };
                 return;
               }
+              if (current === "typed-context") {
+                const inputMatches = JSON.stringify(request.input) === JSON.stringify(CONFORMANCE.typedContextInput);
+                const contextMatches = JSON.stringify(request.inlineContext) === JSON.stringify(CONFORMANCE.typedInlineContext);
+                yield {
+                  kind: "assistant-text",
+                  text: inputMatches && contextMatches ? CONFORMANCE.typedContextText : "typed-context-mismatch",
+                };
+                return;
+              }
               yield { kind: "assistant-text", text: options.basicText ?? CONFORMANCE.text };
             },
             respond(interactionId, response) {
@@ -144,6 +162,7 @@ export function createConformanceFixture(options: {
     adapterId,
     adapter,
     discovery,
+    providerOpens: () => opens,
     useScenario(value) {
       scenario = value;
     },

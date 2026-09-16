@@ -98,6 +98,15 @@ cargo test --locked --manifest-path bindings/rust/Cargo.toml
 swift test --package-path bindings/swift
 ```
 
+The JSON compatibility rules above govern the stable wire contract. The
+generated native packages are convenience APIs and remain prerelease in 0.x:
+quicktype models every newly added optional JSON field as a new Swift
+initializer parameter or Rust struct member, so regenerating against an
+additive schema release can require native source callers to update
+initializer calls or struct literals. Decoding and encoding older JSON remain
+compatible. Stable native releases will add hand-maintained compatibility
+facades before making source-compatibility guarantees.
+
 Both language tests decode and re-encode the same schema-valid fixture. That
 fixture includes a Codex Fast service-tier control, an OpenCode multi-provider
 profile, a future context kind with an attachment binding, input policies, and

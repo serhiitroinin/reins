@@ -11,8 +11,25 @@ import type { CapabilitySupport } from "./protocol.js";
 
 export type HarnessDiscovery<T> =
   | { status: "available"; value: T; fetchedAt?: string; expiresAt?: string }
-  | { status: "unavailable"; message: string; retryable?: boolean }
+  | { status: "unavailable"; message: string; code?: string; retryable?: boolean }
   | { status: "unsupported"; message?: string };
+
+export type HarnessDiscoveryFreshness = "fresh" | "stale" | "unknown";
+
+/**
+ * Classify a successful discovery result without coupling hosts to a cache
+ * implementation. Missing or malformed timestamps are intentionally unknown.
+ */
+export function harnessDiscoveryFreshness(
+  discovery: HarnessDiscovery<unknown>,
+  now: Date | string = new Date(),
+): HarnessDiscoveryFreshness {
+  if (discovery.status !== "available" || !discovery.expiresAt) return "unknown";
+  const expiresAt = Date.parse(discovery.expiresAt);
+  const nowMs = typeof now === "string" ? Date.parse(now) : now.getTime();
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(nowMs)) return "unknown";
+  return nowMs < expiresAt ? "fresh" : "stale";
+}
 
 export interface HarnessDiscoveryRequest {
   accountId?: string;
@@ -92,6 +109,42 @@ export interface HarnessEffortProfile {
   defaultOptionId?: string;
 }
 
+export interface HarnessEffortIssue {
+  code: "unknown-effort";
+  message: string;
+}
+
+export interface ResolvedHarnessEffort {
+  effort?: string;
+  issues: readonly HarnessEffortIssue[];
+}
+
+/** Resolve an open provider effort id against a model's advertised options. */
+export function resolveHarnessEffort(
+  model: HarnessModel | undefined,
+  requested?: string | null,
+): ResolvedHarnessEffort {
+  const profile = model?.effort;
+  if (!profile) {
+    return requested === undefined || requested === null
+      ? { issues: [] }
+      : { issues: [{ code: "unknown-effort", message: "The selected model does not advertise effort options." }] };
+  }
+  const options = new Map(profile.options.map((option) => [option.id, option]));
+  const fallback = profile.defaultOptionId && options.get(profile.defaultOptionId)?.unavailableReason === undefined
+    ? profile.defaultOptionId
+    : undefined;
+  if (requested !== undefined && requested !== null) {
+    const selected = options.get(requested);
+    if (selected && selected.unavailableReason === undefined) return { effort: requested, issues: [] };
+    return {
+      ...(fallback ? { effort: fallback } : {}),
+      issues: [{ code: "unknown-effort", message: "The selected effort is not available for this model." }],
+    };
+  }
+  return { ...(fallback ? { effort: fallback } : {}), issues: [] };
+}
+
 /** Open modality identifiers let future adapters add inputs without a core release. */
 export type HarnessInputModality =
   | "text"
@@ -132,6 +185,10 @@ export interface HarnessModel {
   /** Useful when one adapter fronts several model providers. */
   group?: { id: string; label: string };
   hidden?: boolean;
+  /** Whether the provider currently permits selecting this model. */
+  availability?: "available" | "unavailable";
+  /** Marks a provider-retained model that should not be selected by default. */
+  legacy?: boolean;
   unavailableReason?: string;
   inputModalities?: readonly string[];
   contextWindowTokens?: number;
@@ -145,6 +202,8 @@ export interface HarnessModel {
 
 export interface HarnessModelCatalog {
   models: readonly HarnessModel[];
+  /** Whether a host may leave the model unset and let the adapter/provider choose. */
+  selection?: "optional" | "required";
   /** Absent means the adapter or provider chooses its default. */
   defaultModelId?: string;
 }
@@ -153,6 +212,8 @@ export interface HarnessEngineProfile {
   id: string;
   label: string;
   description?: string;
+  /** Whether this engine can choose a provider/account default when no model is named. */
+  modelSelection?: "optional" | "required";
   permissions: HarnessPermissionProfile;
   /** Engine defaults. A selected model overrides only the fields it declares. */
   inputPolicy?: HarnessInputPolicy;

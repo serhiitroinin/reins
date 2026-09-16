@@ -202,24 +202,47 @@ describe("Codex App Server client", () => {
   });
 
   test("maps the Codex account cache without leaking its wire shape", () => {
-    expect(codexModelCatalog({ models: [{
+    const catalog = codexModelCatalog({ default_model_id: "gpt-5.6-sol", models: [{
       slug: "gpt-5.6-sol",
       display_name: "GPT-5.6-Sol",
       visibility: "list",
       priority: 1,
       input_modalities: ["text", "image"],
+      context_window_tokens: 256000,
+      is_legacy: true,
+      availability: "unavailable",
+      unavailable_reason: "retired",
       supported_reasoning_levels: [{ effort: "high", description: "More reasoning" }],
       default_reasoning_level: "high",
       service_tiers: [{ id: "priority", name: "Fast", description: "2x speed, increased usage" }],
-    }] }).models[0]).toMatchObject({
+    }] });
+    expect(catalog.defaultModelId).toBe("gpt-5.6-sol");
+    expect(catalog.models[0]).toMatchObject({
       id: "gpt-5.6-sol",
       label: "GPT-5.6-Sol",
+      contextWindowTokens: 256000,
+      legacy: true,
+      availability: "unavailable",
+      unavailableReason: "retired",
       effort: { defaultOptionId: "high", options: [{ id: "high" }] },
       controls: [{
         id: CODEX_SERVICE_TIER_CONTROL_ID,
         options: [{ id: "default", label: "Standard" }, { id: "priority", label: "Fast" }],
       }],
     });
+  });
+
+  test("drops context windows that cannot satisfy the public integer schema", () => {
+    const catalog = codexModelCatalog({ models: [
+      { slug: "fractional", context_window_tokens: 1.5 },
+      { slug: "unsafe", context_window_tokens: Number.MAX_SAFE_INTEGER + 1 },
+      { slug: "valid", context_window_tokens: 256000 },
+    ] });
+    expect(catalog.models).toEqual([
+      { id: "fractional", label: "fractional" },
+      { id: "unsafe", label: "unsafe" },
+      { id: "valid", label: "valid", contextWindowTokens: 256000 },
+    ]);
   });
 
   test("opens a new thread and starts its turn in protocol order", async () => {

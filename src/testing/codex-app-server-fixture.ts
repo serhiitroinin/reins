@@ -1,6 +1,7 @@
 /** A deterministic fake App Server driving the real Codex adapter. */
 
 import type { HarnessCapabilities } from "../protocol.js";
+import { harnessContextReferenceText } from "../input.js";
 import { createPushableAsyncIterable } from "../transports/async-iterable.js";
 import { createNdjsonReader } from "../transports/ndjson.js";
 import {
@@ -26,6 +27,7 @@ export interface CodexAppServerFixtureRequest {
 }
 
 export interface CodexAppServerFixtureState {
+  connections: number;
   requests: CodexAppServerFixtureRequest[];
   interruptions: number;
   toolResponses: Record<string, unknown>[];
@@ -142,6 +144,21 @@ function fakeConnection(
       complete();
       return;
     }
+    if (scenario === "typed-context") {
+      const expected = CONFORMANCE.typedContextInput.map((input) => ({
+        type: "text",
+        text: input.type === "context-reference"
+          ? harnessContextReferenceText(input, CONFORMANCE.typedInlineContext)
+          : input.text,
+        text_elements: [],
+      }));
+      const mapped = Array.isArray(params.input) ? params.input : [];
+      assistant(JSON.stringify(mapped) === JSON.stringify(expected)
+        ? CONFORMANCE.typedContextText
+        : "typed-context-mismatch");
+      complete();
+      return;
+    }
     assistant(scenario === "resume-restored" ? CONFORMANCE.resumedText : CONFORMANCE.text);
     complete();
   };
@@ -220,6 +237,7 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
   const adapterId = "codex-conformance";
   let scenario: AdapterConformanceScenario = "basic";
   const state: CodexAppServerFixtureState = {
+    connections: 0,
     requests: [],
     interruptions: 0,
     toolResponses: [],
@@ -236,6 +254,12 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
           selectable: true,
           defaultModeId: "read-only",
           modes: [{ id: "read-only", label: "Read-only", posture: "restricted" }],
+        },
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable" },
+            "context-reference": { support: "stable" },
+          },
         },
       },
     },
@@ -261,6 +285,7 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
     }),
     connect() {
       if (scenario === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
+      state.connections += 1;
       return fakeConnection(scenario, state);
     },
     events: {
@@ -282,6 +307,7 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
     adapter,
     discovery,
     state,
+    providerOpens: () => state.connections,
     useScenario(value) {
       scenario = value;
     },

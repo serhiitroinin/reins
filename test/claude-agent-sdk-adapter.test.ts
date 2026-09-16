@@ -220,6 +220,7 @@ describe("Claude Agent SDK adapter", () => {
     const checkpointReached = new Promise<void>((resolve) => { reached = resolve; });
     const checkpoints: string[] = [];
     const adapter = createClaudeAgentSdkAdapter({
+      now: () => new Date("2026-09-16T12:00:00.000Z"),
       connect(request) {
         return scriptedConnection((_request, _input, messages) => {
           messages.push({ type: "system", subtype: "init", session_id: "checkpoint-1" });
@@ -252,6 +253,7 @@ describe("Claude Agent SDK adapter", () => {
     expect(checkpoints).toEqual(["checkpoint-1"]);
     expect(await runtime.limits(adapter.id)).toEqual({
       status: "available",
+      fetchedAt: "2026-09-16T12:00:00.000Z",
       value: {
         limits: [{
           id: "five_hour",

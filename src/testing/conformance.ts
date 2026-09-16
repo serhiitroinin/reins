@@ -17,6 +17,8 @@ import {
 import {
   type HarnessCapabilities,
   type HarnessEvent,
+  type HarnessInlineContext,
+  type HarnessInput,
   type HarnessInteraction,
   type HarnessInteractionResponse,
   type HarnessRunRequest,
@@ -35,6 +37,7 @@ export type AdapterConformanceScenario =
   | "resume-restored"
   | "tools"
   | "context"
+  | "typed-context"
   | "steering"
   | "discovery";
 
@@ -50,6 +53,8 @@ export interface AdapterConformanceFixture {
   adapter: HarnessAdapter;
   /** Select provider traffic without replacing or wrapping the adapter. */
   useScenario(scenario: AdapterConformanceScenario): void;
+  /** Count provider transport openings so rejected input can be proven pre-provider. */
+  providerOpens(): number;
   discovery: AdapterConformanceDiscovery;
 }
 
@@ -69,6 +74,40 @@ export interface AdapterConformanceOptions {
   timeoutMs?: number;
 }
 
+const TYPED_CONTEXT_INPUT = [
+  {
+    type: "context-reference",
+    contextId: "conformance-context-second",
+    referenceId: "conformance-reference-second",
+  },
+  { type: "text", text: "conformance-context-separator" },
+  {
+    type: "context-reference",
+    contextId: "conformance-context-first",
+    referenceId: "conformance-reference-first",
+  },
+] as const satisfies readonly HarnessInput[];
+
+const TYPED_INLINE_CONTEXT = {
+  version: 1,
+  records: [
+    {
+      version: 1,
+      id: "conformance-context-first",
+      kind: "conformance:item",
+      label: "First",
+      payload: "first-context-value",
+    },
+    {
+      version: 1,
+      id: "conformance-context-second",
+      kind: "conformance:item",
+      label: "Second",
+      payload: "second-context-value",
+    },
+  ],
+} as const satisfies HarnessInlineContext;
+
 export const CONFORMANCE = {
   text: "conformance-ok",
   waitingText: "conformance-waiting",
@@ -78,6 +117,9 @@ export const CONFORMANCE = {
   toolOutput: "tool-ok",
   contextSourceId: "conformance:context",
   contextText: "context-ok",
+  typedContextInput: TYPED_CONTEXT_INPUT,
+  typedInlineContext: TYPED_INLINE_CONTEXT,
+  typedContextText: "typed-context-ok",
   followUpText: "conformance-follow-up",
   resumeToken: "conformance-resume-token",
   interaction: {
@@ -109,6 +151,14 @@ function request(adapterId: string, session: HarnessSessionKey = SESSION): Harne
     session,
     adapterId,
     input: [{ type: "text", text: "Run the adapter conformance scenario." }],
+  };
+}
+
+function typedContextRequest(adapterId: string): HarnessRunRequest {
+  return {
+    ...request(adapterId),
+    input: CONFORMANCE.typedContextInput,
+    inlineContext: CONFORMANCE.typedInlineContext,
   };
 }
 
@@ -227,12 +277,13 @@ async function runAndCollect(
   timeoutMs: number,
   adapter: HarnessAdapter,
   runRequest = request(adapter.id),
+  startOptions?: HarnessStartOptions,
 ) {
   const harness = scopedRuntime(defer, timeoutMs, {
     adapters: [adapter],
     persistence: createMemoryPersistence(),
   });
-  const run = harness.start(runRequest);
+  const run = harness.start(runRequest, startOptions);
   const events = await collect(run.events);
   const status = await run.done;
   return { events, status };
@@ -291,6 +342,7 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
         image: { support: "unsupported" as const },
       },
     };
+    const opensBeforeRejections = fixture.providerOpens();
     let failure: unknown;
     try {
       harness.start({
@@ -310,10 +362,85 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
       "rejected input wrote a lifecycle event",
     );
 
+    let unsupportedContextFailure: unknown;
+    try {
+      harness.start(typedContextRequest(fixture.adapterId), {
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable" },
+            "context-reference": { support: "unsupported" },
+          },
+        },
+      });
+    } catch (error) {
+      unsupportedContextFailure = error;
+    }
+    check(
+      unsupportedContextFailure instanceof HarnessRuntimeError
+        && unsupportedContextFailure.code === "INVALID_INPUT",
+      "host input policy did not reject unsupported context references before provider open",
+    );
+
+    let staleContextFailure: unknown;
+    try {
+      harness.start({
+        ...typedContextRequest(fixture.adapterId),
+        inlineContext: {
+          version: 1,
+          records: [CONFORMANCE.typedInlineContext.records[0]],
+        },
+      }, {
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable" },
+            "context-reference": { support: "stable" },
+          },
+        },
+      });
+    } catch (error) {
+      staleContextFailure = error;
+    }
+    check(
+      staleContextFailure instanceof HarnessRuntimeError && staleContextFailure.code === "INVALID_INPUT",
+      "stale context reference was not rejected before provider open",
+    );
+    same(
+      await persistence.events.list(SESSION, fixture.adapterId),
+      [],
+      "rejected context input wrote a lifecycle event",
+    );
+    check(
+      fixture.providerOpens() === opensBeforeRejections,
+      "rejected input reached the provider",
+    );
+
     const valid = harness.start(request(fixture.adapterId), { inputPolicy });
     const events = await collect(valid.events);
     check(await valid.done === "completed", "valid policy input did not complete");
     validateEnvelope(events, fixture.adapterId, SESSION);
+  });
+
+  const declaredContextPolicy = fixture.discovery.profile.status === "available"
+    ? fixture.discovery.profile.value.inputPolicy
+    : undefined;
+  const declaredContextSupport = declaredContextPolicy?.modalities?.["context-reference"]?.support;
+  if (!declaredContextPolicy || declaredContextSupport === undefined || declaredContextSupport === "unsupported") {
+    skip("ordered typed context", "adapter profile does not report context-reference input support");
+  } else await runCase("ordered typed context", async (defer) => {
+    const result = await runAndCollect(
+      defer,
+      timeoutMs,
+      adapter("typed-context"),
+      typedContextRequest(fixture.adapterId),
+      { inputPolicy: declaredContextPolicy },
+    );
+    check(result.status === "completed", "typed context turn did not complete");
+    validateEnvelope(result.events, fixture.adapterId, SESSION);
+    same(
+      result.events.slice(1, -1).map((event) => event.payload),
+      [{ kind: "assistant-text", text: CONFORMANCE.typedContextText }],
+      "ordered typed context changed at the adapter boundary",
+    );
   });
 
   await runCase("host execution admission", async (defer) => {
