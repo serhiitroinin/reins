@@ -19,6 +19,7 @@
     "fuzzy-hounds-discover",
     "quiet-runtime-binding",
     "safe-claude-lifecycle",
+    "safe-input-admission",
     "small-mcp-bridge",
     "strong-followups-steer",
     "tender-incident-terminal",
