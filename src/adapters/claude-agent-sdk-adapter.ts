@@ -172,6 +172,7 @@ export interface ClaudeAgentSdkAdapter extends HarnessAdapter {
   open(request: {
     session: HarnessSessionKey;
     resumeToken: string | null;
+    signal: AbortSignal;
     persistCheckpoint?(resumeToken: string | null): Promise<void>;
   }): Promise<ClaudeAgentSdkAdapterSession>;
 }

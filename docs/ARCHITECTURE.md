@@ -177,7 +177,12 @@ Cancellation has three ordered boundaries: dispatch to the adapter, drain the
 provider turn, then persist and close the runtime terminal envelope. A session
 remains reserved through all three. External aborts use the same dispatch path,
 cancellation failures do not bypass the drain, and a session that finishes
-opening after cancellation is closed without running.
+opening after cancellation is closed without running. `HarnessAdapterOpenRequest`
+therefore carries the owning abort signal. Runtime shutdown retires a pending
+open without waiting forever, closes already resolved sessions independently,
+and closes a session that a non-conforming adapter resolves after retirement.
+Adapters must stop opening on abort and release any partially allocated
+provider resources before settling.
 
 ## Context sources
 
@@ -282,7 +287,9 @@ without accidentally exposing application state through a new transport.
 
 An adapter opens or resumes a provider session and exposes an `AsyncIterable`
 of normalized events. It must state its real capabilities and must not leak
-provider SDK types into the core protocol.
+provider SDK types into the core protocol. Opening is cancellation-aware: the
+adapter must observe `HarnessAdapterOpenRequest.signal`, reject or otherwise
+settle promptly on abort, and never publish a usable session after retirement.
 
 Codex App Server communication uses a shared newline JSON-RPC peer.
 Its model mapper exposes App Server reasoning options, modalities, and service

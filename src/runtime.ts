@@ -113,6 +113,8 @@ export interface HarnessAdapterCheckpointContract {
 export interface HarnessAdapterOpenRequest {
   session: HarnessSessionKey;
   resumeToken: string | null;
+  /** Aborted when the owning turn or runtime retires this open attempt. */
+  signal: AbortSignal;
   /** Runtime-owned durable write for provider checkpoints announced mid-turn. */
   persistCheckpoint?(resumeToken: string | null): Promise<void>;
 }
@@ -348,6 +350,12 @@ interface ManagedSession {
   sessionBinding?: string;
   generation: number;
   active: boolean;
+}
+
+interface ManagedSessionOpening {
+  promise: Promise<ManagedSession>;
+  status: "pending" | "fulfilled" | "rejected";
+  managed?: ManagedSession;
 }
 
 /** Keep admission stable even if a discovery cache mutates after `start()`. */
@@ -637,7 +645,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const now = options.now ?? (() => new Date());
   const tools = options.tools ?? emptyToolHost;
   const contextSources = options.contextSources ?? [];
-  const opened = new Map<string, Promise<ManagedSession>>();
+  const opened = new Map<string, ManagedSessionOpening>();
   const reserved = new Set<string>();
   const sessionBindings = new Map<string, string>();
   const sessionGenerations = new Map<string, number>();
@@ -786,10 +794,11 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
     key: HarnessSessionKey,
     adapter: HarnessAdapter,
     requestedBinding: string | undefined,
+    signal: AbortSignal,
   ): Promise<ManagedSession> => {
     const id = harnessSessionKey(key, adapter.id);
     const known = opened.get(id);
-    if (known) return known;
+    if (known) return known.promise;
     const generation = (sessionGenerations.get(id) ?? 0) + 1;
     sessionGenerations.set(id, generation);
     const created = (async (): Promise<ManagedSession> => {
@@ -830,6 +839,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         resumeToken = stored.checkpoint.token;
       }
       try {
+        if (signal.aborted) throw new HarnessAdapterInterruptedError();
         const persistCheckpoint = async (resumeToken: string | null): Promise<void> => {
           try {
             await saveCheckpoint(
@@ -848,10 +858,48 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             throw error;
           }
         };
+        const providerOpening = Promise.resolve(adapter.open({
+          session: key,
+          resumeToken,
+          signal,
+          persistCheckpoint,
+        }));
+        const session = await new Promise<HarnessAdapterSession>((resolve, reject) => {
+          let retired = false;
+          const abort = (): void => {
+            if (retired) return;
+            retired = true;
+            reject(new HarnessAdapterInterruptedError());
+          };
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+          void providerOpening.then(
+            (value) => {
+              signal.removeEventListener("abort", abort);
+              if (retired || signal.aborted) {
+                void closeAdapterSession(value).catch((error) => {
+                  reportFailure(error, { phase: "session-close", adapterId: adapter.id, session: key }, {
+                    code: "SESSION_CLOSE_FAILED",
+                    message: "A retired harness session could not be closed.",
+                  });
+                });
+                return;
+              }
+              retired = true;
+              resolve(value);
+            },
+            (error) => {
+              signal.removeEventListener("abort", abort);
+              if (retired) return;
+              retired = true;
+              reject(error);
+            },
+          );
+        });
         return {
           adapter,
           key: { ...key },
-          session: await adapter.open({ session: key, resumeToken, persistCheckpoint }),
+          session,
           ...(requestedBinding !== undefined
             ? { sessionBinding: requestedBinding }
               : stored?.sessionBinding !== undefined
@@ -861,21 +909,33 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           active: false,
         };
       } catch (error) {
-        reportFailure(error, { phase: "session-open", adapterId: adapter.id, session: key }, {
-          code: "SESSION_OPEN_FAILED",
-          message: `${adapter.id} session could not be opened.`,
-        });
+        if (!(error instanceof HarnessAdapterInterruptedError)) {
+          reportFailure(error, { phase: "session-open", adapterId: adapter.id, session: key }, {
+            code: "SESSION_OPEN_FAILED",
+            message: `${adapter.id} session could not be opened.`,
+          });
+        }
         throw error;
       }
     })();
-    opened.set(id, created);
-    void created.catch((error) => {
-      reportFailure(error, { phase: "session-load", adapterId: adapter.id, session: key }, {
-        code: "SESSION_RECOVERY_FAILED",
-        message: "The saved harness session could not be recovered.",
-      });
-      opened.delete(id);
-    });
+    const entry: ManagedSessionOpening = { promise: created, status: "pending" };
+    opened.set(id, entry);
+    void created.then(
+      (managed) => {
+        entry.status = "fulfilled";
+        entry.managed = managed;
+      },
+      (error) => {
+        entry.status = "rejected";
+        if (!(error instanceof HarnessAdapterInterruptedError)) {
+          reportFailure(error, { phase: "session-load", adapterId: adapter.id, session: key }, {
+            code: "SESSION_RECOVERY_FAILED",
+            message: "The saved harness session could not be recovered.",
+          });
+        }
+        if (opened.get(id) === entry) opened.delete(id);
+      },
+    );
     return created;
   };
 
@@ -1084,7 +1144,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           if (!ownsReservation) {
             throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           }
-          opening = open(runRequest.session, adapter, admission?.sessionBinding);
+          opening = open(runRequest.session, adapter, admission?.sessionBinding, controller.signal);
           managed = await opening;
           if (managed.sessionBinding === undefined && admission?.sessionBinding !== undefined) {
             managed.sessionBinding = admission.sessionBinding;
@@ -1093,7 +1153,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             sessionBindings.set(sessionId, managed.sessionBinding);
           }
           if (controller.signal.aborted) {
-            if (opened.get(sessionId) === opening) opened.delete(sessionId);
+            if (opened.get(sessionId)?.promise === opening) opened.delete(sessionId);
             try {
               await closeAdapterSession(managed.session);
             } finally {
@@ -1603,7 +1663,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         if (known) {
           let managed: ManagedSession | null = null;
           try {
-            managed = await known;
+            managed = await known.promise;
           } catch {
             if (opened.get(id) === known) opened.delete(id);
           }
@@ -1667,12 +1727,11 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         }
 
         const closeSessions = async (
-          sessions: readonly Promise<ManagedSession>[],
+          sessions: readonly ManagedSessionOpening[],
         ): Promise<PromiseSettledResult<void>[]> => {
-          const resolved = await Promise.allSettled(sessions);
-          return Promise.allSettled(resolved.flatMap((entry) => {
-            if (entry.status !== "fulfilled" || !entry.value.session.close) return [];
-            const managed = entry.value;
+          return Promise.allSettled(sessions.flatMap((entry) => {
+            if (entry.status !== "fulfilled" || !entry.managed?.session.close) return [];
+            const managed = entry.managed;
             return [closeAdapterSession(managed.session).catch((error) => {
               reportFailure(error, {
                 phase: "session-close",

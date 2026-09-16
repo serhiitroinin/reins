@@ -488,6 +488,7 @@ export interface AcpV1Adapter extends HarnessAdapter {
   open(request: {
     session: AcpV1ConnectRequest["session"];
     resumeToken: string | null;
+    signal: AbortSignal;
     persistCheckpoint?(resumeToken: string | null): Promise<void>;
   }): Promise<AcpV1AdapterSession>;
 }

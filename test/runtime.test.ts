@@ -411,6 +411,84 @@ describe("harness runtime", () => {
     });
   });
 
+  test("close retires an adapter open that never resolves", async () => {
+    let openStarted!: () => void;
+    const started = new Promise<void>((resolve) => { openStarted = resolve; });
+    let openAborted = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open({ signal }) {
+        openStarted();
+        signal.addEventListener("abort", () => { openAborted = true; }, { once: true });
+        return new Promise(() => undefined);
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request);
+    const events = collect(run.events);
+    await started;
+
+    await harness.close();
+
+    expect(openAborted).toBe(true);
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+  });
+
+  test("a pending adapter open cannot block close of an already resolved session", async () => {
+    let resolvedRunStarted!: () => void;
+    const resolvedStarted = new Promise<void>((resolve) => { resolvedRunStarted = resolve; });
+    let releaseResolvedRun!: () => void;
+    const resolvedRunning = new Promise<void>((resolve) => { releaseResolvedRun = resolve; });
+    let pendingOpenStarted!: () => void;
+    const pendingStarted = new Promise<void>((resolve) => { pendingOpenStarted = resolve; });
+    let resolvedCloses = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open({ session }) {
+        if (session.threadId === "pending") {
+          pendingOpenStarted();
+          return new Promise(() => undefined);
+        }
+        return {
+          async *run() {
+            resolvedRunStarted();
+            await resolvedRunning;
+          },
+          async close() {
+            resolvedCloses += 1;
+            releaseResolvedRun();
+          },
+        };
+      },
+    };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const resolved = harness.start({
+      ...request,
+      session: { ...request.session, threadId: "resolved" },
+    });
+    const resolvedEvents = collect(resolved.events);
+    await resolvedStarted;
+    const pending = harness.start({
+      ...request,
+      session: { ...request.session, threadId: "pending" },
+    });
+    const pendingEvents = collect(pending.events);
+    await pendingStarted;
+
+    await harness.close();
+
+    expect(resolvedCloses).toBe(1);
+    expect(await resolved.done).toBe("interrupted");
+    expect(await pending.done).toBe("interrupted");
+    await Promise.all([resolvedEvents, pendingEvents]);
+  });
+
   test("reset orders removal after an in-flight checkpoint write", async () => {
     const persistence = createMemoryPersistence();
     const save = persistence.sessions.save.bind(persistence.sessions);
@@ -1244,14 +1322,15 @@ describe("harness runtime", () => {
     let cancellationSettled = false;
     const cancellation = run.cancel().finally(() => { cancellationSettled = true; });
     await Bun.sleep(0);
-    expect(cancellationSettled).toBe(false);
+    expect(cancellationSettled).toBe(true);
+    await cancellation;
+    expect(ran).toBe(false);
+    expect(await run.done).toBe("interrupted");
 
     finishOpening();
-    await cancellation;
+    while (!closed) await Bun.sleep(0);
 
-    expect(ran).toBe(false);
     expect(closed).toBe(true);
-    expect(await run.done).toBe("interrupted");
     expect((await events).map((event) => event.payload.kind)).toEqual(["turn-started", "turn-completed"]);
   });
 

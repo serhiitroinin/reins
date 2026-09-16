@@ -325,6 +325,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "close-pending" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     const turn = collect(session.run(adapterRequest("close-pending", "one"))).catch((error) => error);
 
@@ -388,6 +389,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "interaction-race" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     const controller = new AbortController();
     const stream = session.run(adapterRequest("interaction-race", "one", { signal: controller.signal }));
@@ -436,6 +438,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "binding" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     await collect(session.run(adapterRequest("binding", "one", {
       accountId: "account-a",
@@ -492,6 +495,7 @@ describe("Claude Agent SDK adapter", () => {
       const session = await adapter.open({
         session: { tenantId: "tenant", actorId: "actor", threadId: `identity-${index}` },
         resumeToken: null,
+        signal: new AbortController().signal,
       });
       await collect(session.run(adapterRequest(`identity-${index}`, "one", base)));
       await expect(collect(session.run(adapterRequest(`identity-${index}`, "two", {
@@ -520,6 +524,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "key" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     await collect(session.run(adapterRequest("key", "one", {
       accountId: "account-a",
@@ -560,6 +565,7 @@ describe("Claude Agent SDK adapter", () => {
     const session = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "send-failure" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
 
     await expect(collect(session.run(adapterRequest("send-failure", "one")))).rejects.toThrow("private send failure");
@@ -654,6 +660,7 @@ describe("Claude Agent SDK adapter", () => {
     const opened = await adapter.open({
       session: { tenantId: "tenant", actorId: "actor", threadId: "multi" },
       resumeToken: null,
+      signal: new AbortController().signal,
     });
     const request = (turnId: string) => ({
       session: { tenantId: "tenant", actorId: "actor", threadId: "multi" },
