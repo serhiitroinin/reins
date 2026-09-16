@@ -435,6 +435,82 @@ describe("harness runtime", () => {
     expect(opened).toBe(false);
   });
 
+  test("enforces an admitted input policy before ids, events, or provider opening", async () => {
+    let opened = 0;
+    let ids = 0;
+    let preparations = 0;
+    let observed: readonly unknown[] = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opened += 1;
+        return {
+          async *run(runRequest) {
+            observed = runRequest.input;
+          },
+        };
+      },
+    };
+    const persistence = createMemoryPersistence();
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence,
+      createId: () => `id-${++ids}`,
+      contextSources: [{
+        id: "test:policy",
+        failureMode: "required",
+        prepare() {
+          preparations += 1;
+          return { content: [] };
+        },
+      }],
+    });
+    const inputPolicy = {
+      modalities: {
+        text: { support: "stable" as const },
+        image: { support: "unsupported" as const },
+        resource: { support: "unsupported" as const },
+      },
+    };
+
+    const rejectedInput = [
+      [{ type: "image" as const, mediaType: "image/png", data: new Uint8Array([1]) }],
+      [{ type: "resource" as const, uri: "fold://note/1" }],
+    ];
+    for (const input of rejectedInput) {
+      expect(() => harness.start({ ...request, input }, { inputPolicy })).toThrow("does not support");
+    }
+    expect(opened).toBe(0);
+    expect(ids).toBe(0);
+    expect(preparations).toBe(0);
+    expect(await persistence.events.list(request.session, request.adapterId)).toEqual([]);
+
+    const valid = harness.start(request, { inputPolicy });
+    await collect(valid.events);
+    expect(await valid.done).toBe("completed");
+    expect(opened).toBe(1);
+    expect(observed).toEqual(request.input);
+
+    const imageInput = [{
+      type: "image" as const,
+      mediaType: "image/png",
+      data: new Uint8Array([1, 2]),
+    }];
+    const allowed = harness.start({ ...request, input: imageInput }, {
+      inputPolicy: { modalities: { image: { support: "stable" } } },
+    });
+    await collect(allowed.events);
+    expect(await allowed.done).toBe("completed");
+    expect(observed).toEqual(imageInput);
+
+    const resourceInput = [{ type: "resource" as const, uri: "fold://note/2" }];
+    const backwardCompatible = harness.start({ ...request, input: resourceInput });
+    await collect(backwardCompatible.events);
+    expect(await backwardCompatible.done).toBe("completed");
+    expect(observed).toEqual(resourceInput);
+  });
+
   test("does not persist an arbitrary adapter error message", async () => {
     const adapter: HarnessAdapter = {
       id: "scripted",
@@ -859,6 +935,50 @@ describe("harness runtime", () => {
     ]);
   });
 
+  test("uses the snapshotted input policy for same-turn follow-ups", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let steers = 0;
+    let cancellations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["same-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async steer() { steers += 1; release(); },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const imageConstraint: { support: "unsupported" | "stable" } = { support: "unsupported" };
+    const inputPolicy = { modalities: { image: imageConstraint } };
+    const harness = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = harness.start(request, { turnId: "policy-turn", inputPolicy });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    imageConstraint.support = "stable";
+    await expect(run.followUp({
+      expectedTurnId: "policy-turn",
+      input: [{ type: "image", mediaType: "image/png", data: new Uint8Array([1]) }],
+    })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    expect(steers).toBe(0);
+    expect(cancellations).toBe(0);
+
+    await run.followUp({
+      expectedTurnId: "policy-turn",
+      input: [{ type: "text", text: "still active" }],
+    });
+    expect(steers).toBe(1);
+    expect(await run.done).toBe("completed");
+    await events;
+  });
+
   test("refuses stale and unsupported follow-ups without cancelling the active turn", async () => {
     let ready = false;
     let release!: () => void;
@@ -1004,6 +1124,83 @@ describe("harness runtime", () => {
     await run.cancel();
     await events;
     expect(cancellations).toBe(1);
+  });
+
+  test("validates a replacement policy before context preparation or cancellation", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    let preparations = 0;
+    let invocations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() {
+            invocations += 1;
+            if (invocations === 1) {
+              ready = true;
+              await waiting;
+            }
+          },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      contextSources: [{
+        id: "replacement",
+        failureMode: "required",
+        prepare() {
+          preparations += 1;
+          return { content: [] };
+        },
+      }],
+    });
+    const run = harness.start(request, {
+      turnId: "active-turn",
+      context: { sources: [], unavailable: [] },
+      inputPolicy: { modalities: { image: { support: "unsupported" } } },
+    });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    await expect(run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "image", mediaType: "image/png", data: new Uint8Array([1]) }],
+    }, {
+      replacement: {},
+    })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    expect(preparations).toBe(0);
+    expect(cancellations).toBe(0);
+
+    const overrideConstraint: { support: "stable" | "unsupported" } = { support: "stable" };
+    const replacing = run.followUp({
+      expectedTurnId: "active-turn",
+      input: [{ type: "image", mediaType: "image/png", data: new Uint8Array([1]) }],
+    }, {
+      replacement: {
+        inputPolicy: { modalities: { image: overrideConstraint } },
+      },
+    });
+    overrideConstraint.support = "unsupported";
+    const result = await replacing;
+    const replacementEvents = await collect(result.run.events);
+
+    expect(await run.done).toBe("interrupted");
+    await events;
+    expect(cancellations).toBe(1);
+    expect(preparations).toBe(1);
+    expect(invocations).toBe(2);
+    expect(await result.run.done).toBe("completed");
+    expect(replacementEvents.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "completed" });
   });
 
   test("serializes stop ahead of a later same-turn follow-up", async () => {

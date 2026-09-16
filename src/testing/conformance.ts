@@ -3,11 +3,13 @@
 import {
   createHarness,
   HarnessAdapterError,
+  HarnessRuntimeError,
   type HarnessAdapter,
   type HarnessAdapterEvent,
   type HarnessRun,
   type HarnessRuntime,
   type HarnessRuntimeOptions,
+  type HarnessStartOptions,
 } from "../runtime.js";
 import {
   createMemoryPersistence,
@@ -145,7 +147,10 @@ function scopedRuntime(
   defer: DeferCleanup,
   timeoutMs: number,
   options: HarnessRuntimeOptions,
-): { runtime: HarnessRuntime; start: (request: HarnessRunRequest) => HarnessRun } {
+): {
+  runtime: HarnessRuntime;
+  start: (request: HarnessRunRequest, options?: HarnessStartOptions) => HarnessRun;
+} {
   const runtime = createHarness(options);
   const pending = new Set<HarnessRun>();
   defer(async () => {
@@ -156,8 +161,8 @@ function scopedRuntime(
   });
   return {
     runtime,
-    start(runRequest) {
-      const run = runtime.start(runRequest);
+    start(runRequest, startOptions?: HarnessStartOptions) {
+      const run = runtime.start(runRequest, startOptions);
       pending.add(run);
       void run.done.then(
         () => pending.delete(run),
@@ -274,6 +279,43 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
     validateCapabilities(capabilities);
   });
 
+  await runCase("host input policy", async (defer) => {
+    const persistence = createMemoryPersistence();
+    const harness = scopedRuntime(defer, timeoutMs, {
+      adapters: [adapter("basic")],
+      persistence,
+    });
+    const inputPolicy = {
+      modalities: {
+        text: { support: "stable" as const },
+        image: { support: "unsupported" as const },
+      },
+    };
+    let failure: unknown;
+    try {
+      harness.start({
+        ...request(fixture.adapterId),
+        input: [{ type: "image", mediaType: "image/png", data: new Uint8Array([1]) }],
+      }, { inputPolicy });
+    } catch (error) {
+      failure = error;
+    }
+    check(
+      failure instanceof HarnessRuntimeError && failure.code === "INVALID_INPUT",
+      "host input policy did not reject unsupported input",
+    );
+    same(
+      await persistence.events.list(SESSION, fixture.adapterId),
+      [],
+      "rejected input wrote a lifecycle event",
+    );
+
+    const valid = harness.start(request(fixture.adapterId), { inputPolicy });
+    const events = await collect(valid.events);
+    check(await valid.done === "completed", "valid policy input did not complete");
+    validateEnvelope(events, fixture.adapterId, SESSION);
+  });
+
   await runCase("event lifecycle", async (defer) => {
     const result = await runAndCollect(defer, timeoutMs, adapter("basic"));
     check(result.status === "completed", "basic turn did not complete");
@@ -388,13 +430,32 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
       adapters: [value],
       persistence: createMemoryPersistence(),
     });
-    const first = harness.start(request(fixture.adapterId));
+    const first = harness.start(request(fixture.adapterId), {
+      inputPolicy: {
+        modalities: {
+          text: { support: "stable", maxTextCharacters: 256 },
+        },
+      },
+    });
     const iterator = first.events[Symbol.asyncIterator]();
     check((await iterator.next()).value?.payload.kind === "turn-started", "steering scenario did not start");
     const waiting = await iterator.next();
     check(
       waiting.value?.payload.kind === "assistant-text" && waiting.value.payload.text === CONFORMANCE.waitingText,
       "steering scenario did not reach its wait point",
+    );
+    let invalidFailure: unknown;
+    try {
+      await first.followUp({
+        expectedTurnId: first.turnId,
+        input: [{ type: "text", text: "x".repeat(257) }],
+      });
+    } catch (error) {
+      invalidFailure = error;
+    }
+    check(
+      invalidFailure instanceof HarnessRuntimeError && invalidFailure.code === "INVALID_INPUT",
+      "active-turn input policy did not reject unsupported follow-up input",
     );
     const result = await first.followUp({
       expectedTurnId: first.turnId,

@@ -81,9 +81,11 @@ for await (const event of run.events) console.log(event.payload);
 
 An application that already admitted a turn may pass runtime-only start
 options as the second argument. Host-supplied IDs keep product and harness
-events correlated; a supplied controller becomes the run's controller; and a
+events correlated; a supplied controller becomes the run's controller; a
 prepared context is passed by identity to both the adapter and application
-tools. These live values are intentionally absent from the JSON wire contract.
+tools; and an `inputPolicy` freezes the host-resolved engine/model limits for
+the run. These live values are intentionally absent from the JSON wire
+contract.
 
 ```ts
 const controller = new AbortController();
@@ -92,8 +94,17 @@ const run = harness.start(request, {
   turnId: productTurnId,
   controller,
   context: preparedContext,
+  inputPolicy: admittedInputPolicy,
 });
 ```
+
+The runtime validates that policy synchronously before it allocates turn IDs,
+persists events, prepares context, or opens an adapter. Same-turn follow-ups
+reuse the frozen policy. A replacement follow-up inherits it unless the host
+supplies a newly admitted `replacement.inputPolicy`; either way, validation
+happens before provider cancellation or mutation. Calling
+`validateHarnessInput` in a UI remains useful feedback, but the runtime check
+is the authoritative admission boundary.
 
 Run the complete example with `bun run example`.
 

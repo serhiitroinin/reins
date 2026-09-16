@@ -9,6 +9,7 @@ describe("adapter conformance", () => {
     expect(report.cases.filter((entry) => entry.status === "failed")).toEqual([]);
     expect(report.cases.map((entry) => entry.name)).toEqual([
       "identity and capabilities",
+      "host input policy",
       "event lifecycle",
       "unsafe error redaction",
       "safe error preservation",
