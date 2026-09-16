@@ -760,12 +760,14 @@ describe("harness runtime", () => {
       },
     });
 
-    const run = harness.start(request, {
+    const startOptions = {
       runId: "host-run",
       turnId: "host-turn",
       controller,
       context,
-    });
+    };
+    const run = harness.start(request, startOptions);
+    startOptions.context = { sources: [], unavailable: [] };
     const events = await collect(run.events);
 
     expect(run.runId).toBe("host-run");

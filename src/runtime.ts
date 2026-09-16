@@ -640,6 +640,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       const runId = startOptions.runId ?? createId();
       const turnId = startOptions.turnId ?? createId();
       const controller = startOptions.controller ?? new AbortController();
+      const suppliedContext = startOptions.context;
       if (knownSessionBinding === undefined && admission?.sessionBinding !== undefined) {
         sessionBindings.set(sessionId, admission.sessionBinding);
       }
@@ -754,7 +755,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          const context = startOptions.context
+          const context = suppliedContext
             ?? await prepareContext(runRequest, runId, turnId, controller.signal);
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           const toolContext = {
@@ -873,6 +874,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           return publicCancelWork;
         },
         followUp(followUpRequest, followUpOptions = {}) {
+          const requestedStrategy = followUpOptions.strategy;
           const inputValidation = validateHarnessInlineContext(
             followUpRequest.inlineContext,
             followUpRequest.input,
@@ -893,6 +895,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           const replacementExecution = snapshotReplacementExecution(
             followUpOptions.replacement?.execution,
           );
+          const replacement: HarnessReplacementOptions = followUpOptions.replacement
+            ? {
+              ...(followUpOptions.replacement.runId !== undefined ? { runId: followUpOptions.replacement.runId } : {}),
+              ...(followUpOptions.replacement.turnId !== undefined ? { turnId: followUpOptions.replacement.turnId } : {}),
+              ...(followUpOptions.replacement.controller ? { controller: followUpOptions.replacement.controller } : {}),
+              ...(followUpOptions.replacement.context ? { context: followUpOptions.replacement.context } : {}),
+              ...(replacementAdmission ? { admission: replacementAdmission } : {}),
+              ...(replacementExecution ? { execution: replacementExecution } : {}),
+            }
+            : {};
           return serializeControl(async () => {
             ensureActiveTurn(admittedFollowUp.expectedTurnId);
             let capabilities: HarnessCapabilities;
@@ -904,15 +916,13 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             ensureActiveTurn(admittedFollowUp.expectedTurnId);
             const steering = capabilities.steering;
             const supported = steering?.support !== "unsupported" ? steering?.strategies ?? [] : [];
-            const strategy = followUpOptions.strategy
+            const strategy = requestedStrategy
               ?? (steering?.preferred && supported.includes(steering.preferred)
                 ? steering.preferred
                 : supported[0]);
             if (!strategy || !supported.includes(strategy)) {
               throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept an active-turn follow-up.");
             }
-
-            const replacement = followUpOptions.replacement ?? {};
             const followUpAdmission = strategy === "replacement-turn" && replacementAdmissionProvided
               ? replacementAdmission
               : admission;
