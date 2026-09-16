@@ -10,6 +10,7 @@ describe("adapter conformance", () => {
     expect(report.cases.map((entry) => entry.name)).toEqual([
       "identity and capabilities",
       "host input policy",
+      "host execution admission",
       "event lifecycle",
       "unsafe error redaction",
       "safe error preservation",

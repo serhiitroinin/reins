@@ -511,6 +511,116 @@ describe("harness runtime", () => {
     expect(observed).toEqual(resourceInput);
   });
 
+  test("enforces a complete admitted execution before runtime side effects", async () => {
+    let opened = 0;
+    let ids = 0;
+    let preparations = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        opened += 1;
+        return { async *run() {} };
+      },
+    };
+    const persistence = createMemoryPersistence();
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence,
+      createId: () => `id-${++ids}`,
+      contextSources: [{
+        id: "test:admission",
+        failureMode: "required",
+        prepare() {
+          preparations += 1;
+          return { content: [] };
+        },
+      }],
+    });
+    const admittedRequest = {
+      ...request,
+      accountId: "account-a",
+      model: "model-a",
+      effort: "high",
+      settings: {
+        permission: { modeId: "workspace-write", consentVersion: "grant-2" },
+        controls: { "vendor:fast": true, "vendor:verbosity": "high" },
+      },
+    };
+    const admission = {
+      adapterId: "scripted",
+      accountId: "account-a",
+      model: "model-a",
+      effort: "high",
+      settings: {
+        permission: { modeId: "workspace-write", consentVersion: "grant-2" },
+        controls: { "vendor:fast": true, "vendor:verbosity": "high" },
+      },
+      sessionBinding: "binding-a",
+    } as const;
+
+    const mismatches = [
+      { ...admission, adapterId: "other" },
+      { ...admission, accountId: "account-b" },
+      { ...admission, model: "model-b" },
+      { ...admission, effort: "low" },
+      { ...admission, settings: { ...admission.settings, permission: { modeId: "read-only" } } },
+      { ...admission, settings: { ...admission.settings, controls: { "vendor:fast": false } } },
+    ];
+    for (const rejected of mismatches) {
+      expect(() => harness.start(admittedRequest, { admission: rejected })).toThrow(HarnessRuntimeError);
+      try {
+        harness.start(admittedRequest, { admission: rejected });
+      } catch (error) {
+        expect(error).toMatchObject({ code: "ADMISSION_MISMATCH" });
+        expect(String(error)).not.toContain("account-b");
+        expect(String(error)).not.toContain("model-b");
+      }
+    }
+    expect(opened).toBe(0);
+    expect(ids).toBe(0);
+    expect(preparations).toBe(0);
+    expect(await persistence.events.list(request.session, request.adapterId)).toEqual([]);
+
+    const run = harness.start(admittedRequest, { admission });
+    await collect(run.events);
+    expect(await run.done).toBe("completed");
+    expect(opened).toBe(1);
+    const persisted = await persistence.events.list(request.session, request.adapterId);
+    expect(JSON.stringify(persisted)).not.toContain("binding-a");
+    expect(JSON.stringify(persisted)).not.toContain("vendor:fast");
+    expect(JSON.stringify(persisted)).not.toContain("grant-2");
+  });
+
+  test("pins an admitted session binding while preserving no-admission compatibility", async () => {
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() { return { async *run() {} }; },
+    };
+    let ids = 0;
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      createId: () => `id-${++ids}`,
+    });
+
+    const first = harness.start(request, { admission: { sessionBinding: "binding-a" } });
+    await collect(first.events);
+    await first.done;
+    const afterFirst = ids;
+
+    expect(() => harness.start(request, {
+      admission: { sessionBinding: "binding-b" },
+    })).toThrow("does not match this harness session");
+    expect(() => harness.start(request, { admission: {} })).toThrow("does not match this harness session");
+    expect(ids).toBe(afterFirst);
+
+    const compatible = harness.start(request);
+    await collect(compatible.events);
+    expect(await compatible.done).toBe("completed");
+  });
+
   test("does not persist an arbitrary adapter error message", async () => {
     const adapter: HarnessAdapter = {
       id: "scripted",
@@ -650,12 +760,14 @@ describe("harness runtime", () => {
       },
     });
 
-    const run = harness.start(request, {
+    const startOptions = {
       runId: "host-run",
       turnId: "host-turn",
       controller,
       context,
-    });
+    };
+    const run = harness.start(request, startOptions);
+    startOptions.context = { sources: [], unavailable: [] };
     const events = await collect(run.events);
 
     expect(run.runId).toBe("host-run");
@@ -941,6 +1053,7 @@ describe("harness runtime", () => {
     const waiting = new Promise<void>((resolve) => { release = resolve; });
     let steers = 0;
     let cancellations = 0;
+    let observedText: string | undefined;
     const adapter: HarnessAdapter = {
       id: "scripted",
       capabilities: () => ({
@@ -950,7 +1063,12 @@ describe("harness runtime", () => {
       async open() {
         return {
           async *run() { ready = true; await waiting; },
-          async steer() { steers += 1; release(); },
+          async steer(followUp) {
+            steers += 1;
+            const input = followUp.input[0];
+            observedText = input?.type === "text" ? input.text : undefined;
+            release();
+          },
           async cancel() { cancellations += 1; release(); },
         };
       },
@@ -970,11 +1088,15 @@ describe("harness runtime", () => {
     expect(steers).toBe(0);
     expect(cancellations).toBe(0);
 
-    await run.followUp({
+    const mutableFollowUp = { type: "text" as const, text: "still active" };
+    const accepted = run.followUp({
       expectedTurnId: "policy-turn",
-      input: [{ type: "text", text: "still active" }],
+      input: [mutableFollowUp],
     });
+    mutableFollowUp.text = "drifted after admission";
+    await accepted;
     expect(steers).toBe(1);
+    expect(observedText).toBe("still active");
     expect(await run.done).toBe("completed");
     await events;
   });
@@ -1201,6 +1323,202 @@ describe("harness runtime", () => {
     expect(invocations).toBe(2);
     expect(await result.run.done).toBe("completed");
     expect(replacementEvents.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "completed" });
+  });
+
+  test("inherits admission for replacements and snapshots an explicit readmission", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    let preparations = 0;
+    let generatedIds = 0;
+    let invocations = 0;
+    const observed: Array<{
+      session: string;
+      model: string | undefined;
+      fast: unknown;
+      text: string | undefined;
+    }> = [];
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run(adapterRequest) {
+            invocations += 1;
+            const text = adapterRequest.input[0];
+            observed.push({
+              session: adapterRequest.session.tenantId,
+              model: adapterRequest.model,
+              fast: adapterRequest.settings?.controls?.["vendor:fast"],
+              text: text?.type === "text" ? text.text : undefined,
+            });
+            if (invocations === 1) {
+              ready = true;
+              await waiting;
+            }
+          },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      createId: () => `replacement-id-${++generatedIds}`,
+      contextSources: [{
+        id: "test:replacement-admission",
+        failureMode: "required",
+        prepare() {
+          preparations += 1;
+          return { content: [] };
+        },
+      }],
+    });
+    const mutableSession = { ...request.session };
+    const mutableInput = { type: "text" as const, text: "initial" };
+    const mutableRequest = {
+      ...request,
+      session: mutableSession,
+      input: [mutableInput],
+      model: "model-a",
+      settings: { controls: { "vendor:fast": false } },
+    };
+    const admission = {
+      adapterId: "scripted",
+      model: "model-a",
+      settings: { controls: { "vendor:fast": false } },
+      sessionBinding: "binding-a",
+    };
+    const run = harness.start(mutableRequest, {
+      runId: "initial-run",
+      turnId: "initial-turn",
+      context: { sources: [], unavailable: [] },
+      admission,
+    });
+    admission.model = "model-b";
+    admission.settings.controls["vendor:fast"] = true;
+    mutableSession.tenantId = "drifted-tenant";
+    mutableInput.text = "drifted-input";
+    mutableRequest.model = "model-b";
+    mutableRequest.settings.controls["vendor:fast"] = true;
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    await expect(run.followUp({
+      expectedTurnId: "initial-turn",
+      input: [{ type: "text", text: "replace" }],
+    }, {
+      replacement: {
+        execution: {
+          model: "model-b",
+          settings: { controls: { "vendor:fast": true } },
+        },
+      },
+    })).rejects.toMatchObject({ code: "ADMISSION_MISMATCH" });
+    expect(generatedIds).toBe(0);
+    expect(preparations).toBe(0);
+    expect(cancellations).toBe(0);
+
+    const replacementAdmission = {
+      adapterId: "scripted",
+      model: "model-b",
+      settings: { controls: { "vendor:fast": true } },
+      sessionBinding: "binding-a",
+    };
+    const replacementExecution = {
+      model: "model-b",
+      settings: { controls: { "vendor:fast": true } },
+    };
+    const replacing = run.followUp({
+      expectedTurnId: "initial-turn",
+      input: [{ type: "text", text: "replace" }],
+    }, {
+      replacement: {
+        admission: replacementAdmission,
+        execution: replacementExecution,
+      },
+    });
+    replacementAdmission.model = "model-after-call";
+    replacementAdmission.settings.controls["vendor:fast"] = false;
+    replacementExecution.model = "model-after-call";
+    replacementExecution.settings.controls["vendor:fast"] = false;
+
+    const result = await replacing;
+    const replacementEvents = await collect(result.run.events);
+    await events;
+    expect(await run.done).toBe("interrupted");
+    expect(await result.run.done).toBe("completed");
+    expect(generatedIds).toBe(2);
+    expect(preparations).toBe(1);
+    expect(cancellations).toBe(1);
+    expect(invocations).toBe(2);
+    expect(observed).toEqual([
+      { session: "tenant", model: "model-a", fast: false, text: "initial" },
+      { session: "tenant", model: "model-b", fast: true, text: "replace" },
+    ]);
+    expect((await events)[0]?.session.tenantId).toBe("tenant");
+    expect(replacementEvents.at(-1)?.payload).toMatchObject({ kind: "turn-completed", status: "completed" });
+  });
+
+  test("refuses a replacement session-binding change before ids, context, or cancellation", async () => {
+    let ready = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let cancellations = 0;
+    let preparations = 0;
+    let generatedIds = 0;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => ({
+        ...capabilities,
+        steering: { support: "stable", strategies: ["replacement-turn"] },
+      }),
+      async open() {
+        return {
+          async *run() { ready = true; await waiting; },
+          async cancel() { cancellations += 1; release(); },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: createMemoryPersistence(),
+      createId: () => `replacement-id-${++generatedIds}`,
+      contextSources: [{
+        id: "test:replacement-binding",
+        failureMode: "required",
+        prepare() {
+          preparations += 1;
+          return { content: [] };
+        },
+      }],
+    });
+    const run = harness.start(request, {
+      runId: "initial-run",
+      turnId: "initial-turn",
+      context: { sources: [], unavailable: [] },
+      admission: { sessionBinding: "binding-a" },
+    });
+    const events = collect(run.events);
+    while (!ready) await Bun.sleep(0);
+
+    await expect(run.followUp({
+      expectedTurnId: "initial-turn",
+      input: [{ type: "text", text: "replace" }],
+    }, {
+      replacement: { admission: { sessionBinding: "binding-b" } },
+    })).rejects.toMatchObject({ code: "ADMISSION_MISMATCH" });
+    expect(generatedIds).toBe(0);
+    expect(preparations).toBe(0);
+    expect(cancellations).toBe(0);
+
+    await run.cancel();
+    await events;
+    expect(cancellations).toBe(1);
   });
 
   test("serializes stop ahead of a later same-turn follow-up", async () => {

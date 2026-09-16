@@ -316,6 +316,80 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
     validateEnvelope(events, fixture.adapterId, SESSION);
   });
 
+  await runCase("host execution admission", async (defer) => {
+    const persistence = createMemoryPersistence();
+    const harness = scopedRuntime(defer, timeoutMs, {
+      adapters: [adapter("basic")],
+      persistence,
+    });
+    const admittedRequest: HarnessRunRequest = {
+      ...request(fixture.adapterId),
+      settings: { controls: { "conformance:fast": true } },
+    };
+    const admission = {
+      adapterId: fixture.adapterId,
+      accountId: null,
+      model: null,
+      effort: null,
+      settings: {
+        permission: null,
+        controls: { "conformance:fast": true },
+      },
+      inputPolicy: {
+        modalities: { text: { support: "stable" as const } },
+      },
+      sessionBinding: "conformance-binding",
+    };
+    let mismatch: unknown;
+    try {
+      harness.start(admittedRequest, {
+        admission: {
+          ...admission,
+          settings: { ...admission.settings, controls: { "conformance:fast": false } },
+        },
+      });
+    } catch (error) {
+      mismatch = error;
+    }
+    check(
+      mismatch instanceof HarnessRuntimeError && mismatch.code === "ADMISSION_MISMATCH",
+      "host admission did not reject control drift",
+    );
+    same(
+      await persistence.events.list(SESSION, fixture.adapterId),
+      [],
+      "rejected admission wrote a lifecycle event",
+    );
+
+    const valid = harness.start(admittedRequest, { admission });
+    admission.settings.controls["conformance:fast"] = false;
+    const events = await collect(valid.events);
+    check(await valid.done === "completed", "valid admitted execution did not complete");
+    validateEnvelope(events, fixture.adapterId, SESSION);
+    const eventCount = events.length;
+
+    let bindingMismatch: unknown;
+    try {
+      harness.start(admittedRequest, {
+        admission: {
+          ...admission,
+          settings: { ...admission.settings, controls: { "conformance:fast": true } },
+          sessionBinding: "changed-binding",
+        },
+      });
+    } catch (error) {
+      bindingMismatch = error;
+    }
+    check(
+      bindingMismatch instanceof HarnessRuntimeError && bindingMismatch.code === "ADMISSION_MISMATCH",
+      "host admission did not reject session-binding drift",
+    );
+    check(
+      (await persistence.events.list(SESSION, fixture.adapterId)).length === eventCount,
+      "session-binding drift wrote a lifecycle event",
+    );
+  });
+
   await runCase("event lifecycle", async (defer) => {
     const result = await runAndCollect(defer, timeoutMs, adapter("basic"));
     check(result.status === "completed", "basic turn did not complete");
@@ -431,9 +505,17 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
       persistence: createMemoryPersistence(),
     });
     const first = harness.start(request(fixture.adapterId), {
-      inputPolicy: {
-        modalities: {
-          text: { support: "stable", maxTextCharacters: 256 },
+      admission: {
+        adapterId: fixture.adapterId,
+        accountId: null,
+        model: null,
+        effort: null,
+        settings: { permission: null, controls: {} },
+        sessionBinding: "conformance-steering-binding",
+        inputPolicy: {
+          modalities: {
+            text: { support: "stable", maxTextCharacters: 256 },
+          },
         },
       },
     });

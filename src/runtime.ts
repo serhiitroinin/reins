@@ -8,6 +8,7 @@
 import {
   harnessSessionKey,
   type HarnessCapabilities,
+  type HarnessContextValue,
   type HarnessEvent,
   type HarnessEventInput,
   type HarnessEventPayload,
@@ -30,12 +31,15 @@ import {
   type HarnessContextSource,
 } from "./context.js";
 import type {
+  HarnessControlValue,
   HarnessDiscovery,
   HarnessDiscoveryRequest,
   HarnessEngineProfile,
   HarnessInputPolicy,
   HarnessLimitSnapshot,
   HarnessModelCatalog,
+  HarnessPermissionSelection,
+  HarnessRunSettings,
 } from "./profile.js";
 import { bindToolHost, emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
 
@@ -142,13 +146,49 @@ export interface HarnessFollowUpOptions {
   /** Omit to use the adapter-declared preferred strategy. */
   strategy?: HarnessSteeringStrategy;
   /** Host identity and prepared context for a replacement turn. */
-  replacement?: HarnessStartOptions;
+  replacement?: HarnessReplacementOptions;
+}
+
+/** Complete execution fields for a replacement turn; omitted fields are cleared. */
+export interface HarnessReplacementExecution {
+  accountId?: string;
+  model?: string;
+  effort?: string;
+  settings?: HarnessRunSettings;
+  configuration?: Readonly<Record<string, unknown>>;
+}
+
+export interface HarnessReplacementOptions extends HarnessStartOptions {
+  /** Requires an explicit newly admitted snapshot. */
+  execution?: HarnessReplacementExecution;
 }
 
 export interface HarnessFollowUpResult {
   strategy: HarnessSteeringStrategy;
   /** Same run for same-turn steering; a fresh run for replacement steering. */
   run: HarnessRun;
+}
+
+/**
+ * Host-resolved execution values admitted before a turn reaches the runtime.
+ *
+ * Properties are optional so a host can adopt admission incrementally. For
+ * nullable selections, `null` explicitly admits an omitted request value while
+ * an absent property leaves that dimension unenforced.
+ */
+export interface HarnessAdmission {
+  adapterId?: string;
+  accountId?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  settings?: {
+    permission?: HarnessPermissionSelection | null;
+    /** Exact resolved control set. An empty object admits no controls. */
+    controls?: Readonly<Record<string, HarnessControlValue>>;
+  };
+  inputPolicy?: HarnessInputPolicy;
+  /** Opaque, non-secret fingerprint for values that must remain session-stable. */
+  sessionBinding?: string;
 }
 
 /**
@@ -163,7 +203,9 @@ export interface HarnessStartOptions {
   turnId?: string;
   controller?: AbortController;
   context?: HarnessPreparedContext<HarnessContextContribution>;
-  /** Host-resolved engine/model policy admitted for this run. */
+  /** Complete host-resolved execution snapshot admitted for this run. */
+  admission?: HarnessAdmission;
+  /** @deprecated Prefer `admission.inputPolicy`; retained for compatibility. */
   inputPolicy?: HarnessInputPolicy;
 }
 
@@ -197,6 +239,7 @@ export class HarnessRuntimeError extends Error {
       | "FOLLOW_UP_FAILED"
       | "STALE_TURN"
       | "TURN_NOT_ACTIVE"
+      | "ADMISSION_MISMATCH"
       | "INVALID_INPUT"
       | "RUNTIME_CLOSED",
     message: string,
@@ -246,6 +289,170 @@ function snapshotInputPolicy(policy: HarnessInputPolicy | undefined): HarnessInp
     } : {}),
     ...(policy.extensions ? { extensions: { ...policy.extensions } } : {}),
   };
+}
+
+function snapshotAdmission(
+  admission: HarnessAdmission | undefined,
+  legacyInputPolicy?: HarnessInputPolicy,
+): HarnessAdmission | undefined {
+  if (admission === undefined && legacyInputPolicy === undefined) return undefined;
+  const inputPolicy = snapshotInputPolicy(admission?.inputPolicy ?? legacyInputPolicy);
+  return {
+    ...admission,
+    ...(admission?.settings ? {
+      settings: {
+        ...(admission.settings.permission !== undefined ? {
+          permission: admission.settings.permission === null
+            ? null
+            : { ...admission.settings.permission },
+        } : {}),
+        ...(admission.settings.controls !== undefined ? {
+          controls: { ...admission.settings.controls },
+        } : {}),
+      },
+    } : {}),
+    ...(inputPolicy ? { inputPolicy } : {}),
+  };
+}
+
+function snapshotContextValue(value: HarnessContextValue): HarnessContextValue {
+  if (Array.isArray(value)) return value.map(snapshotContextValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, snapshotContextValue(entry)]),
+    );
+  }
+  return value;
+}
+
+function snapshotInput(input: readonly HarnessInput[]): readonly HarnessInput[] {
+  return input.map((part) => part.type === "image"
+    ? { ...part, data: new Uint8Array(part.data) }
+    : { ...part });
+}
+
+function snapshotInlineContext(context: HarnessInlineContext | undefined): HarnessInlineContext | undefined {
+  if (!context) return undefined;
+  return {
+    version: context.version,
+    records: context.records.map((record) => ({
+      ...record,
+      payload: snapshotContextValue(record.payload),
+      ...(record.binding ? { binding: { ...record.binding } } : {}),
+    })),
+  };
+}
+
+function snapshotSettings(settings: HarnessRunSettings | undefined): HarnessRunSettings | undefined {
+  if (!settings) return undefined;
+  return {
+    ...(settings.permission ? { permission: { ...settings.permission } } : {}),
+    ...(settings.controls ? { controls: { ...settings.controls } } : {}),
+  };
+}
+
+function snapshotUnknown(value: unknown, seen = new WeakMap<object, unknown>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  const known = seen.get(value);
+  if (known !== undefined) return known;
+  if (value instanceof Uint8Array) return new Uint8Array(value);
+  if (Array.isArray(value)) {
+    const copy: unknown[] = [];
+    seen.set(value, copy);
+    for (const entry of value) copy.push(snapshotUnknown(entry, seen));
+    return copy;
+  }
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const copy: Record<string, unknown> = {};
+  seen.set(value, copy);
+  for (const [key, entry] of Object.entries(value)) copy[key] = snapshotUnknown(entry, seen);
+  return copy;
+}
+
+function snapshotRecord(value: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  return snapshotUnknown(value) as Readonly<Record<string, unknown>>;
+}
+
+function snapshotRunRequest(request: HarnessRunRequest): HarnessRunRequest {
+  const inlineContext = snapshotInlineContext(request.inlineContext);
+  const settings = snapshotSettings(request.settings);
+  return {
+    ...request,
+    session: { ...request.session },
+    input: snapshotInput(request.input),
+    ...(inlineContext ? { inlineContext } : {}),
+    ...(settings ? { settings } : {}),
+    ...(request.configuration ? { configuration: snapshotRecord(request.configuration) } : {}),
+    ...(request.metadata ? { metadata: snapshotRecord(request.metadata) } : {}),
+  };
+}
+
+function snapshotFollowUpRequest(request: HarnessFollowUpRequest): HarnessFollowUpRequest {
+  const inlineContext = snapshotInlineContext(request.inlineContext);
+  return {
+    ...request,
+    input: snapshotInput(request.input),
+    ...(inlineContext ? { inlineContext } : {}),
+    ...(request.metadata ? { metadata: snapshotRecord(request.metadata) } : {}),
+  };
+}
+
+function snapshotReplacementExecution(
+  execution: HarnessReplacementExecution | undefined,
+): HarnessReplacementExecution | undefined {
+  if (!execution) return undefined;
+  const settings = snapshotSettings(execution.settings);
+  return {
+    ...execution,
+    ...(settings ? { settings } : {}),
+    ...(execution.configuration ? { configuration: snapshotRecord(execution.configuration) } : {}),
+  };
+}
+
+function admissionMismatch(message: string): never {
+  throw new HarnessRuntimeError("ADMISSION_MISMATCH", message);
+}
+
+function validateAdmission(request: HarnessRunRequest, admission: HarnessAdmission | undefined): void {
+  if (!admission) return;
+  if (admission.sessionBinding !== undefined && admission.sessionBinding.length === 0) {
+    admissionMismatch("The admitted session binding is invalid.");
+  }
+  if (admission.adapterId !== undefined && admission.adapterId !== request.adapterId) {
+    admissionMismatch("The request adapter does not match its admitted execution.");
+  }
+  if (admission.accountId !== undefined && admission.accountId !== (request.accountId ?? null)) {
+    admissionMismatch("The request account does not match its admitted execution.");
+  }
+  if (admission.model !== undefined && admission.model !== (request.model ?? null)) {
+    admissionMismatch("The request model does not match its admitted execution.");
+  }
+  if (admission.effort !== undefined && admission.effort !== (request.effort ?? null)) {
+    admissionMismatch("The request effort does not match its admitted execution.");
+  }
+
+  const admittedPermission = admission.settings?.permission;
+  if (admittedPermission !== undefined) {
+    const requestedPermission = request.settings?.permission ?? null;
+    const matches = admittedPermission === null
+      ? requestedPermission === null
+      : requestedPermission !== null
+        && admittedPermission.modeId === requestedPermission.modeId
+        && admittedPermission.consentVersion === requestedPermission.consentVersion;
+    if (!matches) admissionMismatch("The request permission does not match its admitted execution.");
+  }
+
+  const admittedControls = admission.settings?.controls;
+  if (admittedControls !== undefined) {
+    const requestedControls = request.settings?.controls ?? {};
+    const admittedIds = Object.keys(admittedControls);
+    const requestedIds = Object.keys(requestedControls);
+    const matches = admittedIds.length === requestedIds.length
+      && admittedIds.every((id) => Object.hasOwn(requestedControls, id)
+        && Object.is(admittedControls[id], requestedControls[id]));
+    if (!matches) admissionMismatch("The request controls do not match its admitted execution.");
+  }
 }
 
 class AsyncQueue<T> implements AsyncIterable<T> {
@@ -308,6 +515,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
   const contextSources = options.contextSources ?? [];
   const opened = new Map<string, Promise<ManagedSession>>();
   const reserved = new Set<string>();
+  const sessionBindings = new Map<string, string>();
   let closed = false;
 
   const adapterFor = (id: string): HarnessAdapter => {
@@ -408,8 +616,10 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       if (startOptions.turnId !== undefined && startOptions.turnId.length === 0) {
         throw new Error("a host-supplied turnId cannot be empty");
       }
+      const admission = snapshotAdmission(startOptions.admission, startOptions.inputPolicy);
+      validateAdmission(request, admission);
       const adapter = adapterFor(request.adapterId);
-      const inputPolicy = snapshotInputPolicy(startOptions.inputPolicy);
+      const inputPolicy = admission?.inputPolicy;
       const inputValidation = validateHarnessInput(request.input, inputPolicy, request.inlineContext);
       if (!inputValidation.valid) {
         throw new HarnessRuntimeError(
@@ -417,10 +627,23 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           inputValidation.issues[0]?.message ?? "The harness input is invalid.",
         );
       }
-      const sessionId = harnessSessionKey(request.session, adapter.id);
+      const runRequest = snapshotRunRequest(request);
+      const sessionId = harnessSessionKey(runRequest.session, adapter.id);
+      const knownSessionBinding = sessionBindings.get(sessionId);
+      if (
+        knownSessionBinding !== undefined
+        && admission !== undefined
+        && admission.sessionBinding !== knownSessionBinding
+      ) {
+        admissionMismatch("The admitted execution does not match this harness session.");
+      }
       const runId = startOptions.runId ?? createId();
       const turnId = startOptions.turnId ?? createId();
       const controller = startOptions.controller ?? new AbortController();
+      const suppliedContext = startOptions.context;
+      if (knownSessionBinding === undefined && admission?.sessionBinding !== undefined) {
+        sessionBindings.set(sessionId, admission.sessionBinding);
+      }
       const queue = new AsyncQueue<HarnessEvent>();
       let managed: ManagedSession | null = null;
       let opening: Promise<ManagedSession> | null = null;
@@ -483,7 +706,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           ) return;
           const event = await options.persistence.events.append({
             schemaVersion: 1,
-            session: request.session,
+            session: runRequest.session,
             runId,
             turnId,
             adapterId: adapter.id,
@@ -510,8 +733,8 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
         try {
           await emit({
             kind: "turn-started",
-            ...(request.model ? { model: request.model } : {}),
-            ...(request.accountId ? { accountId: request.accountId } : {}),
+            ...(runRequest.model ? { model: runRequest.model } : {}),
+            ...(runRequest.accountId ? { accountId: runRequest.accountId } : {}),
           });
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           if (reserved.has(sessionId)) {
@@ -519,7 +742,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           reserved.add(sessionId);
           ownsReservation = true;
-          opening = open(request.session, adapter);
+          opening = open(runRequest.session, adapter);
           managed = await opening;
           if (controller.signal.aborted) {
             if (opened.get(sessionId) === opening) opened.delete(sessionId);
@@ -532,11 +755,11 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           }
           if (managed.active) throw new HarnessRuntimeError("SESSION_BUSY", "This harness session already has a running turn.");
           managed.active = true;
-          const context = startOptions.context
-            ?? await prepareContext(request, runId, turnId, controller.signal);
+          const context = suppliedContext
+            ?? await prepareContext(runRequest, runId, turnId, controller.signal);
           if (controller.signal.aborted) throw new HarnessAdapterInterruptedError();
           const toolContext = {
-            session: request.session,
+            session: runRequest.session,
             adapterId: adapter.id,
             runId,
             turnId,
@@ -545,7 +768,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           };
           phase = "running";
           for await (const payload of managed.session.run({
-            ...request,
+            ...runRequest,
             runId,
             turnId,
             signal: controller.signal,
@@ -563,7 +786,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           // checkpoint and terminal envelope are still becoming durable.
           phase = "sealing";
           if (controller.signal.aborted) status = "interrupted";
-          await persistCheckpoint(managed, request.session);
+          await persistCheckpoint(managed, runRequest.session);
         } catch (error) {
           // The provider iterable has already settled on every catch path.
           // Close follow-up admission before persisting a public error.
@@ -651,44 +874,63 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
           return publicCancelWork;
         },
         followUp(followUpRequest, followUpOptions = {}) {
-          const replacementInputPolicy = snapshotInputPolicy(followUpOptions.replacement?.inputPolicy);
-          return serializeControl(async () => {
-            ensureActiveTurn(followUpRequest.expectedTurnId);
-            const inputValidation = validateHarnessInlineContext(
-              followUpRequest.inlineContext,
-              followUpRequest.input,
-            );
-            if (!inputValidation.valid) {
-              throw new HarnessRuntimeError(
-                "INVALID_INPUT",
-                inputValidation.issues[0]?.message ?? "The harness input is invalid.",
-              );
+          const requestedStrategy = followUpOptions.strategy;
+          const inputValidation = validateHarnessInlineContext(
+            followUpRequest.inlineContext,
+            followUpRequest.input,
+          );
+          if (!inputValidation.valid) {
+            return Promise.reject(new HarnessRuntimeError(
+              "INVALID_INPUT",
+              inputValidation.issues[0]?.message ?? "The harness input is invalid.",
+            ));
+          }
+          const admittedFollowUp = snapshotFollowUpRequest(followUpRequest);
+          const replacementAdmissionProvided = followUpOptions.replacement?.admission !== undefined
+            || followUpOptions.replacement?.inputPolicy !== undefined;
+          const replacementAdmission = snapshotAdmission(
+            followUpOptions.replacement?.admission,
+            followUpOptions.replacement?.inputPolicy,
+          );
+          const replacementExecution = snapshotReplacementExecution(
+            followUpOptions.replacement?.execution,
+          );
+          const replacement: HarnessReplacementOptions = followUpOptions.replacement
+            ? {
+              ...(followUpOptions.replacement.runId !== undefined ? { runId: followUpOptions.replacement.runId } : {}),
+              ...(followUpOptions.replacement.turnId !== undefined ? { turnId: followUpOptions.replacement.turnId } : {}),
+              ...(followUpOptions.replacement.controller ? { controller: followUpOptions.replacement.controller } : {}),
+              ...(followUpOptions.replacement.context ? { context: followUpOptions.replacement.context } : {}),
+              ...(replacementAdmission ? { admission: replacementAdmission } : {}),
+              ...(replacementExecution ? { execution: replacementExecution } : {}),
             }
+            : {};
+          return serializeControl(async () => {
+            ensureActiveTurn(admittedFollowUp.expectedTurnId);
             let capabilities: HarnessCapabilities;
             try {
               capabilities = await adapter.capabilities();
             } catch {
               throw new HarnessRuntimeError("FOLLOW_UP_FAILED", "The adapter could not describe follow-up support.");
             }
-            ensureActiveTurn(followUpRequest.expectedTurnId);
+            ensureActiveTurn(admittedFollowUp.expectedTurnId);
             const steering = capabilities.steering;
             const supported = steering?.support !== "unsupported" ? steering?.strategies ?? [] : [];
-            const strategy = followUpOptions.strategy
+            const strategy = requestedStrategy
               ?? (steering?.preferred && supported.includes(steering.preferred)
                 ? steering.preferred
                 : supported[0]);
             if (!strategy || !supported.includes(strategy)) {
               throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept an active-turn follow-up.");
             }
-
-            const replacement = followUpOptions.replacement ?? {};
-            const followUpInputPolicy = strategy === "replacement-turn"
-              ? replacementInputPolicy ?? inputPolicy
-              : inputPolicy;
+            const followUpAdmission = strategy === "replacement-turn" && replacementAdmissionProvided
+              ? replacementAdmission
+              : admission;
+            const followUpInputPolicy = followUpAdmission?.inputPolicy;
             const policyValidation = validateHarnessInput(
-              followUpRequest.input,
+              admittedFollowUp.input,
               followUpInputPolicy,
-              followUpRequest.inlineContext,
+              admittedFollowUp.inlineContext,
             );
             if (!policyValidation.valid) {
               throw new HarnessRuntimeError(
@@ -698,18 +940,18 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             }
 
             if (strategy === "same-turn") {
-              const target = ensureActiveTurn(followUpRequest.expectedTurnId);
+              const target = ensureActiveTurn(admittedFollowUp.expectedTurnId);
               if (!target.session.steer) {
                 throw new HarnessRuntimeError("FOLLOW_UP_UNSUPPORTED", "This adapter cannot accept a same-turn follow-up.");
               }
               try {
                 await target.session.steer({
-                  expectedTurnId: followUpRequest.expectedTurnId,
+                  expectedTurnId: admittedFollowUp.expectedTurnId,
                   runId,
                   turnId,
-                  input: followUpRequest.input,
-                  ...(followUpRequest.inlineContext ? { inlineContext: followUpRequest.inlineContext } : {}),
-                  ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
+                  input: admittedFollowUp.input,
+                  ...(admittedFollowUp.inlineContext ? { inlineContext: admittedFollowUp.inlineContext } : {}),
+                  ...(admittedFollowUp.metadata ? { metadata: admittedFollowUp.metadata } : {}),
                   signal: controller.signal,
                 });
               } catch (error) {
@@ -734,16 +976,40 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             if (replacement.controller === controller) {
               throw new Error("a replacement follow-up requires a fresh AbortController");
             }
+            if (replacementExecution !== undefined && !replacementAdmissionProvided) {
+              admissionMismatch("Replacement execution changes require a newly admitted snapshot.");
+            }
+            const { inlineContext: _previousInlineContext, ...inheritedBase } = runRequest;
+            let replacementBase = inheritedBase;
+            if (replacementExecution !== undefined) {
+              const {
+                accountId: _previousAccountId,
+                model: _previousModel,
+                effort: _previousEffort,
+                settings: _previousSettings,
+                configuration: _previousConfiguration,
+                ...stableBase
+              } = inheritedBase;
+              replacementBase = { ...stableBase, ...replacementExecution };
+            }
+            const replacementRequest: HarnessRunRequest = {
+              ...replacementBase,
+              input: admittedFollowUp.input,
+              ...(admittedFollowUp.inlineContext ? { inlineContext: admittedFollowUp.inlineContext } : {}),
+              ...(admittedFollowUp.metadata ? { metadata: admittedFollowUp.metadata } : {}),
+            };
+            validateAdmission(replacementRequest, followUpAdmission);
+            const replacementSessionBinding = sessionBindings.get(sessionId);
+            if (
+              replacementSessionBinding !== undefined
+              && followUpAdmission !== undefined
+              && followUpAdmission.sessionBinding !== replacementSessionBinding
+            ) {
+              admissionMismatch("The admitted execution does not match this harness session.");
+            }
             const replacementRunId = replacement.runId ?? createId();
             const replacementTurnId = replacement.turnId ?? createId();
             const replacementController = replacement.controller ?? new AbortController();
-            const { inlineContext: _previousInlineContext, ...replacementBase } = request;
-            const replacementRequest: HarnessRunRequest = {
-              ...replacementBase,
-              input: followUpRequest.input,
-              ...(followUpRequest.inlineContext ? { inlineContext: followUpRequest.inlineContext } : {}),
-              ...(followUpRequest.metadata ? { metadata: followUpRequest.metadata } : {}),
-            };
             // Prepare first so a context failure leaves the active provider
             // turn untouched. Admission is rechecked after async preparation.
             replacementInFlight = replacementController;
@@ -761,7 +1027,16 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                   "The replacement follow-up was cancelled before dispatch.",
                 );
               }
-              ensureActiveTurn(followUpRequest.expectedTurnId);
+              validateAdmission(replacementRequest, followUpAdmission);
+              const currentSessionBinding = sessionBindings.get(sessionId);
+              if (
+                currentSessionBinding !== undefined
+                && followUpAdmission !== undefined
+                && followUpAdmission.sessionBinding !== currentSessionBinding
+              ) {
+                admissionMismatch("The admitted execution does not match this harness session.");
+              }
+              ensureActiveTurn(admittedFollowUp.expectedTurnId);
               try {
                 await performCancellation(true);
               } catch (error) {
@@ -784,7 +1059,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
                   turnId: replacementTurnId,
                   controller: replacementController,
                   context: replacementContext,
-                  ...(followUpInputPolicy ? { inputPolicy: followUpInputPolicy } : {}),
+                  ...(followUpAdmission ? { admission: followUpAdmission } : {}),
                 }),
               };
             } finally {
@@ -849,6 +1124,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
       await Promise.all(sessions.flatMap((entry) =>
         entry.status === "fulfilled" && entry.value.session.close ? [entry.value.session.close()] : []));
       opened.clear();
+      sessionBindings.clear();
     },
   };
   return runtime;
