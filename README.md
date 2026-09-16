@@ -442,9 +442,11 @@ require a core-package enum release.
 
 The package is pre-release software. Fold is the first dogfood consumer.
 
-Fold's Codex and Claude lanes consume the complete package adapters. Both keep
-process creation, credentials, sandbox policy, vault context, and product event
-projection in Fold.
+Fold's Codex and Claude lanes consume the complete package adapters. Codex also
+runs through `HarnessRuntime`; Claude currently drives the package adapter
+directly, and moving that lane under the same runtime lifecycle is the next
+dogfood milestone. Both keep process creation, credentials, sandbox policy,
+vault context, and product event projection in Fold.
 
 Native Claude and Codex adapters are the production focus because their
 provider-specific limits, subagents, compaction, Fast controls, security

@@ -30,8 +30,9 @@ fully dogfooded by Fold.
 - A provider-injected Claude Agent SDK adapter covering long-lived stream
   routing, provider interactions, normalized events, cancellation, checkpoints,
   subagents, and separate limit snapshots through the conformance runner.
-- Fold's Claude session lane consuming the complete package adapter while Fold
-  retains its process policy and frozen product projection.
+- Fold's Claude session lane consuming the complete package adapter directly
+  while Fold retains its process policy and frozen product projection. Full
+  `HarnessRuntime` lifecycle adoption remains in the native roadmap below.
 - Versioned JSON Schema 2020-12 protocol and discovery contracts with a
   JSON-safe request codec and generated Swift and Rust data bindings.
 - A stable ACP v1 adapter with host-injected byte transport, negotiated optional
@@ -50,7 +51,9 @@ fully dogfooded by Fold.
 - Fold's complete workspace context assembled through runtime contributions,
   while vault and product-specific reads remain Fold-owned.
 - Fold-owned durable SQLite event and checkpoint stores behind the runtime
-  persistence interfaces, with the frozen product projection kept separate.
+  persistence interfaces for Codex, with the frozen product projection kept
+  separate. Claude still writes its package checkpoint through the direct
+  adapter integration until its runtime migration is complete.
 - A non-Fold incident-triage terminal reference host covering generic
   discovery, context, tools, two consent boundaries, resume, and cancellation.
 - A bounded, framework-neutral host follow-up queue with FIFO ordering, held
@@ -72,9 +75,24 @@ fully dogfooded by Fold.
 
 ## Next
 
-1. Harden native Claude and Codex recovery against expired or provider-rejected
-   checkpoints, with explicit host policy instead of silent conversation loss.
-2. Add portable activity or attention vocabulary only where Claude/Codex hosts
+1. Move Fold's native Claude lane under `createHarness`, including runtime
+   admission, persistence, diagnostics, interactions, cancellation, steering,
+   and session binding, while leaving process, credentials, tools, and product
+   projection in Fold.
+2. Harden native Claude and Codex recovery against expired or provider-rejected
+   checkpoints. The host must explicitly retain-and-fail or reset-and-retry;
+   the runtime never silently discards conversation state.
+3. Add a discovery-to-admission resolver that validates account, model,
+   model-specific effort, provider permission, generic controls such as Codex
+   Fast, input policy, and session-binding inputs before provider traffic.
+   Fold's discovery routes and native turns should consume the same resolver.
+4. Expand the native conformance and opt-in live smoke matrix across fresh and
+   resumed turns, tools, interactions, limits, Fast, steering, cancellation,
+   provider death, malformed traffic, and checkpoint rejection.
+5. Specify a transport-neutral runtime command surface and optional headless
+   sidecar so Swift, Rust, and other native hosts can operate the TypeScript
+   runtime rather than only consume its protocol value types.
+6. Add portable activity or attention vocabulary only where Claude/Codex hosts
    have a concrete non-Fold consumer and conformance case.
 
 ## Deliberately outside the first release
