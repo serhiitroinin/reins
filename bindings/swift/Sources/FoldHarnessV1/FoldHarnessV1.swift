@@ -288,6 +288,7 @@ public struct FHEngineProfile: Codable {
     public let id: String
     public let inputPolicy: FHInputPolicy?
     public let label: String
+    public let modelSelection: FHSelection?
     public let permissions: FHPermissions
 
     public enum CodingKeys: String, CodingKey {
@@ -297,16 +298,18 @@ public struct FHEngineProfile: Codable {
         case id = "id"
         case inputPolicy = "inputPolicy"
         case label = "label"
+        case modelSelection = "modelSelection"
         case permissions = "permissions"
     }
 
-    public init(controls: [FHControlElement]?, description: String?, extensions: [String: FHExtensionValue]?, id: String, inputPolicy: FHInputPolicy?, label: String, permissions: FHPermissions) {
+    public init(controls: [FHControlElement]?, description: String?, extensions: [String: FHExtensionValue]?, id: String, inputPolicy: FHInputPolicy?, label: String, modelSelection: FHSelection?, permissions: FHPermissions) {
         self.controls = controls
         self.description = description
         self.extensions = extensions
         self.id = id
         self.inputPolicy = inputPolicy
         self.label = label
+        self.modelSelection = modelSelection
         self.permissions = permissions
     }
 }
@@ -533,6 +536,11 @@ public struct FHModalityValue: Codable {
         self.mediaTypes = mediaTypes
         self.support = support
     }
+}
+
+public enum FHSelection: String, Codable {
+    case selectionOptional = "optional"
+    case selectionRequired = "required"
 }
 
 // MARK: - FHPermissions
@@ -1208,11 +1216,6 @@ public struct FHGroup: Codable {
         self.id = id
         self.label = label
     }
-}
-
-public enum FHSelection: String, Codable {
-    case selectionOptional = "optional"
-    case selectionRequired = "required"
 }
 
 // MARK: - FHModelCatalogDiscovery

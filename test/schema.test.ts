@@ -86,6 +86,7 @@ const capabilities: HarnessCapabilities = {
 const profile: HarnessEngineProfile = {
   id: "opencode:acp",
   label: "OpenCode",
+  modelSelection: "required",
   permissions: {
     kind: "provider-policy",
     selectable: true,

@@ -212,6 +212,8 @@ export interface HarnessEngineProfile {
   id: string;
   label: string;
   description?: string;
+  /** Whether this engine can choose a provider/account default when no model is named. */
+  modelSelection?: "optional" | "required";
   permissions: HarnessPermissionProfile;
   /** Engine defaults. A selected model overrides only the fields it declares. */
   inputPolicy?: HarnessInputPolicy;

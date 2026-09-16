@@ -129,6 +129,7 @@
   "engineProfile": {
     "id": "opencode:acp",
     "label": "OpenCode",
+    "modelSelection": "required",
     "description": "Multi-provider ACP agent",
     "permissions": {
       "kind": "provider-policy",

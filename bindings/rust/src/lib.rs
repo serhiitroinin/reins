@@ -192,6 +192,9 @@ pub struct EngineProfile {
 
     pub label: String,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_selection: Option<Selection>,
+
     pub permissions: Permissions,
 }
 
@@ -322,6 +325,14 @@ pub struct ModalityValue {
     pub media_types: Option<Vec<String>>,
 
     pub support: Support,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Selection {
+    Optional,
+
+    Required,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -823,14 +834,6 @@ pub struct Group {
     pub id: String,
 
     pub label: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Selection {
-    Optional,
-
-    Required,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

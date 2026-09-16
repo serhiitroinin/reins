@@ -209,6 +209,7 @@
         "id": { "$ref": "#/$defs/Id" },
         "label": { "type": "string" },
         "description": { "type": "string" },
+        "modelSelection": { "enum": ["optional", "required"] },
         "permissions": { "$ref": "#/$defs/HarnessPermissionProfile" },
         "inputPolicy": { "$ref": "#/$defs/HarnessInputPolicy" },
         "controls": { "type": "array", "items": { "$ref": "#/$defs/HarnessControl" } },
