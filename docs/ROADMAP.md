@@ -51,6 +51,10 @@
 - Host-resolved input policies enforced by the runtime before initial provider
   work and active-turn mutation, with immutable per-run snapshots and explicit
   replacement overrides.
+- Complete runtime-only execution admission covering open adapter/account/model
+  selections, effort, resolved permission and generic controls, input policy,
+  and stable host session bindings, with inherited or explicitly readmitted
+  replacement turns and shared Claude, Codex, and ACP conformance coverage.
 
 ## Next
 

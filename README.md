@@ -83,9 +83,10 @@ An application that already admitted a turn may pass runtime-only start
 options as the second argument. Host-supplied IDs keep product and harness
 events correlated; a supplied controller becomes the run's controller; a
 prepared context is passed by identity to both the adapter and application
-tools; and an `inputPolicy` freezes the host-resolved engine/model limits for
-the run. These live values are intentionally absent from the JSON wire
-contract.
+tools; and `admission` freezes the host-resolved execution identity, settings,
+input limits, and session binding for the run. These live values are
+intentionally absent from the JSON wire contract, event log, and native
+bindings.
 
 ```ts
 const controller = new AbortController();
@@ -94,17 +95,38 @@ const run = harness.start(request, {
   turnId: productTurnId,
   controller,
   context: preparedContext,
-  inputPolicy: admittedInputPolicy,
+  admission: {
+    adapterId: request.adapterId,
+    accountId: request.accountId ?? null,
+    model: request.model ?? null,
+    effort: request.effort ?? null,
+    settings: {
+      permission: resolvedConfiguration.permission,
+      controls: resolvedConfiguration.controls,
+    },
+    inputPolicy: admittedInputPolicy,
+    sessionBinding: hostSessionFingerprint,
+  },
 });
 ```
 
-The runtime validates that policy synchronously before it allocates turn IDs,
-persists events, prepares context, or opens an adapter. Same-turn follow-ups
-reuse the frozen policy. A replacement follow-up inherits it unless the host
-supplies a newly admitted `replacement.inputPolicy`; either way, validation
-happens before provider cancellation or mutation. Calling
-`validateHarnessInput` in a UI remains useful feedback, but the runtime check
-is the authoritative admission boundary.
+Every supplied field is checked synchronously before the runtime allocates
+turn IDs, persists events, prepares context, reserves a session, or opens an
+adapter. Nullable selections use `null` to admit an omitted request value;
+leaving a field out means the host has not adopted enforcement for that
+dimension yet. A supplied controls object is exact, so model-specific options
+such as `{ "openai:service-tier": "fast" }` need no provider branch in core.
+The opaque, non-secret `sessionBinding` pins host-owned connection authority
+for that logical runtime session.
+
+Same-turn follow-ups reuse the frozen snapshot. A replacement inherits it
+unless the host supplies a complete newly admitted `replacement.admission`;
+validation happens before replacement IDs, context preparation, provider
+cancellation, or mutation and is repeated after asynchronous preparation.
+The legacy top-level `inputPolicy` option remains a compatibility fallback,
+but new hosts should place it inside `admission`. Calling
+`validateHarnessInput` in a UI remains useful feedback; the runtime check is
+the authoritative boundary.
 
 Run the complete example with `bun run example`.
 

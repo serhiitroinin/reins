@@ -103,15 +103,32 @@ state and is passed by identity to the adapter and tool boundary without being
 persisted. These values are not part of `HarnessRunRequest` or its JSON-safe
 wire representation.
 
-The same runtime-only options accept a host-resolved `inputPolicy`. The runtime
-copies the policy synchronously and validates the initial input before ID
-allocation, context preparation, event persistence, or adapter opening.
-Same-turn follow-ups reuse that private snapshot. Replacement follow-ups
-inherit it unless the host supplies a newly admitted override, which is copied
-and validated before the old provider turn is cancelled. The runtime never
-derives policy from a provider name or lets an untrusted wire request select
-its own constraints; account/catalog lookup and policy composition remain host
-responsibilities.
+The same runtime-only options accept a `HarnessAdmission`: an optional,
+incrementally adoptable snapshot of the selected adapter, account, model,
+effort, resolved permission grant, exact generic controls, input policy, and
+an opaque host session-binding fingerprint. Nullable selection pins use
+`null` to distinguish an admitted absence from an unenforced field. Controls
+remain open typed identifiers, so Fast/service tier and future Grok or
+OpenCode settings need no core provider branch.
+
+The runtime copies admission synchronously and validates every supplied pin
+plus input policy before ID allocation, context preparation, event
+persistence, session reservation, or adapter opening. A non-empty session
+binding is stable for the logical runtime session and prevents a later
+admitted turn from silently changing host-owned connection authority. A start
+that omits admission entirely retains the pre-admission behavior; the legacy
+top-level input-policy option is folded into the private snapshot for
+compatibility.
+
+Same-turn follow-ups reuse the private admission. Replacement follow-ups
+inherit it unless the host supplies an explicit new snapshot, which replaces
+rather than merges the old one. The replacement is validated before IDs,
+context preparation, or cancellation and checked again after asynchronous
+preparation. Admission never enters `HarnessRunRequest`, wire schemas, native
+bindings, adapters, persistence, or events. The runtime never derives it from
+a provider name or lets an untrusted request select its constraints;
+account/catalog lookup, settings resolution, and fingerprint composition stay
+host responsibilities.
 
 Cancellation changes the terminal status to `interrupted` and asks the
 adapter to settle. Events the adapter yields while settling are still durable:
