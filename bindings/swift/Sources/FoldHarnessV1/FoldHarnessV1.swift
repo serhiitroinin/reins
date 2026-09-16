@@ -1106,15 +1106,18 @@ public struct FHLimitSnapshotDiscovery: Codable {
 public struct FHModelCatalog: Codable {
     public let defaultModelID: String?
     public let models: [FHModelElement]
+    public let selection: FHSelection?
 
     public enum CodingKeys: String, CodingKey {
         case defaultModelID = "defaultModelId"
         case models = "models"
+        case selection = "selection"
     }
 
-    public init(defaultModelID: String?, models: [FHModelElement]) {
+    public init(defaultModelID: String?, models: [FHModelElement], selection: FHSelection?) {
         self.defaultModelID = defaultModelID
         self.models = models
+        self.selection = selection
     }
 }
 
@@ -1205,6 +1208,11 @@ public struct FHGroup: Codable {
         self.id = id
         self.label = label
     }
+}
+
+public enum FHSelection: String, Codable {
+    case selectionOptional = "optional"
+    case selectionRequired = "required"
 }
 
 // MARK: - FHModelCatalogDiscovery

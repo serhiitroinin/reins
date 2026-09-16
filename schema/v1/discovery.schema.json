@@ -198,6 +198,7 @@
       "type": "object",
       "properties": {
         "models": { "type": "array", "items": { "$ref": "#/$defs/HarnessModel" } },
+        "selection": { "enum": ["optional", "required"] },
         "defaultModelId": { "type": "string" }
       },
       "required": ["models"]

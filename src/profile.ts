@@ -202,6 +202,8 @@ export interface HarnessModel {
 
 export interface HarnessModelCatalog {
   models: readonly HarnessModel[];
+  /** Whether a host may leave the model unset and let the adapter/provider choose. */
+  selection?: "optional" | "required";
   /** Absent means the adapter or provider chooses its default. */
   defaultModelId?: string;
 }

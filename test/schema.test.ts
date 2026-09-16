@@ -113,6 +113,7 @@ const profile: HarnessEngineProfile = {
 };
 
 const models: HarnessModelCatalog = {
+  selection: "required",
   defaultModelId: "gpt-5.6-luna",
   models: [
     {

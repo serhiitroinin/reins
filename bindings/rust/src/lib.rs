@@ -752,6 +752,9 @@ pub struct ModelCatalog {
     pub default_model_id: Option<String>,
 
     pub models: Vec<ModelElement>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -820,6 +823,14 @@ pub struct Group {
     pub id: String,
 
     pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Selection {
+    Optional,
+
+    Required,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
