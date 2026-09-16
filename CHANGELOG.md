@@ -1,5 +1,12 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.0-next.24
+
+### Patch Changes
+
+- 6def997: Add a verified OpenCode composition helper over the generic ACP v1 adapter for
+  exact negotiated model, effort, and host-defined mode selection.
+
 ## 0.1.0-next.23
 
 ### Patch Changes
