@@ -1,5 +1,11 @@
 # @serhiitroinin/fold-harness
 
+## 0.1.1
+
+- Replace the old prerelease README with a short stable release guide.
+- Add one documentation index and one release checklist.
+- Check local documentation links during the release gate.
+
 ## 0.1.0
 
 This is the first stable release.
