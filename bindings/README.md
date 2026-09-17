@@ -11,9 +11,11 @@ credential lookup, tool implementation, policy, or application state.
   desktop shells.
 
 `rust/examples/sidecar_client.rs` is intentionally the one executable proof:
-it wraps the generated values in JSON-RPC envelopes, launches a command over
-stdio, negotiates the Fold Harness sidecar, reads capabilities, and shuts it
-down. It remains an example rather than a general transport client.
+it wraps the generated values in JSON-RPC envelopes, launches the Fold Harness
+sidecar over stdio, and exercises discovery, streaming, bidirectional tools,
+interactions, same-turn steering, replacement model/settings changes,
+cancellation, replay, restart resume, session reset, and shutdown. It remains
+an example rather than a general transport client.
 
 Regenerate both from the repository root:
 
