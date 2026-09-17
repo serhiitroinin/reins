@@ -444,6 +444,9 @@ provider smoke tests and operating-system security posture remain separate.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter` — a complete, provider-injected Claude Agent SDK adapter.
+- `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-connector` — an
+  explicit Node connector for the real Claude Agent SDK query and application
+  tool bridge.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-events` — SDK-free Claude events, usage, limits, compaction, and subagent extensions.
 - `@serhiitroinin/fold-harness/adapters/acp-v1-adapter` — a stable ACP v1
   lifecycle over a host-injected byte transport.
@@ -644,6 +647,58 @@ The adapter passes each connection an application-tool bridge and a
 defer it as a generic interaction that any UI can render and answer through
 `HarnessRun.respond`. Application transaction confirmation remains a separate
 tool concern.
+
+Node hosts can compose the concrete connector instead of rebuilding Agent SDK
+streaming, MCP application tools, interruption, subagent stop, and compaction
+hooks. Every authority-bearing input remains required and explicit: the exact
+subprocess environment, cwd, complete built-in tool and skill lists, settings
+sources, permission mode, system prompt, and strict MCP posture.
+
+```ts
+import { createClaudeAgentSdkAdapter } from
+  "@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter";
+import { createClaudeAgentSdkConnector } from
+  "@serhiitroinin/fold-harness/adapters/claude-agent-sdk-connector";
+
+const adapter = createClaudeAgentSdkAdapter({
+  connect: createClaudeAgentSdkConnector({
+    configure: () => ({
+      cwd: scratchDirectory,
+      env: {
+        PATH: "/usr/local/bin:/usr/bin:/bin",
+        HOME: privateHome,
+        CLAUDE_CONFIG_DIR: privateClaudeHome,
+      },
+      tools: [],
+      skills: [],
+      settingSources: [],
+      strictMcpConfig: true,
+      permissionMode: "default",
+      systemPrompt: "Use only the explicitly mounted application tools.",
+    }),
+  }),
+  authorizeTool: (_tool, _turn) => ({
+    behavior: "deny",
+    message: "This host has not installed an approval policy.",
+  }),
+  profile,
+  models,
+});
+```
+
+The connector exposes each turn's provider-neutral application tools through
+an in-process MCP server without translating or weakening their JSON Schemas.
+Tool results stay on the SDK stream; raw SDK stderr stays private unless the
+host opts into `onStderr`. The default input mapper labels host instructions
+and untrusted context separately, embeds typed inline references, converts
+images, and represents resource URIs without fetching them. A product may
+replace that mapper when it has a stronger provider-specific prompt boundary.
+
+`canUseTool` is not itself a universal gate: Claude can auto-run tools that its
+effective permission rules consider allowed. A host that promises a human
+approval must supply and verify matching ask/deny rules in `managedSettings`,
+including the effect of administrator policy. The connector deliberately does
+not invent those product-specific rules or claim that `cwd` is a sandbox.
 
 ## Interaction recovery
 

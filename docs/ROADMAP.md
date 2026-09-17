@@ -96,24 +96,24 @@ fully dogfooded by Fold.
 - An explicit Node Codex App Server process connector with exact environment
   isolation, bounded stdio, cancellation, and graceful/forced shutdown. The
   host still owns every argv, account, sandbox, approval, and feature choice.
+- An explicit Node Claude Agent SDK connector with a closed host-supplied
+  built-in/skill/settings surface, exact environment, streamed input,
+  permissions, compaction, interruption, subagent stop, and a lossless
+  in-process application-tool MCP bridge.
 
 ## Next
 
-1. Add the matching ready-to-use Node Claude Agent SDK connector with an exact
-   environment, closed built-in tool surface, explicit settings sources, and
-   host-owned permission policy. Keep credentials, working directories, and
-   security posture host-owned.
-2. Package the sidecar as a stdio executable backed by one private durable
+1. Package the sidecar as a stdio executable backed by one private durable
    local store, then prove the contract with a small Rust client. Core remains
    persistence- and transport-neutral.
-3. Add opt-in native live smoke across fresh and resumed turns, tools,
+2. Add opt-in native live smoke across fresh and resumed turns, tools,
    interactions, limits, Fast, steering, and cancellation. Provider death,
    malformed traffic, and checkpoint rejection remain deterministic injected
    transport cases rather than credential-bearing smoke cases.
-4. Land Fold's local discovery-to-admission integration after its matching
+3. Land Fold's local discovery-to-admission integration after its matching
    package prerelease is approved, then dogfood the packaged sidecar at one
    non-production boundary before 0.1.0 stable.
-5. Publish a ten-minute quickstart and cut 0.1.0 after the Node and Rust
+4. Publish a ten-minute quickstart and cut 0.1.0 after the Node and Rust
    examples pass the same fresh/resume/tool/interaction/steering matrix.
 
 ## Deliberately outside the first release
