@@ -222,6 +222,7 @@
     "example:incident:interactive": "bun run examples/incident-terminal/index.ts --interactive",
     "smoke:acp": "bun run scripts/acp-live-smoke.ts",
     "smoke:consumer": "bun run scripts/clean-consumer-smoke.ts",
+    "smoke:native": "bun run scripts/native-live-smoke.ts",
     "smoke:sidecar-native": "bun run build && bun run scripts/sidecar-native-smoke.ts",
     "check": "bun run typecheck && bun run typecheck:examples && bun run check:bindings && bun run check:public-api && bun test && bun run build",
     "changeset": "changeset",

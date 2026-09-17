@@ -48,4 +48,5 @@ For each account, use this order:
 8. Route interactions, steering, and cancellation through the run handle.
 9. Close the runtime during host shutdown.
 
-Use the package live test before you ship an account configuration.
+Use the package live test before you ship an account configuration. See
+[live provider tests](live-tests.md).
