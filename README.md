@@ -16,8 +16,15 @@ Its first releases focus on these boundaries:
 - shared conformance for native Claude and Codex adapters, plus an open adapter
   contract for future providers.
 
-This repository remains private while the extraction API is changing. Preview
-releases are published publicly on npm for Fold and other early consumers.
+The GitHub repository is private. The npm package is public.
+
+## Start here
+
+Read the [getting started guides](docs/getting-started/README.md). They cover
+the Node API, the any-stack sidecar, Rust, and native Claude Code and Codex
+setup.
+
+Read [API stability](docs/API_STABILITY.md) for the supported release surface.
 
 ## Development
 
