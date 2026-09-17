@@ -425,6 +425,12 @@ provider smoke tests and operating-system security posture remain separate.
   notifications, host tool callbacks, and method identifiers.
 - `@serhiitroinin/fold-harness/sidecar` — the transport-neutral JSON-RPC
   reference server around the complete runtime.
+- `@serhiitroinin/fold-harness/sidecar-node` — bounded Node stdio deployment
+  for the reference sidecar.
+- `@serhiitroinin/fold-harness/sidecar-host` — explicit JS host-module
+  contract used by the packaged executable.
+- `@serhiitroinin/fold-harness/persistence/file` — private durable
+  single-writer event and checkpoint persistence.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/admission` — discovery-driven request
   normalization and fail-closed runtime admission.
@@ -481,6 +487,59 @@ const message = encodeHarnessRunRequest({
 ```
 
 See [the v1 schema and compatibility rules](docs/SCHEMA_V1.md).
+
+### Running the sidecar
+
+The package installs a `fold-harness-sidecar` executable. It requires two
+absolute paths and guesses neither one:
+
+```sh
+fold-harness-sidecar \
+  --host /opt/acme/harness-host.mjs \
+  --store /var/lib/acme-harness/runtime
+```
+
+The host module exports the adapters and their explicit credentials, process,
+model discovery, permission, sandbox, and presentation policy. The executable
+owns only stdio framing and private persistence:
+
+```js
+import { createClaudeAgentSdkAdapter } from
+  "@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter";
+import { createClaudeAgentSdkConnector } from
+  "@serhiitroinin/fold-harness/adapters/claude-agent-sdk-connector";
+
+export default {
+  server: { name: "acme-harness", version: "1" },
+  adapters: [createClaudeAgentSdkAdapter({
+    connect: createClaudeAgentSdkConnector({
+      configure: claudeConfiguration,
+    }),
+    authorizeTool: authorizeClaudeTool,
+    profile: claudeProfile,
+    models: claudeModels,
+  })],
+};
+```
+
+Stdout contains protocol frames only. Startup and transport failures go to
+stderr. The store hashes tenant/session identities into filenames, writes
+events append-only, replaces checkpoints atomically, fsyncs by default, uses
+`0700` directories and `0600` files where the platform supports Unix modes,
+and rejects non-regular paths. It supports one sidecar process per directory;
+cross-process locking remains a deployment concern.
+
+The included Rust example consumes generated schema types while speaking plain
+JSON-RPC over child-process pipes:
+
+```sh
+bun run build
+cargo run --locked --manifest-path bindings/rust/Cargo.toml \
+  --example sidecar_client -- \
+  node dist/bin/fold-harness-sidecar.js \
+  --host /absolute/path/to/harness-host.mjs \
+  --store /absolute/private/store
+```
 
 ## Design constraints
 

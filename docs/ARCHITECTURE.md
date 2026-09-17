@@ -55,8 +55,20 @@ command fields.
 The sidecar protocol is specified in `docs/SIDECAR_V1.md` and
 `schema/v1/sidecar.schema.json`. The in-process server accepts arbitrary text
 chunks and a synchronous whole-frame writer, so stdio, sockets, native IPC,
-and test transports can share the same semantics. A packaged executable is a
-deployment layer above this boundary.
+and test transports share the same semantics. The packaged Node executable is
+one deployment above that boundary: it loads an explicit adapter host module,
+binds bounded stdin/stdout, and supplies the private file persistence below.
+It adds no protocol methods and accepts no credential or provider option over
+the wire.
+
+The file store is deliberately deployment-specific rather than a new core
+assumption. One process serializes operations per logical session. Event files
+are append-only and sequences resume after reopen; checkpoints use write,
+fsync, and same-directory rename. Logical identities are hashed into filenames,
+directories/files are private, symlinks and non-regular paths are refused, and
+only a torn final event frame is repairable. Middle corruption fails closed.
+No cross-process locking, cloud sync, database migration, or retention policy
+is implied. A product needing those supplies another `HarnessPersistence`.
 
 The Node Codex process connector is one such deployment primitive. It turns an
 explicit executable, complete argv, exact environment, and optional cwd into
