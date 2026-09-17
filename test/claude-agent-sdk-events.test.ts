@@ -209,6 +209,35 @@ describe("Claude Agent SDK event consumer", () => {
     expect(outcomes).toEqual([{ status: "interrupted", usage: {} }]);
   });
 
+  test("ignores malformed result messages and accepts the next valid terminal", () => {
+    const events: HarnessAdapterEvent[] = [];
+    const outcomes: ClaudeAgentSdkTurnOutcome[] = [];
+    const consumer = createClaudeAgentSdkEventConsumer({
+      emit: (event) => events.push(event),
+      onTurnEnded: (outcome) => outcomes.push(outcome),
+    });
+
+    consumer.message({ type: "result", subtype: "", is_error: false, error: "private-empty-subtype" });
+    consumer.message({ type: "result", subtype: "success", is_error: "false", error: "private-invalid-flag" });
+    consumer.message({ type: "unsupported", payload: "private-unknown-message" });
+    expect(events).toEqual([]);
+    expect(outcomes).toEqual([]);
+
+    consumer.message({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "valid" }] },
+    });
+    consumer.message({ type: "result", subtype: "success", is_error: false });
+    consumer.message({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "private-post-terminal" }] },
+    });
+
+    expect(events).toEqual([{ kind: "assistant-text", text: "valid" }]);
+    expect(outcomes).toEqual([{ status: "completed", usage: {} }]);
+    expect(JSON.stringify(events)).not.toContain("private");
+  });
+
   test("normalizes compaction and nested subagent activity as namespaced extensions", () => {
     const events: HarnessAdapterEvent[] = [];
     let summary: string | null = "kept summary";

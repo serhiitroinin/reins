@@ -375,8 +375,12 @@ if (!report.passed) throw new Error(JSON.stringify(report.cases));
 Real adapters supply their own fixture backed by recorded or scripted provider
 traffic. The common suite covers event framing, lifecycle, safe errors, tools,
 context, discovery, cancellation, declared follow-up steering, interactions,
-and resume. Provider wire
-parsing and operating-system security posture stay in adapter-specific tests.
+and resume. Native adapters can additionally opt into
+`runAdapterReliabilityConformance`, which drives the same public runtime through
+provider death, malformed traffic, cancellation after partial output, and both
+runtime- and provider-rejected checkpoints. It requires a fault-injectable fake
+transport and compares the live stream with durable replay. Credential-bearing
+provider smoke tests and operating-system security posture remain separate.
 
 ## Package entry points
 

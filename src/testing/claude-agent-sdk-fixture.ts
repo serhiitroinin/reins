@@ -10,6 +10,8 @@ import {
 import { createPushableAsyncIterable } from "../transports/async-iterable.js";
 import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
 import { CONFORMANCE, conformanceSafeError } from "./conformance.js";
+import type { AdapterReliabilityFixture, AdapterReliabilityScenario } from "./reliability.js";
+import { RELIABILITY } from "./reliability.js";
 
 export interface ClaudeAgentSdkFixtureState {
   connects: number;
@@ -29,11 +31,11 @@ const capabilities: HarnessCapabilities = {
 };
 
 /** Construct the real adapter against deterministic provider messages. */
-export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixture & {
+export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixture & AdapterReliabilityFixture & {
   state: ClaudeAgentSdkFixtureState;
 } {
   const adapterId = "claude-conformance";
-  let scenario: AdapterConformanceScenario = "basic";
+  let scenario: AdapterConformanceScenario | AdapterReliabilityScenario = "basic";
   const state: ClaudeAgentSdkFixtureState = {
     connects: 0,
     sends: [],
@@ -79,11 +81,25 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
     connect(request) {
       const current = scenario;
       if (current === "unsafe-error") throw new Error(CONFORMANCE.unsafeSecret);
+      if (current === "resume-rejected" && request.resumeToken !== null) {
+        throw new Error(RELIABILITY.unsafeSecret);
+      }
       state.connects += 1;
       state.resumeTokens.push(request.resumeToken);
       const messages = createPushableAsyncIterable<unknown>();
+      let streamFailure: unknown;
       let closed = false;
       let sends = 0;
+      const stream: AsyncIterable<unknown> = {
+        async *[Symbol.asyncIterator]() {
+          for await (const message of messages) yield message;
+          if (streamFailure !== undefined) throw streamFailure;
+        },
+      };
+      const fail = (error: unknown): void => {
+        streamFailure = error;
+        messages.close();
+      };
       const complete = (): void => {
         messages.push({ type: "result", subtype: "success", is_error: false });
       };
@@ -94,10 +110,44 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
         });
       };
       const connection: ClaudeAgentSdkConnection = {
-        messages,
+        messages: stream,
         send(input) {
           sends += 1;
           state.sends.push(input);
+          if (current === "provider-death") {
+            messages.push({
+              type: "assistant",
+              message: { content: [
+                { type: "text", text: RELIABILITY.partialText },
+                { type: "tool_use", id: "reliability-open-tool", name: "Read", input: {} },
+              ] },
+            });
+            fail(new Error(RELIABILITY.unsafeSecret));
+            return;
+          }
+          if (current === "malformed-traffic") {
+            messages.push({ type: "unknown", private: RELIABILITY.unsafeSecret });
+            messages.push({ type: "result", subtype: "", is_error: false, error: RELIABILITY.unsafeSecret });
+            messages.push({ type: "result", subtype: "success", is_error: "false", error: RELIABILITY.unsafeSecret });
+            assistant(RELIABILITY.recoveredText);
+            complete();
+            return;
+          }
+          if (current === "cancel-after-partial") {
+            messages.push({
+              type: "assistant",
+              message: { content: [
+                { type: "text", text: RELIABILITY.partialText },
+                { type: "tool_use", id: "reliability-cancelled-tool", name: "Read", input: {} },
+              ] },
+            });
+            return;
+          }
+          if (current === "resume-rejected") {
+            assistant(RELIABILITY.recoveredText);
+            complete();
+            return;
+          }
           if (current === "safe-error") {
             messages.push({ type: "result", subtype: "conformance-safe", is_error: true });
             return;
@@ -172,6 +222,9 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
         interrupt() {
           state.interruptions += 1;
           messages.push({ type: "result", subtype: "interrupted", is_error: true });
+          if (current === "cancel-after-partial") {
+            assistant(RELIABILITY.unsafeSecret);
+          }
         },
         stopSubagent(taskId) {
           state.subagentStops.push(taskId);
@@ -218,8 +271,12 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
     discovery,
     state,
     providerOpens: () => state.connects,
+    providerCloses: () => state.closes,
     subagentControls: () => state.subagentStops.length,
     useScenario(value) {
+      scenario = value;
+    },
+    useReliabilityScenario(value) {
       scenario = value;
     },
   };

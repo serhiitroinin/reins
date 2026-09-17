@@ -457,6 +457,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
       let connectionBinding: string | null = null;
       let connectionAccountId: string | undefined;
       let consuming: Promise<void> | null = null;
+      let closingConnection: Promise<void> | null = null;
       let streamEnded = false;
       let streamFailure: unknown;
       let closed = false;
@@ -466,6 +467,11 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
       const declined = new Set<string>();
       const pending = new Map<string, PendingInteraction>();
       const lifetime = new AbortController();
+
+      const closeConnection = (value: ClaudeAgentSdkConnection): Promise<void> => {
+        closingConnection ??= Promise.resolve(value.close()).catch(() => undefined);
+        return closingConnection;
+      };
 
       const closePending = (turn: ActiveTurn | null): void => {
         for (const [id, value] of pending) {
@@ -546,10 +552,13 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           streamEnded = true;
           const turn = active;
           if (turn && !turn.finished) {
-            turn.consumer.end("cancelled");
+            turn.consumer.end(turn.cancelling || turn.request.signal.aborted ? "cancelled" : "failed");
             turn.queue.close();
             turn.settled.resolve({ kind: "transport", ...(streamFailure === undefined ? {} : { error: streamFailure }) });
           }
+          if (connection === value) connection = null;
+          connecting = null;
+          await closeConnection(value);
         }
       };
 
@@ -728,7 +737,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               streamEnded = true;
               if (connection === opened) connection = null;
               connecting = null;
-              void Promise.resolve(opened.close()).catch(() => undefined);
+              void closeConnection(opened);
               throw error;
             }
           })();
@@ -850,7 +859,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
               turn.consumer.end("failed");
               turn.queue.close();
               turn.settled.resolve({ kind: "transport", error });
-              void Promise.resolve(opened.close()).catch(() => undefined);
+              void closeConnection(opened);
               throw error;
             }
           });
@@ -919,7 +928,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             turn.consumer.end("cancelled");
             turn.queue.close();
             turn.settled.resolve({ kind: "interrupted" });
-            await Promise.resolve(connection.close()).catch(() => undefined);
+            await closeConnection(connection);
           })();
           return turn.cancelling;
         },
@@ -967,7 +976,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
             lifetime.abort();
             await adapterSession.cancel();
             closePending(null);
-            if (connection) await connection.close();
+            if (connection) await closeConnection(connection);
             await consuming?.catch(() => undefined);
           })();
           return closing;

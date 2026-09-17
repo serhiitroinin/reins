@@ -487,6 +487,15 @@ kind remains retainable or safely ignorable. An incompatible field or closed
 union change requires a new schema major. Generated bindings are conveniences,
 not validators; the JSON Schema remains authoritative at an untrusted boundary.
 
+The public testing package separates baseline adapter conformance from optional
+transport reliability conformance. The latter is used by the native Claude and
+Codex adapters with injected fake connections, so provider death, malformed
+traffic, cancellation races, and checkpoint rejection pass through the real
+adapter and runtime without credentials or process policy. Every case compares
+the live event stream with durable replay and requires safe terminal sealing.
+Real process, authentication, provider-version, and operating-system behavior
+remains an explicit live-smoke responsibility.
+
 ## Reference host
 
 `examples/incident-terminal` is the first non-Fold reference product. Its UI is

@@ -12,6 +12,8 @@ import {
 import { CODEX_SERVICE_TIER_CONTROL_ID } from "../adapters/codex-app-server.js";
 import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
 import { CONFORMANCE } from "./conformance.js";
+import type { AdapterReliabilityFixture, AdapterReliabilityScenario } from "./reliability.js";
+import { RELIABILITY } from "./reliability.js";
 
 interface RpcMessage {
   id?: string | number;
@@ -39,6 +41,8 @@ const capabilities: HarnessCapabilities = {
   interactions: { support: "unsupported", recovery: "live-only" },
 };
 
+type CodexFixtureScenario = AdapterConformanceScenario | AdapterReliabilityScenario;
+
 function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -50,11 +54,12 @@ function string(value: unknown): string {
 }
 
 function fakeConnection(
-  scenario: AdapterConformanceScenario,
+  scenario: CodexFixtureScenario,
   state: CodexAppServerFixtureState,
 ): CodexAppServerConnection {
   const output = createPushableAsyncIterable<Uint8Array | string>();
   const encoder = new TextEncoder();
+  let outputFailure: unknown;
   let nextServerId = 100;
   const waiting = new Map<number, (message: RpcMessage) => void>();
   let threadId = "codex-conformance-thread";
@@ -64,6 +69,10 @@ function fakeConnection(
     const cut = Math.min(7, bytes.length);
     output.push(bytes.slice(0, cut));
     output.push(bytes.slice(cut));
+  };
+  const failOutput = (error: unknown): void => {
+    outputFailure = error;
+    output.close();
   };
   const answer = (id: string | number, result: unknown): void => {
     send({ jsonrpc: "2.0", id, result });
@@ -78,6 +87,18 @@ function fakeConnection(
   };
   const complete = (status = "completed", error?: unknown): void => {
     notify("turn/completed", { turn: { status, ...(error === undefined ? {} : { error }) } });
+  };
+  const startOpenTool = (): void => {
+    notify("item/started", {
+      item: {
+        type: "dynamicToolCall",
+        id: "reliability-tool",
+        namespace: null,
+        tool: "reliability_tool",
+        arguments: {},
+        status: "inProgress",
+      },
+    });
   };
   const callTool = (name: string, input: unknown): void => {
     const id = ++nextServerId;
@@ -110,6 +131,45 @@ function fakeConnection(
   };
 
   const afterTurnStarts = (params: Record<string, unknown>): void => {
+    if (scenario === "provider-death") {
+      assistant(RELIABILITY.partialText);
+      startOpenTool();
+      failOutput(new Error(RELIABILITY.unsafeSecret));
+      return;
+    }
+    if (scenario === "malformed-traffic") {
+      output.push(`{"jsonrpc":"2.0","secret":"${RELIABILITY.unsafeSecret}"\n`);
+      const id = ++nextServerId;
+      waiting.set(id, (message) => {
+        const error = object(message.error);
+        if (
+          error.code !== -32601
+          || error.message !== "this adapter answers only dynamic tool calls"
+        ) {
+          failOutput(new Error("the adapter did not refuse an unsupported provider request"));
+          return;
+        }
+        assistant(RELIABILITY.recoveredText);
+        complete();
+      });
+      send({
+        jsonrpc: "2.0",
+        id,
+        method: "reliability/unsupported",
+        params: { secret: RELIABILITY.unsafeSecret },
+      });
+      return;
+    }
+    if (scenario === "cancel-after-partial") {
+      assistant(RELIABILITY.partialText);
+      startOpenTool();
+      return;
+    }
+    if (scenario === "resume-rejected") {
+      assistant(RELIABILITY.recoveredText);
+      complete();
+      return;
+    }
     if (scenario === "safe-error") {
       complete("failed", {
         code: CONFORMANCE.safeError.code,
@@ -185,6 +245,14 @@ function fakeConnection(
       return;
     }
     if (message.method === "thread/resume") {
+      if (scenario === "resume-rejected") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32000, message: RELIABILITY.unsafeSecret },
+        });
+        return;
+      }
       threadId = string(params.threadId);
       answer(message.id, { thread: { id: threadId } });
       return;
@@ -207,19 +275,33 @@ function fakeConnection(
     if (message.method === "turn/interrupt") {
       state.interruptions += 1;
       answer(message.id, {});
-      queueMicrotask(() => complete("interrupted"));
+      queueMicrotask(() => {
+        complete("interrupted");
+        if (scenario === "cancel-after-partial") {
+          notify("item/agentMessage/delta", {
+            itemId: "post-terminal-secret",
+            delta: RELIABILITY.unsafeSecret,
+          });
+        }
+      });
       return;
     }
     send({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "unsupported fake method" } });
   };
 
   const reader = createNdjsonReader((message) => handle(message as RpcMessage));
+  const providerOutput: AsyncIterable<Uint8Array | string> = {
+    async *[Symbol.asyncIterator]() {
+      for await (const chunk of output) yield chunk;
+      if (outputFailure !== undefined) throw outputFailure;
+    },
+  };
   let closed = false;
   return {
     write(line) {
       reader.text(line);
     },
-    output,
+    output: providerOutput,
     close() {
       if (closed) return;
       closed = true;
@@ -231,11 +313,11 @@ function fakeConnection(
 }
 
 /** Construct the real adapter against deterministic JSON-RPC provider traffic. */
-export function createCodexAppServerConformanceFixture(): AdapterConformanceFixture & {
+export function createCodexAppServerConformanceFixture(): AdapterConformanceFixture & AdapterReliabilityFixture & {
   state: CodexAppServerFixtureState;
 } {
   const adapterId = "codex-conformance";
-  let scenario: AdapterConformanceScenario = "basic";
+  let scenario: CodexFixtureScenario = "basic";
   const state: CodexAppServerFixtureState = {
     connections: 0,
     requests: [],
@@ -308,8 +390,12 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
     discovery,
     state,
     providerOpens: () => state.connections,
+    providerCloses: () => state.closes,
     subagentControls: () => 0,
     useScenario(value) {
+      scenario = value;
+    },
+    useReliabilityScenario(value) {
       scenario = value;
     },
   };

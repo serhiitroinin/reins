@@ -83,15 +83,19 @@ fully dogfooded by Fold.
   events and tool extension maps, with explicit adapter opt-in, bounded
   detached JSON, fixed no-prefix redaction, sanitized diagnostics, and
   live/replay equality.
+- Opt-in native reliability conformance for Claude and Codex provider death,
+  malformed traffic, cancellation after partial output, incompatible stored
+  checkpoints, and provider-rejected resume, with live/replay equality.
 
 ## Next
 
 1. Land Fold's local discovery-to-admission integration after its matching
    package prerelease is approved, removing the remaining duplicated model,
    effort, permission, and control checks from the product lanes.
-2. Expand the native conformance and opt-in live smoke matrix across fresh and
-   resumed turns, tools, interactions, limits, Fast, steering, cancellation,
-   provider death, malformed traffic, and checkpoint rejection.
+2. Add opt-in native live smoke across fresh and resumed turns, tools,
+   interactions, limits, Fast, steering, and cancellation. Provider death,
+   malformed traffic, and checkpoint rejection remain deterministic injected
+   transport cases rather than credential-bearing smoke cases.
 3. Specify a transport-neutral runtime command surface and optional headless
    sidecar so Swift, Rust, and other native hosts can operate the TypeScript
    runtime rather than only consume its protocol value types.
