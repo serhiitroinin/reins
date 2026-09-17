@@ -156,7 +156,15 @@ void createMemoryPersistence;
 
   const installed = join(consumer, "node_modules", "@serhiitroinin", "fold-harness");
   const sidecar = join(installed, "dist", "bin", "fold-harness-sidecar.js");
-  const reportedVersion = run("node", [sidecar, "--version"], consumer).trim();
+  const sidecarBin = join(
+    consumer,
+    "node_modules",
+    ".bin",
+    process.platform === "win32" ? "fold-harness-sidecar.cmd" : "fold-harness-sidecar",
+  );
+  const reportedVersion = process.platform === "win32"
+    ? run("cmd.exe", ["/d", "/s", "/c", sidecarBin, "--version"], consumer).trim()
+    : run(sidecarBin, ["--version"], consumer).trim();
   if (reportedVersion !== packageFile.version) {
     throw new Error(`installed sidecar reported ${reportedVersion}; expected ${packageFile.version}`);
   }
