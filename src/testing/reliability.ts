@@ -120,20 +120,42 @@ export async function runAdapterReliabilityConformance(
   const timeoutMs = options.timeoutMs ?? 2_000;
   const cases: AdapterConformanceCase[] = [];
 
-  const runCase = async (name: string, execute: () => Promise<void>): Promise<void> => {
+  type Cleanup = () => Promise<void> | void;
+  type DeferCleanup = (cleanup: Cleanup) => void;
+
+  const runCase = async (
+    name: string,
+    execute: (defer: DeferCleanup) => Promise<void>,
+  ): Promise<void> => {
+    const cleanups: Cleanup[] = [];
     let failure: string | undefined;
+    const execution = execute((cleanup) => cleanups.push(cleanup));
     try {
-      await bounded(execute(), timeoutMs, name);
+      await bounded(execution, timeoutMs, name);
     } catch (error) {
       failure = error instanceof Error ? error.message : "Unknown reliability failure.";
+    } finally {
+      for (const cleanup of cleanups.reverse()) {
+        try {
+          await bounded(Promise.resolve(cleanup()), timeoutMs, `${name} cleanup`);
+        } catch (error) {
+          failure ??= error instanceof Error ? error.message : "Unknown reliability cleanup failure.";
+        }
+      }
+      try {
+        await bounded(execution.catch(() => undefined), timeoutMs, `${name} drain`);
+      } catch (error) {
+        failure ??= error instanceof Error ? error.message : "Unknown reliability drain failure.";
+      }
     }
     cases.push(failure ? { name, status: "failed", message: failure } : { name, status: "passed" });
   };
 
-  const runScenario = async (scenario: AdapterReliabilityScenario) => {
+  const runScenario = async (scenario: AdapterReliabilityScenario, defer: DeferCleanup) => {
     fixture.useReliabilityScenario(scenario);
     const persistence = createMemoryPersistence();
     const runtime = createHarness({ adapters: [fixture.adapter], persistence });
+    defer(() => runtime.close());
     try {
       const run = runtime.start(request(fixture.adapterId));
       const live = await collect(run.events);
@@ -146,9 +168,9 @@ export async function runAdapterReliabilityConformance(
     }
   };
 
-  await runCase("provider death", async () => {
+  await runCase("provider death", async (defer) => {
     const closes = fixture.providerCloses();
-    const { live, status, providerCloses } = await runScenario("provider-death");
+    const { live, status, providerCloses } = await runScenario("provider-death", defer);
     check(status === "error", "provider death did not fail the run");
     check(live.some((event) => event.payload.kind === "assistant-text"
       && event.payload.text.includes(RELIABILITY.partialText)), "partial provider output was lost");
@@ -164,8 +186,8 @@ export async function runAdapterReliabilityConformance(
     check(providerCloses > closes, "the dead provider resource was not closed before runtime shutdown");
   });
 
-  await runCase("malformed traffic recovery", async () => {
-    const { live, status } = await runScenario("malformed-traffic");
+  await runCase("malformed traffic recovery", async (defer) => {
+    const { live, status } = await runScenario("malformed-traffic", defer);
     check(status === "completed", "malformed traffic poisoned a valid turn");
     check(
       live.flatMap((event) => event.payload.kind === "assistant-text" ? [event.payload.text] : []).join("")
@@ -177,10 +199,11 @@ export async function runAdapterReliabilityConformance(
     assertSafe(live);
   });
 
-  await runCase("cancellation after partial output", async () => {
+  await runCase("cancellation after partial output", async (defer) => {
     fixture.useReliabilityScenario("cancel-after-partial");
     const persistence = createMemoryPersistence();
     const runtime = createHarness({ adapters: [fixture.adapter], persistence });
+    defer(() => runtime.close());
     try {
       const run = runtime.start(request(fixture.adapterId));
       const livePromise = collect(run.events);
@@ -206,7 +229,7 @@ export async function runAdapterReliabilityConformance(
 
   const checkpointFormat = fixture.adapter.checkpoint?.format;
   if (checkpointFormat) {
-    await runCase("incompatible checkpoint rejection", async () => {
+    await runCase("incompatible checkpoint rejection", async (defer) => {
       fixture.useReliabilityScenario("resume-rejected");
       const persistence = createMemoryPersistence();
       await persistence.sessions.save({
@@ -217,6 +240,7 @@ export async function runAdapterReliabilityConformance(
       });
       const opens = fixture.providerOpens();
       const runtime = createHarness({ adapters: [fixture.adapter], persistence });
+      defer(() => runtime.close());
       try {
         const run = runtime.start(request(fixture.adapterId));
         const live = await collect(run.events);
@@ -246,7 +270,7 @@ export async function runAdapterReliabilityConformance(
       }
     });
 
-    await runCase("provider checkpoint rejection", async () => {
+    await runCase("provider checkpoint rejection", async (defer) => {
       fixture.useReliabilityScenario("resume-rejected");
       const persistence = createMemoryPersistence();
       await persistence.sessions.save({
@@ -256,6 +280,7 @@ export async function runAdapterReliabilityConformance(
         updatedAt: new Date(0).toISOString(),
       });
       const runtime = createHarness({ adapters: [fixture.adapter], persistence });
+      defer(() => runtime.close());
       try {
         const run = runtime.start(request(fixture.adapterId));
         const live = await collect(run.events);
