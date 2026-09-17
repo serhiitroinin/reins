@@ -2,8 +2,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "../../src/index.ts";
-import { createScriptedAdapter } from "../../src/testing/index.ts";
+} from "@serhiitroinin/fold-harness";
+import { createScriptedAdapter } from "@serhiitroinin/fold-harness/testing";
 
 const tools = createToolHost([{
   name: "lookup_order",
@@ -43,4 +43,3 @@ const run = harness.start({
 });
 
 for await (const event of run.events) console.log(event.payload);
-

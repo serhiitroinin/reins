@@ -23,7 +23,10 @@ Regenerate both from the repository root:
 bun run generate:bindings
 ```
 
-The generated sources are included in the npm tarball for the preview series,
-but the Rust crate is marked `publish = false` and is not published to
-crates.io. A separate native release policy can be introduced after the v1
-schema has real consumers.
+The generated sources are included in the npm package. The Rust crate has
+`publish = false`, so it is not published to crates.io. A host can use the
+crate by path or copy the generated files into its build process.
+
+The v1 JSON wire contract is stable. The generated source API can gain fields
+when the schema gains fields. Read `docs/SCHEMA_V1.md` before you expose these
+types as your own public API.

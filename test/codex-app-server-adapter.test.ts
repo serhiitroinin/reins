@@ -405,6 +405,63 @@ describe("Codex App Server adapter", () => {
     await runtime.close();
   });
 
+  test("treats an abort-closed process as a completed cancellation", async () => {
+    const output = createPushableAsyncIterable<string>();
+    const requests: string[] = [];
+    let closed = false;
+    let turnStarted!: () => void;
+    const started = new Promise<void>((resolve) => { turnStarted = resolve; });
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "abort-close-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect(request) {
+        request.signal.addEventListener("abort", () => {
+          closed = true;
+          output.close();
+        }, { once: true });
+        return {
+          write(line: string) {
+            if (closed) throw new Error("input closed after abort");
+            const message = JSON.parse(line) as { id?: number; method?: string };
+            if (!message.method) return;
+            requests.push(message.method);
+            if (message.method === "initialized") return;
+            const result = message.method === "thread/start"
+              ? { thread: { id: "abort-thread" } }
+              : message.method === "turn/start"
+                ? { turn: { id: "abort-turn" } }
+                : {};
+            output.push(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result })}\n`);
+            if (message.method === "turn/start") turnStarted();
+          },
+          output,
+          close() {
+            closed = true;
+            output.close();
+          },
+        };
+      },
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "abort-close" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "wait" }],
+    });
+    const events = collect(run.events);
+
+    await started;
+    await run.cancel();
+
+    expect(requests).toContain("turn/start");
+    expect(await run.done).toBe("interrupted");
+    expect((await events).at(-1)?.payload).toMatchObject({
+      kind: "turn-completed",
+      status: "interrupted",
+    });
+    await runtime.close();
+  });
+
   test("awaits durable checkpoint persistence after accepted start and resume turns", async () => {
     const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
     const checkpoints: string[] = [];
