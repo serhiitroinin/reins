@@ -58,6 +58,15 @@ chunks and a synchronous whole-frame writer, so stdio, sockets, native IPC,
 and test transports can share the same semantics. A packaged executable is a
 deployment layer above this boundary.
 
+The Node Codex process connector is one such deployment primitive. It turns an
+explicit executable, complete argv, exact environment, and optional cwd into
+the byte connection consumed by the native Codex adapter. It adds no command
+flags and never inherits the parent environment. Bounded stdout, stderr, and
+pending stdin protect the host process; cancellation owns graceful and forced
+child termination. Choosing a private provider home, credentials, sandbox,
+approval policy, MCP mounts, features, and filesystem/network posture remains
+the product's responsibility.
+
 ## Protocol
 
 Events are append-only envelopes. The store assigns a sequence across the

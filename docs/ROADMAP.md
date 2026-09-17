@@ -93,13 +93,16 @@ fully dogfooded by Fold.
   bidirectional application tools.
 - Public sidecar JSON Schema plus generated Swift and Rust command payload
   bindings.
+- An explicit Node Codex App Server process connector with exact environment
+  isolation, bounded stdio, cancellation, and graceful/forced shutdown. The
+  host still owns every argv, account, sandbox, approval, and feature choice.
 
 ## Next
 
-1. Add ready-to-use Node connectors that launch native Claude Agent SDK and
-   Codex App Server sessions from explicit, allowlisted process options. Keep
-   credentials, environment selection, working directories, and security
-   posture host-owned.
+1. Add the matching ready-to-use Node Claude Agent SDK connector with an exact
+   environment, closed built-in tool surface, explicit settings sources, and
+   host-owned permission policy. Keep credentials, working directories, and
+   security posture host-owned.
 2. Package the sidecar as a stdio executable backed by one private durable
    local store, then prove the contract with a small Rust client. Core remains
    persistence- and transport-neutral.
