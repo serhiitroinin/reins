@@ -220,7 +220,7 @@ describe("Claude Agent SDK connector", () => {
     const canUseTool = captured!.options.canUseTool as (
       name: string,
       input: Record<string, unknown>,
-      detail: Record<string, unknown>,
+      detail?: Record<string, unknown>,
     ) => Promise<unknown>;
     expect(await canUseTool("Read", { path: "/tmp" }, {
       toolUseID: "tool-1",
@@ -245,6 +245,16 @@ describe("Claude Agent SDK connector", () => {
       title: "Read /tmp",
       displayName: "Read file",
       description: "Reads a local file",
+    });
+
+    permission = undefined;
+    expect(await canUseTool("Read", { path: "/tmp" })).toEqual({
+      behavior: "allow",
+      updatedInput: { path: "/safe" },
+    });
+    expect(permission).toEqual({
+      toolName: "Read",
+      input: { path: "/tmp" },
     });
 
     const hooks = captured!.options.hooks as {

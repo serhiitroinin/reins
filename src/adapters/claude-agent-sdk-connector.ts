@@ -503,8 +503,8 @@ export function createClaudeAgentSdkConnector(
       canUseTool: async (
         toolName: string,
         input: Record<string, unknown>,
-        detail: {
-          toolUseID: string;
+        detail?: {
+          toolUseID?: string;
           agentID?: string;
           blockedPath?: string;
           decisionReason?: string;
@@ -513,27 +513,28 @@ export function createClaudeAgentSdkConnector(
           description?: string;
         },
       ) => {
+        const metadata = detail ?? {};
         const decision = await request.canUseTool({
           toolName,
           input,
-          toolUseId: detail.toolUseID,
-          ...(detail.agentID ? { agentId: detail.agentID } : {}),
-          ...(detail.blockedPath ? { blockedPath: detail.blockedPath } : {}),
-          ...(detail.decisionReason ? { decisionReason: detail.decisionReason } : {}),
-          ...(detail.title ? { title: detail.title } : {}),
-          ...(detail.displayName ? { displayName: detail.displayName } : {}),
-          ...(detail.description ? { description: detail.description } : {}),
+          ...(metadata.toolUseID ? { toolUseId: metadata.toolUseID } : {}),
+          ...(metadata.agentID ? { agentId: metadata.agentID } : {}),
+          ...(metadata.blockedPath ? { blockedPath: metadata.blockedPath } : {}),
+          ...(metadata.decisionReason ? { decisionReason: metadata.decisionReason } : {}),
+          ...(metadata.title ? { title: metadata.title } : {}),
+          ...(metadata.displayName ? { displayName: metadata.displayName } : {}),
+          ...(metadata.description ? { description: metadata.description } : {}),
         });
         return decision.behavior === "allow"
           ? {
               behavior: "allow" as const,
               updatedInput: decision.updatedInput ?? input,
-              toolUseID: detail.toolUseID,
+              ...(metadata.toolUseID ? { toolUseID: metadata.toolUseID } : {}),
             }
           : {
               behavior: "deny" as const,
               message: decision.message ?? "The host denied this call.",
-              toolUseID: detail.toolUseID,
+              ...(metadata.toolUseID ? { toolUseID: metadata.toolUseID } : {}),
             };
       },
       stderr: (chunk: string) => options.onStderr?.(chunk, request),
