@@ -528,6 +528,16 @@ describe("harness sidecar", () => {
     await expect(connection.client.request(HARNESS_SIDECAR_METHODS.runCancel, {
       runId: "missing",
     })).rejects.toMatchObject({ code: -32004, data: { runId: "missing" } });
+
+    await connection.client.request(HARNESS_SIDECAR_METHODS.sessionReset, {
+      session: SESSION,
+      adapterId: ADAPTER_ID,
+    });
+    await connection.client.request(HARNESS_SIDECAR_METHODS.shutdown, {});
+    await Bun.sleep(2);
+    await expect(connection.client.request(HARNESS_SIDECAR_METHODS.capabilities, {
+      adapterId: ADAPTER_ID,
+    })).rejects.toMatchObject({ code: -32030 });
     await connection.server.end();
   });
 });
