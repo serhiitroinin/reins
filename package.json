@@ -31,6 +31,7 @@
     "bindings/rust/Cargo.toml",
     "bindings/rust/src",
     "bindings/rust/tests",
+    "bindings/rust/examples",
     "bindings/swift/Package.swift",
     "bindings/swift/Sources",
     "bindings/swift/Tests",
@@ -44,6 +45,9 @@
   ],
   "main": "./dist/index.js",
   "types": "./src/index.ts",
+  "bin": {
+    "fold-harness-sidecar": "./dist/bin/fold-harness-sidecar.js"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -69,6 +73,21 @@
       "types": "./src/sidecar.ts",
       "bun": "./src/sidecar.ts",
       "import": "./dist/sidecar.js"
+    },
+    "./sidecar-node": {
+      "types": "./src/sidecar-node.ts",
+      "bun": "./src/sidecar-node.ts",
+      "import": "./dist/sidecar-node.js"
+    },
+    "./sidecar-host": {
+      "types": "./src/sidecar-host.ts",
+      "bun": "./src/sidecar-host.ts",
+      "import": "./dist/sidecar-host.js"
+    },
+    "./persistence/file": {
+      "types": "./src/persistence/file.ts",
+      "bun": "./src/persistence/file.ts",
+      "import": "./dist/persistence/file.js"
     },
     "./schema/v1/*": "./schema/v1/*",
     "./profile": {
@@ -202,6 +221,7 @@
     "example:incident": "bun run examples/incident-terminal/index.ts",
     "example:incident:interactive": "bun run examples/incident-terminal/index.ts --interactive",
     "smoke:acp": "bun run scripts/acp-live-smoke.ts",
+    "smoke:sidecar-native": "bun run build && bun run scripts/sidecar-native-smoke.ts",
     "check": "bun run typecheck && bun run typecheck:examples && bun run check:bindings && bun test && bun run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
