@@ -199,9 +199,7 @@ export interface HarnessSidecarToolCallParams extends HarnessSidecarRunIdentity 
   input: unknown;
 }
 
-export interface HarnessSidecarToolCallResult {
-  result: HarnessToolResult;
-}
+export type HarnessSidecarToolCallResult = HarnessToolResult;
 
 export interface HarnessSidecarToolCancelNotification {
   callId: string;

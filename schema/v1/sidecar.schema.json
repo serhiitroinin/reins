@@ -255,11 +255,7 @@
       "required": ["protocolVersion", "callId", "session", "adapterId", "runId", "turnId", "name", "input"]
     },
     "HarnessSidecarToolCallResult": {
-      "type": "object",
-      "properties": {
-        "result": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolResult" }
-      },
-      "required": ["result"]
+      "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolResult"
     },
     "HarnessSidecarToolCancelNotification": {
       "type": "object",

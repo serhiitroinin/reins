@@ -55,13 +55,13 @@ pub struct V1 {
 
     pub sidecar_tool_call_params: SidecarToolCallParamsClass,
 
-    pub sidecar_tool_call_result: SidecarToolCallResultClass,
+    pub sidecar_tool_call_result: SidecarToolCallResult,
 
     pub sidecar_tool_cancel_notification: SidecarToolCancelNotificationClass,
 
     pub tool_descriptor: ToolDescriptorElement,
 
-    pub tool_result: ToolResultClass,
+    pub tool_result: SidecarToolCallResult,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1351,17 +1351,12 @@ pub struct SidecarToolCallParamsClass {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SidecarToolCallResultClass {
-    pub result: ToolResultClass,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolResultClass {
+pub struct SidecarToolCallResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
 
-    pub content: Vec<ToolResultContent>,
+    pub content: Vec<SidecarToolCallResultContent>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
@@ -1372,7 +1367,7 @@ pub struct ToolResultClass {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolResultContent {
+pub struct SidecarToolCallResultContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
 

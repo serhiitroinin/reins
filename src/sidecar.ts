@@ -535,8 +535,7 @@ function parseSessionReset(value: unknown): HarnessSidecarSessionResetParams {
 }
 
 function safeToolResult(value: unknown): HarnessToolResult {
-  const envelope = record(value, "host tool result");
-  const source = "result" in envelope ? record(envelope.result, "host tool result.result") : envelope;
+  const source = record(value, "host tool result");
   if (!Array.isArray(source.content)) {
     throw new SidecarRequestError(INVALID_PARAMS, "host tool result.content must be an array");
   }

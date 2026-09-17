@@ -33,10 +33,10 @@ public struct FHV1: Codable {
     public let sidecarRunStartParams: FHSidecarRunStartParamsClass
     public let sidecarStopSubagentParams: FHHarnessSidecarStopSubagentParams
     public let sidecarToolCallParams: FHSidecarToolCallParamsClass
-    public let sidecarToolCallResult: FHSidecarToolCallResultClass
+    public let sidecarToolCallResult: FHSidecarToolCallResult
     public let sidecarToolCancelNotification: FHSidecarToolCancelNotificationClass
     public let toolDescriptor: FHToolDescriptorElement
-    public let toolResult: FHResult
+    public let toolResult: FHSidecarToolCallResult
 
     public enum CodingKeys: String, CodingKey {
         case capabilities = "capabilities"
@@ -70,7 +70,7 @@ public struct FHV1: Codable {
         case toolResult = "toolResult"
     }
 
-    public init(capabilities: FHCapabilities, discoveryRequest: FHDiscovery, engineProfile: FHEngineProfile, engineProfileDiscovery: FHEngineProfileDiscovery, event: FHEvent, inlineContext: FHInlineContext, inputPolicy: FHInputPolicy, interaction: FHInteraction, interactionResponse: FHResponse, limitSnapshot: FHLimitSnapshot, limitSnapshotDiscovery: FHLimitSnapshotDiscovery, modelCatalog: FHModelCatalog, modelCatalogDiscovery: FHModelCatalogDiscovery, resolvedConfiguration: FHResolvedConfiguration, runRequest: FHRunRequest, sidecarDiagnosticNotification: FHSidecarDiagnosticNotificationClass, sidecarEventsListParams: FHSidecarEventsListParamsClass, sidecarFollowUpParams: FHSidecarFollowUpParamsClass, sidecarInitializeParams: FHSidecarInitializeParamsClass, sidecarInitializeResult: FHSidecarInitializeResultClass, sidecarRespondParams: FHSidecarRespondParamsClass, sidecarRunSettledNotification: FHSidecarRunSettledNotificationClass, sidecarRunStartParams: FHSidecarRunStartParamsClass, sidecarStopSubagentParams: FHHarnessSidecarStopSubagentParams, sidecarToolCallParams: FHSidecarToolCallParamsClass, sidecarToolCallResult: FHSidecarToolCallResultClass, sidecarToolCancelNotification: FHSidecarToolCancelNotificationClass, toolDescriptor: FHToolDescriptorElement, toolResult: FHResult) {
+    public init(capabilities: FHCapabilities, discoveryRequest: FHDiscovery, engineProfile: FHEngineProfile, engineProfileDiscovery: FHEngineProfileDiscovery, event: FHEvent, inlineContext: FHInlineContext, inputPolicy: FHInputPolicy, interaction: FHInteraction, interactionResponse: FHResponse, limitSnapshot: FHLimitSnapshot, limitSnapshotDiscovery: FHLimitSnapshotDiscovery, modelCatalog: FHModelCatalog, modelCatalogDiscovery: FHModelCatalogDiscovery, resolvedConfiguration: FHResolvedConfiguration, runRequest: FHRunRequest, sidecarDiagnosticNotification: FHSidecarDiagnosticNotificationClass, sidecarEventsListParams: FHSidecarEventsListParamsClass, sidecarFollowUpParams: FHSidecarFollowUpParamsClass, sidecarInitializeParams: FHSidecarInitializeParamsClass, sidecarInitializeResult: FHSidecarInitializeResultClass, sidecarRespondParams: FHSidecarRespondParamsClass, sidecarRunSettledNotification: FHSidecarRunSettledNotificationClass, sidecarRunStartParams: FHSidecarRunStartParamsClass, sidecarStopSubagentParams: FHHarnessSidecarStopSubagentParams, sidecarToolCallParams: FHSidecarToolCallParamsClass, sidecarToolCallResult: FHSidecarToolCallResult, sidecarToolCancelNotification: FHSidecarToolCancelNotificationClass, toolDescriptor: FHToolDescriptorElement, toolResult: FHSidecarToolCallResult) {
         self.capabilities = capabilities
         self.discoveryRequest = discoveryRequest
         self.engineProfile = engineProfile
@@ -1956,23 +1956,10 @@ public struct FHSidecarToolCallParamsClass: Codable {
     }
 }
 
-// MARK: - FHSidecarToolCallResultClass
-public struct FHSidecarToolCallResultClass: Codable {
-    public let result: FHResult
-
-    public enum CodingKeys: String, CodingKey {
-        case result = "result"
-    }
-
-    public init(result: FHResult) {
-        self.result = result
-    }
-}
-
-// MARK: - FHResult
-public struct FHResult: Codable {
+// MARK: - FHSidecarToolCallResult
+public struct FHSidecarToolCallResult: Codable {
     public let code: String?
-    public let content: [FHToolResultContent]
+    public let content: [FHSidecarToolCallResultContent]
     public let isError: Bool?
     public let metadata: [String: FHInputValue]?
 
@@ -1983,7 +1970,7 @@ public struct FHResult: Codable {
         case metadata = "metadata"
     }
 
-    public init(code: String?, content: [FHToolResultContent], isError: Bool?, metadata: [String: FHInputValue]?) {
+    public init(code: String?, content: [FHSidecarToolCallResultContent], isError: Bool?, metadata: [String: FHInputValue]?) {
         self.code = code
         self.content = content
         self.isError = isError
@@ -1991,8 +1978,8 @@ public struct FHResult: Codable {
     }
 }
 
-// MARK: - FHToolResultContent
-public struct FHToolResultContent: Codable {
+// MARK: - FHSidecarToolCallResultContent
+public struct FHSidecarToolCallResultContent: Codable {
     public let data: String?
     public let mediaType: String?
     public let text: String?

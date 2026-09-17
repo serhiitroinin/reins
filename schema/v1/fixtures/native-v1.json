@@ -359,7 +359,7 @@
     "input": { "id": "42" }
   },
   "sidecarToolCallResult": {
-    "result": { "content": [{ "type": "text", "text": "ready" }] }
+    "content": [{ "type": "text", "text": "ready" }]
   },
   "sidecarToolCancelNotification": {
     "callId": "call-1",

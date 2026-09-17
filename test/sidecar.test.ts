@@ -223,9 +223,7 @@ function connect(observed: HarnessAdapterRunRequest[] = []): TestConnection {
         }
         toolCalls.push(params as HarnessSidecarToolCallParams);
         return {
-          result: {
-            result: { content: [{ type: "text", text: "healthy" }] },
-          },
+          result: { content: [{ type: "text", text: "healthy" }] },
         };
       },
     },
