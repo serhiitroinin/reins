@@ -116,6 +116,8 @@ export interface HarnessSidecarOptions {
 export interface HarnessSidecar {
   /** Feed one arbitrary text chunk from the transport into the server. */
   text(chunk: string): void;
+  /** Settles after the runtime and every provider session have retired. */
+  readonly closed: Promise<void>;
   /** End the transport and retire all provider sessions. */
   end(reason?: string): Promise<void>;
   /** Retire all provider sessions while leaving transport ownership to the host. */
@@ -705,6 +707,12 @@ export function createHarnessSidecar(options: HarnessSidecarOptions): HarnessSid
   let initialized = false;
   let closed = false;
   let closing: Promise<void> | null = null;
+  let resolveClosed!: () => void;
+  let rejectClosed!: (error: unknown) => void;
+  const closedPromise = new Promise<void>((resolve, reject) => {
+    resolveClosed = resolve;
+    rejectClosed = reject;
+  });
   let peer: JsonRpcPeer | null = null;
 
   const toolHost: HarnessToolHost = {
@@ -973,7 +981,7 @@ export function createHarnessSidecar(options: HarnessSidecarOptions): HarnessSid
       }
       case HARNESS_SIDECAR_METHODS.shutdown:
         record(params ?? {}, "params");
-        setTimeout(() => { void close(); }, 0);
+        setTimeout(() => { void close().catch(() => undefined); }, 0);
         return {};
       default:
         throw new SidecarRequestError(METHOD_NOT_FOUND, `Unknown harness method: ${method}`);
@@ -1000,14 +1008,24 @@ export function createHarnessSidecar(options: HarnessSidecarOptions): HarnessSid
   const close = (): Promise<void> => {
     if (closing) return closing;
     closed = true;
-    closing = runtime.close().finally(() => {
-      active.clear();
-      runTools.clear();
-    });
+    closing = runtime.close().then(
+      () => {
+        active.clear();
+        runTools.clear();
+        resolveClosed();
+      },
+      (error: unknown) => {
+        active.clear();
+        runTools.clear();
+        rejectClosed(error);
+        throw error;
+      },
+    );
     return closing;
   };
 
   return {
+    closed: closedPromise,
     text(chunk) {
       peer?.text(chunk);
     },

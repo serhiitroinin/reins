@@ -10,6 +10,11 @@ credential lookup, tool implementation, policy, or application state.
 - `rust/` is a Cargo crate with `serde` values for native services, CLIs, and
   desktop shells.
 
+`rust/examples/sidecar_client.rs` is intentionally the one executable proof:
+it wraps the generated values in JSON-RPC envelopes, launches a command over
+stdio, negotiates the Fold Harness sidecar, reads capabilities, and shuts it
+down. It remains an example rather than a general transport client.
+
 Regenerate both from the repository root:
 
 ```bash

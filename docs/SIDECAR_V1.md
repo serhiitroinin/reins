@@ -4,11 +4,12 @@ The sidecar protocol lets a host written in any language operate the Fold
 Harness runtime over JSON-RPC 2.0 without reproducing provider lifecycle,
 admission, streaming, steering, or replay semantics.
 
-The package currently supplies the transport-neutral in-process server. A host
-feeds arbitrary text chunks to `createHarnessSidecar().text()` and writes the
-complete newline-delimited frames emitted by its `write` callback. A packaged
-stdio executable, provider process connectors, and durable local store are the
-next deployment layer; they do not change this command contract.
+The package supplies both the transport-neutral in-process server and a Node
+stdio deployment. An embedding host can feed arbitrary text chunks to
+`createHarnessSidecar().text()` and write the complete newline-delimited frames
+emitted by its `write` callback. A native or non-JavaScript product can launch
+the packaged `fold-harness-sidecar` executable instead. Both expose this exact
+command contract.
 
 ## Ownership
 
@@ -34,6 +35,38 @@ The embedding product still owns:
 No command accepts a credential, provider SDK object, database handle, or
 executable callback. The JSON Schema and generated Swift/Rust types cover only
 portable values.
+
+## Packaged stdio deployment
+
+The executable accepts only explicit absolute paths:
+
+```sh
+fold-harness-sidecar --host /opt/acme/host.mjs --store /var/lib/acme-harness
+```
+
+The JS host module exports a `HarnessSidecarHostDefinition`, or a default/
+`createHarnessSidecarHost` factory returning one. It supplies at least one
+adapter and may add server identity, in-process context sources, and private
+diagnostic callbacks. It cannot replace persistence or stdin/stdout. Provider
+credentials and environment remain inside that module; they never become
+sidecar commands.
+
+The store is a private single-writer deployment primitive. It uses hashed
+logical-session filenames, append-only NDJSON events, atomic checkpoint
+replacement, fsync by default, and Unix `0700` directory / `0600` file modes.
+It rejects symlinks and non-regular store paths, bounds individual records,
+checkpoint files, and event files, fails closed on middle corruption, and may
+truncate only an incomplete final event record left by a crash. One process
+owns one store directory; no cross-process lock is inferred.
+
+Node stdio output is byte-bounded. Exceeding the pending-output limit retires
+the runtime rather than allowing an unbounded pipe queue. Stdout is reserved
+for JSON-RPC frames. The executable writes startup/transport failures to
+stderr and handles stdin end, SIGINT, and SIGTERM as runtime shutdown.
+
+`bindings/rust/examples/sidecar_client.rs` is the smallest native proof. It
+launches the executable, serializes generated initialize types, negotiates v1,
+decodes the generated capability type, and requests clean shutdown.
 
 ## Transport
 
@@ -257,4 +290,3 @@ The canonical schema is
 `schema/v1/sidecar.schema.json`. Method strings and TypeScript payloads are
 exported from `@serhiitroinin/fold-harness/sidecar-protocol`; the executable
 reference server is exported from `@serhiitroinin/fold-harness/sidecar`.
-
