@@ -156,6 +156,11 @@
       "bun": "./src/adapters/claude-agent-sdk-adapter.ts",
       "import": "./dist/adapters/claude-agent-sdk-adapter.js"
     },
+    "./adapters/claude-agent-sdk-connector": {
+      "types": "./src/adapters/claude-agent-sdk-connector.ts",
+      "bun": "./src/adapters/claude-agent-sdk-connector.ts",
+      "import": "./dist/adapters/claude-agent-sdk-connector.js"
+    },
     "./adapters/claude-agent-sdk-events": {
       "types": "./src/adapters/claude-agent-sdk-events.ts",
       "bun": "./src/adapters/claude-agent-sdk-events.ts",
@@ -217,6 +222,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.257",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "zod": "4.6.5"
   }
 }

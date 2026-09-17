@@ -22,6 +22,7 @@ export * from "./adapters/codex-app-server-adapter.js";
 export * from "./adapters/codex-app-server-process.js";
 export * from "./adapters/codex-app-server-events.js";
 export * from "./adapters/claude-agent-sdk-adapter.js";
+export * from "./adapters/claude-agent-sdk-connector.js";
 export * from "./adapters/claude-agent-sdk-events.js";
 export * from "./adapters/acp-v1.js";
 export * from "./adapters/acp-v1-adapter.js";

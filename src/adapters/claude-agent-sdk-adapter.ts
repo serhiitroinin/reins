@@ -62,6 +62,12 @@ export interface ClaudeAgentSdkToolRequest {
   input: Readonly<Record<string, unknown>>;
   toolUseId?: string;
   agentId?: string;
+  /** Provider-supplied permission presentation, when available. */
+  title?: string;
+  displayName?: string;
+  description?: string;
+  blockedPath?: string;
+  decisionReason?: string;
 }
 
 export type ClaudeAgentSdkToolDecision =
