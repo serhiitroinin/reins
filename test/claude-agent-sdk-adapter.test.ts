@@ -4,6 +4,8 @@ import {
   type ClaudeAgentSdkConnectRequest,
   type ClaudeAgentSdkConnection,
 } from "../src/adapters/claude-agent-sdk-adapter.ts";
+import { CLAUDE_AGENT_SDK_NAMESPACE } from "../src/adapters/claude-agent-sdk-events.ts";
+import { projectHarnessEventPayloadForPersistence } from "../src/event-projection.ts";
 import {
   createHarness,
   type HarnessAdapterRunRequest,
@@ -67,6 +69,37 @@ function adapterRequest(
 }
 
 describe("Claude Agent SDK adapter", () => {
+  test("explicitly retains only known bounded Claude extension events", () => {
+    const adapter = createClaudeAgentSdkAdapter({
+      connect() { throw new Error("not reached"); },
+    });
+    const known = projectHarnessEventPayloadForPersistence({
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "status",
+      payload: { status: "compacting" },
+    }, adapter.persistence);
+    expect(known).toEqual({
+      payload: {
+        kind: "extension",
+        namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+        name: "status",
+        payload: { status: "compacting" },
+      },
+    });
+
+    const unknown = projectHarnessEventPayloadForPersistence({
+      kind: "extension",
+      namespace: CLAUDE_AGENT_SDK_NAMESPACE,
+      name: "provider-response",
+      payload: { raw: "secret" },
+    }, adapter.persistence);
+    expect(unknown.payload).toMatchObject({
+      kind: "extension",
+      payload: { "fold-harness:redacted": true, reason: "not-approved" },
+    });
+  });
+
   test("passes the provider-neutral adapter contract through the real adapter", async () => {
     const fixture = createClaudeAgentSdkConformanceFixture();
     const report = await runAdapterConformance({ fixture });

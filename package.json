@@ -75,6 +75,11 @@
       "bun": "./src/input.ts",
       "import": "./dist/input.js"
     },
+    "./event-projection": {
+      "types": "./src/event-projection.ts",
+      "bun": "./src/event-projection.ts",
+      "import": "./dist/event-projection.js"
+    },
     "./runtime": {
       "types": "./src/runtime.ts",
       "bun": "./src/runtime.ts",

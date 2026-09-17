@@ -355,6 +355,9 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
   return {
     id,
     checkpoint: { format: CODEX_APP_SERVER_CHECKPOINT_FORMAT },
+    persistence: {
+      projectToolExtensions: (event) => event.extensions,
+    },
     capabilities: () => options.capabilities ?? CODEX_APP_SERVER_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultProfile(id), request),
     models: (request) => discovery(options.models, request),

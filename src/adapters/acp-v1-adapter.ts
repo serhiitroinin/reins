@@ -496,6 +496,8 @@ export interface AcpV1Adapter extends HarnessAdapter {
 /** Persisted session-id format shared by stable ACP v1 connections. */
 export const ACP_V1_CHECKPOINT_FORMAT = "agent-client-protocol:session-id@1";
 
+const ACP_V1_PERSISTED_EXTENSION_NAMES = new Set(["content-truncated", "stop-reason"]);
+
 /** Compose a Harness adapter over the official stable ACP v1 protocol. */
 export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
   const id = options.id ?? "acp";
@@ -519,6 +521,13 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
   return {
     id,
     checkpoint: { format: ACP_V1_CHECKPOINT_FORMAT },
+    persistence: {
+      projectExtension: (event) => event.namespace === ACP_V1_NAMESPACE
+        && ACP_V1_PERSISTED_EXTENSION_NAMES.has(event.name)
+        ? event.payload
+        : undefined,
+      projectToolExtensions: (event) => event.extensions,
+    },
     capabilities: () => options.capabilities ?? ACP_V1_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultAcpV1Profile(id), request),
     models: (request) => discovery(options.models, request),

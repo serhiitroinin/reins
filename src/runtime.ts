@@ -43,6 +43,10 @@ import type {
   HarnessRunSettings,
 } from "./profile.js";
 import { bindToolHost, emptyToolHost, type HarnessToolHost, type HarnessTurnTools } from "./tools.js";
+import {
+  projectHarnessEventPayloadForPersistence,
+  type HarnessAdapterPersistenceProjection,
+} from "./event-projection.js";
 
 export type HarnessAdapterEvent = Exclude<
   HarnessEventPayload,
@@ -132,6 +136,8 @@ export interface HarnessAdapter {
   readonly id: string;
   /** Required whenever an adapter session can return a resume checkpoint. */
   readonly checkpoint?: HarnessAdapterCheckpointContract;
+  /** Explicit, synchronous selection of adapter-owned extension data safe to persist. */
+  readonly persistence?: HarnessAdapterPersistenceProjection;
   capabilities(): Promise<HarnessCapabilities> | HarnessCapabilities;
   profile?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessEngineProfile>> | HarnessDiscovery<HarnessEngineProfile>;
   models?(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>> | HarnessDiscovery<HarnessModelCatalog>;
@@ -264,6 +270,7 @@ export interface HarnessRuntime {
 
 export type HarnessDiagnosticPhase =
   | "discovery"
+  | "event-projection"
   | "event-store"
   | "session-load"
   | "session-open"
@@ -1160,6 +1167,21 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             (payload.kind === "interaction-resolved" || payload.kind === "interaction-invalidated")
             && !openInteractions.has(payload.interactionId)
           ) return;
+          const projected = projectHarnessEventPayloadForPersistence(payload, adapter.persistence);
+          if (projected.issue) {
+            reportDiagnostic({
+              severity: "warning",
+              phase: "event-projection",
+              code: projected.issue.code,
+              message: projected.issue.message,
+              adapterId: adapter.id,
+              session: runRequest.session,
+              runId,
+              turnId,
+            });
+          }
+          if (projected.payload === null) return;
+          const durablePayload = projected.payload;
           let event: HarnessEvent;
           try {
             event = await options.persistence.events.append({
@@ -1168,7 +1190,7 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
               runId,
               turnId,
               adapterId: adapter.id,
-              payload,
+              payload: durablePayload,
             });
           } catch (error) {
             reportFailure(error, {
@@ -1183,14 +1205,14 @@ export function createHarness(options: HarnessRuntimeOptions): HarnessRuntime {
             });
             throw error;
           }
-          if (payload.kind === "interaction-requested") {
-            openInteractions.add(payload.interaction.id);
+          if (durablePayload.kind === "interaction-requested") {
+            openInteractions.add(durablePayload.interaction.id);
           } else if (
-            payload.kind === "interaction-resolved"
-            || payload.kind === "interaction-invalidated"
+            durablePayload.kind === "interaction-resolved"
+            || durablePayload.kind === "interaction-invalidated"
           ) {
-            openInteractions.delete(payload.interactionId);
-            respondingInteractions.delete(payload.interactionId);
+            openInteractions.delete(durablePayload.interactionId);
+            respondingInteractions.delete(durablePayload.interactionId);
           }
           queue.push(event);
         });

@@ -26,6 +26,20 @@ logical session; the runtime assigns run and turn identity. The runtime owns
 `turn-started` and `turn-completed`, and seals the stream after the terminal
 event. Adapters emit the content between them.
 
+Adapter-owned extension data is projected before the append boundary. A
+top-level extension payload or tool extension map is not durable merely
+because an adapter emitted it: the adapter must explicitly select its safe
+representation, after which the runtime accepts only detached JSON inside
+fixed UTF-8 byte, depth, string, and collection limits. An unapproved or unsafe
+top-level payload becomes a fixed redaction marker with no retained prefix; an
+unsafe tool extension map is removed. Invalid extension envelopes are ignored.
+Each outcome produces only a sanitized process-local diagnostic.
+
+The runtime still appends before it publishes. The public async stream receives
+the event returned by the store, so live state and replay cannot disagree about
+redaction or truncation. Direct use of a host's event-store implementation is
+not a runtime operation and does not inherit this projection.
+
 Provider identifiers are strings. Optional behavior is expressed through
 capability data, not `if provider === ...` branches. Provider-only information
 uses namespaced extension events.

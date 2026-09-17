@@ -27,6 +27,10 @@ import {
 } from "../protocol.js";
 import type { HarnessDiscovery, HarnessEngineProfile, HarnessLimitSnapshot, HarnessModelCatalog } from "../profile.js";
 import { createToolHost } from "../tools.js";
+import {
+  isHarnessRedactedExtensionPayload,
+  projectHarnessEventPayloadForPersistence,
+} from "../event-projection.js";
 
 export type AdapterConformanceScenario =
   | "basic"
@@ -348,6 +352,24 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
         "a resumable adapter must declare a checkpoint format",
       );
     }
+  });
+
+  await runCase("unknown extension persistence", async () => {
+    const projected = projectHarnessEventPayloadForPersistence({
+      kind: "extension",
+      namespace: "fold-harness:conformance-unknown",
+      name: "provider-response",
+      payload: { raw: CONFORMANCE.unsafeSecret },
+    }, fixture.adapter.persistence);
+    check(projected.payload?.kind === "extension", "unknown extension envelope was not retained");
+    check(
+      isHarnessRedactedExtensionPayload(projected.payload.payload),
+      "an unreviewed extension payload was approved for persistence",
+    );
+    check(
+      !JSON.stringify(projected.payload).includes(CONFORMANCE.unsafeSecret),
+      "an unreviewed extension payload retained provider data",
+    );
   });
 
   await runCase("host input policy", async (defer) => {

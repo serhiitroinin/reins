@@ -196,6 +196,12 @@ function createIncidentAdapter(state: IncidentAdapterState): HarnessAdapter {
   return {
     id: ADAPTER_ID,
     checkpoint: { format: "example:incident-simulator/session@1" },
+    persistence: {
+      projectExtension: (event) => event.namespace === "example:incident"
+        && event.name === "context-unavailable"
+        ? event.payload
+        : undefined,
+    },
     capabilities: () => capabilities,
     profile: () => ({ status: "available", value: profile }),
     models: () => ({ status: "available", value: models }),
