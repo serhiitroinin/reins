@@ -102,7 +102,9 @@ fully dogfooded by Fold.
   in-process application-tool MCP bridge.
 - A packaged bounded stdio sidecar, explicit adapter host-module contract, and
   private durable single-writer file store, proven through a generated-type
-  Rust child-process client covering negotiation, discovery, and shutdown.
+  Rust child-process client covering discovery, streamed fresh/resumed turns,
+  tools, interactions, steering, model/settings replacement, cancellation,
+  replay, reset, and shutdown.
 
 ## Next
 

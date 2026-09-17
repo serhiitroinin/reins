@@ -110,9 +110,8 @@ nativeTransport.onClose(() => sidecar.end());
 The public JSON Schema and generated Swift/Rust bindings include the command,
 notification, and host-tool payloads. See [sidecar protocol v1](docs/SIDECAR_V1.md)
 for the method table, replacement model/settings flow, streaming sequence,
-tool callbacks, and error boundary. A packaged stdio process and durable local
-store are still roadmap items; the contract and reference server are usable
-now from an embedding Node process.
+tool callbacks, and error boundary. The package ships both the embeddable
+server and a bounded stdio executable with a private durable file store.
 
 An application that already admitted a turn may pass runtime-only start
 options as the second argument. Host-supplied IDs keep product and harness
@@ -540,6 +539,12 @@ cargo run --locked --manifest-path bindings/rust/Cargo.toml \
   --host /absolute/path/to/harness-host.mjs \
   --store /absolute/private/store
 ```
+
+That executable example covers discovery, streamed fresh and resumed turns,
+host tool callbacks, interactions, same-turn steering, replacement model and
+settings changes, cancellation, exact live/replay equality, session reset, and
+shutdown against a deterministic adapter. It is also the local conformance
+smoke for the non-JavaScript boundary.
 
 ## Design constraints
 
