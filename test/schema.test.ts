@@ -12,6 +12,7 @@ import { encodeHarnessRunRequest } from "../src/wire.ts";
 
 const protocolSchema = await Bun.file(new URL("../schema/v1/protocol.schema.json", import.meta.url)).json() as AnySchema;
 const discoverySchema = await Bun.file(new URL("../schema/v1/discovery.schema.json", import.meta.url)).json() as AnySchema;
+const sidecarSchema = await Bun.file(new URL("../schema/v1/sidecar.schema.json", import.meta.url)).json() as AnySchema;
 const bindingsSchema = await Bun.file(new URL("../scripts/bindings-v1.schema.json", import.meta.url)).json() as AnySchema;
 const nativeFixture = await Bun.file(new URL("../schema/v1/fixtures/native-v1.json", import.meta.url)).json() as unknown;
 
@@ -159,6 +160,7 @@ describe("versioned JSON Schema", () => {
     addFormats(ajv);
     expect(ajv.validateSchema(protocolSchema)).toBe(true);
     expect(ajv.validateSchema(discoverySchema)).toBe(true);
+    expect(ajv.validateSchema(sidecarSchema)).toBe(true);
   });
 
   test("the native generation fixture conforms to every reachable contract", () => {
@@ -166,6 +168,7 @@ describe("versioned JSON Schema", () => {
     addFormats(ajv);
     ajv.addSchema(protocolSchema);
     ajv.addSchema(discoverySchema);
+    ajv.addSchema(sidecarSchema);
     const validate = ajv.compile(bindingsSchema);
     expect(validate(nativeFixture), JSON.stringify(validate.errors)).toBe(true);
   });

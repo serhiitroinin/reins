@@ -265,5 +265,105 @@
     "permission": { "modeId": "read-only" },
     "controls": { "openai:service-tier": "fast", "opencode:loop-budget": 8.0 },
     "issues": []
+  },
+  "sidecarInitializeParams": {
+    "protocolVersion": 1,
+    "client": { "name": "native-harness", "version": "0.1.0" },
+    "tools": [{ "name": "lookup_order", "description": "Look up one order", "inputSchema": { "type": "object" } }]
+  },
+  "sidecarInitializeResult": {
+    "protocolVersion": 1,
+    "server": { "name": "fold-harness", "version": "0.1.0" },
+    "adapters": ["openai:codex", "anthropic:claude-code"],
+    "methods": ["harness/run/start"],
+    "hostMethods": ["host/tool/call"],
+    "notifications": ["harness/event"]
+  },
+  "sidecarRunStartParams": {
+    "request": {
+      "schemaVersion": 1,
+      "session": { "tenantId": "tenant", "actorId": "actor", "threadId": "thread" },
+      "adapterId": "openai:codex",
+      "input": [{ "type": "text", "text": "Inspect the incident" }],
+      "model": "gpt-5.6-luna"
+    },
+    "runId": "run-1",
+    "turnId": "turn-1",
+    "sessionBinding": "account:1|policy:3",
+    "context": {
+      "sources": [{
+        "sourceId": "native:workspace",
+        "value": {
+          "instructions": "Use the bounded snapshot.",
+          "content": [{ "type": "text", "text": "Untrusted workspace data" }]
+        }
+      }],
+      "unavailable": []
+    }
+  },
+  "sidecarFollowUpParams": {
+    "runId": "run-1",
+    "expectedTurnId": "turn-1",
+    "input": [{ "type": "text", "text": "Use the faster model" }],
+    "strategy": "replacement-turn",
+    "replacement": {
+      "runId": "run-2",
+      "turnId": "turn-2",
+      "execution": {
+        "model": "gpt-5.6-luna",
+        "effort": "high",
+        "settings": { "controls": { "openai:service-tier": "fast" } }
+      }
+    }
+  },
+  "sidecarRespondParams": {
+    "runId": "run-1",
+    "interactionId": "permission-1",
+    "response": { "choiceId": "allow", "text": "Reviewed" }
+  },
+  "sidecarStopSubagentParams": {
+    "runId": "run-1",
+    "taskId": "task-1"
+  },
+  "sidecarEventsListParams": {
+    "session": { "tenantId": "tenant", "actorId": "actor", "threadId": "thread" },
+    "adapterId": "openai:codex",
+    "after": 4
+  },
+  "sidecarRunSettledNotification": {
+    "runId": "run-1",
+    "turnId": "turn-1",
+    "status": "completed"
+  },
+  "sidecarDiagnosticNotification": {
+    "diagnostic": {
+      "schemaVersion": 1,
+      "timestamp": "2026-09-15T09:00:00.000Z",
+      "severity": "warning",
+      "phase": "discovery",
+      "code": "PROFILE_STALE",
+      "message": "Refresh discovery.",
+      "adapterId": "openai:codex",
+      "runId": "run-1",
+      "turnId": "turn-1"
+    }
+  },
+  "sidecarToolCallParams": {
+    "protocolVersion": 1,
+    "callId": "call-1",
+    "session": { "tenantId": "tenant", "actorId": "actor", "threadId": "thread" },
+    "adapterId": "openai:codex",
+    "runId": "run-1",
+    "turnId": "turn-1",
+    "name": "lookup_order",
+    "input": { "id": "42" }
+  },
+  "sidecarToolCallResult": {
+    "result": { "content": [{ "type": "text", "text": "ready" }] }
+  },
+  "sidecarToolCancelNotification": {
+    "callId": "call-1",
+    "runId": "run-1",
+    "turnId": "turn-1"
   }
 }
