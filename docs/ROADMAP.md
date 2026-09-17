@@ -79,22 +79,23 @@ fully dogfooded by Fold.
 - Fold's native Claude lane under `createHarness`, including runtime admission,
   persistence, diagnostics, interactions, cancellation, steering, checkpoint
   recovery, session reset, and subagent control.
+- A deny-by-default runtime persistence projection for adapter extension
+  events and tool extension maps, with explicit adapter opt-in, bounded
+  detached JSON, fixed no-prefix redaction, sanitized diagnostics, and
+  live/replay equality.
 
 ## Next
 
-1. Make Fold's discovery routes and both native turn lanes consume the shared
-   discovery-to-admission resolver, removing their remaining duplicated
-   model, effort, permission, and control checks.
-2. Put a bounded package-level persistence projection in front of extension
-   event payloads so a future adapter cannot accidentally persist an unbounded
-   or provider-raw body.
-3. Expand the native conformance and opt-in live smoke matrix across fresh and
+1. Land Fold's local discovery-to-admission integration after its matching
+   package prerelease is approved, removing the remaining duplicated model,
+   effort, permission, and control checks from the product lanes.
+2. Expand the native conformance and opt-in live smoke matrix across fresh and
    resumed turns, tools, interactions, limits, Fast, steering, cancellation,
    provider death, malformed traffic, and checkpoint rejection.
-4. Specify a transport-neutral runtime command surface and optional headless
+3. Specify a transport-neutral runtime command surface and optional headless
    sidecar so Swift, Rust, and other native hosts can operate the TypeScript
    runtime rather than only consume its protocol value types.
-5. Add portable activity or attention vocabulary only where Claude/Codex hosts
+4. Add portable activity or attention vocabulary only where Claude/Codex hosts
    have a concrete non-Fold consumer and conformance case.
 
 ## Deliberately outside the first release

@@ -183,6 +183,16 @@ const unsupported = { support: "unsupported" as const };
 /** Persisted token format understood by the native Claude adapter. */
 export const CLAUDE_AGENT_SDK_CHECKPOINT_FORMAT = "anthropic:claude-agent-sdk/session-id@1";
 
+const CLAUDE_PERSISTED_EXTENSION_NAMES = new Set([
+  "background-tasks",
+  "compaction",
+  "context",
+  "skill",
+  "status",
+  "subagent",
+  "subagent-event",
+]);
+
 /** Conservative capabilities of the injected adapter itself. */
 export const CLAUDE_AGENT_SDK_CAPABILITIES: HarnessCapabilities = {
   resume: { support: "stable" },
@@ -417,6 +427,13 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
   return {
     id,
     checkpoint: { format: CLAUDE_AGENT_SDK_CHECKPOINT_FORMAT },
+    persistence: {
+      projectExtension: (event) => event.namespace === CLAUDE_AGENT_SDK_NAMESPACE
+        && CLAUDE_PERSISTED_EXTENSION_NAMES.has(event.name)
+        ? event.payload
+        : undefined,
+      projectToolExtensions: (event) => event.extensions,
+    },
     capabilities: () => options.capabilities ?? CLAUDE_AGENT_SDK_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultProfile(id), request),
     models: (request) => discovery(options.models, request),

@@ -8,7 +8,9 @@ import {
   type HarnessAdapter,
   type HarnessAdapterRunRequest,
   type HarnessCapabilities,
+  type HarnessDiagnostic,
   type HarnessEvent,
+  type HarnessEventInput,
 } from "../src/index.ts";
 
 const unsupported = { support: "unsupported" as const };
@@ -150,6 +152,103 @@ describe("harness runtime", () => {
         format: "test:scripted/session@1",
         token: "provider-session-1",
       },
+    });
+  });
+
+  test("projects unapproved adapter extensions before persistence and streams the stored value", async () => {
+    const diagnostics: HarnessDiagnostic[] = [];
+    const raw = { secret: "provider-raw-must-not-persist" };
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            yield {
+              kind: "extension",
+              namespace: "example:provider",
+              name: "raw-response",
+              payload: raw,
+            };
+          },
+        };
+      },
+    };
+    const persistence = createMemoryPersistence();
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+
+    const run = harness.start(request);
+    const streamed = await collect(run.events);
+    expect(await run.done).toBe("completed");
+    const stored = await persistence.events.list(request.session, adapter.id);
+    expect(streamed).toEqual(stored);
+    expect(JSON.stringify(stored)).not.toContain(raw.secret);
+    expect(stored.find((event) => event.payload.kind === "extension")?.payload).toEqual({
+      kind: "extension",
+      namespace: "example:provider",
+      name: "raw-response",
+      payload: { "fold-harness:redacted": true, reason: "not-approved" },
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      severity: "warning",
+      phase: "event-projection",
+      code: "EXTENSION_NOT_APPROVED",
+    }));
+  });
+
+  test("never passes raw extension data to a failing event store", async () => {
+    const raw = "provider-raw-must-not-reach-store";
+    const memory = createMemoryPersistence();
+    const attempted: HarnessEventInput[] = [];
+    let refused = false;
+    const adapter: HarnessAdapter = {
+      id: "scripted",
+      capabilities: () => capabilities,
+      async open() {
+        return {
+          async *run() {
+            yield {
+              kind: "extension",
+              namespace: "example:provider",
+              name: "raw-response",
+              payload: { raw },
+            };
+          },
+        };
+      },
+    };
+    const harness = createHarness({
+      adapters: [adapter],
+      persistence: {
+        sessions: memory.sessions,
+        events: {
+          async append(input) {
+            attempted.push(input);
+            if (input.payload.kind === "extension" && !refused) {
+              refused = true;
+              throw new Error("store unavailable");
+            }
+            return memory.events.append(input);
+          },
+          list: memory.events.list,
+        },
+      },
+    });
+
+    const run = harness.start(request);
+    await collect(run.events);
+    expect(await run.done).toBe("error");
+    expect(refused).toBe(true);
+    expect(JSON.stringify(attempted)).not.toContain(raw);
+    expect(attempted.find((event) => event.payload.kind === "extension")?.payload).toEqual({
+      kind: "extension",
+      namespace: "example:provider",
+      name: "raw-response",
+      payload: { "fold-harness:redacted": true, reason: "not-approved" },
     });
   });
 

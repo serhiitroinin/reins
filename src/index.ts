@@ -4,6 +4,7 @@ export * from "./wire.js";
 export * from "./profile.js";
 export * from "./admission.js";
 export * from "./input.js";
+export * from "./event-projection.js";
 export * from "./context.js";
 export * from "./runtime.js";
 export * from "./interactions.js";

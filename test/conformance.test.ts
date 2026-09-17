@@ -9,6 +9,7 @@ describe("adapter conformance", () => {
     expect(report.cases.filter((entry) => entry.status === "failed")).toEqual([]);
     expect(report.cases.map((entry) => entry.name)).toEqual([
       "identity and capabilities",
+      "unknown extension persistence",
       "host input policy",
       "ordered typed context",
       "host execution admission",

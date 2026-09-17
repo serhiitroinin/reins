@@ -158,6 +158,21 @@ message only. The runtime never includes prompts, credentials, tool results,
 checkpoint tokens, or raw provider errors, never persists diagnostics, and
 ignores a failing observer.
 
+Adapter extension events cross a second explicit boundary before any event
+store sees them. They are deny-by-default: an adapter must synchronously
+select a safe payload through its `persistence.projectExtension` contract.
+The runtime then detaches it as JSON and enforces fixed byte, depth, string,
+and collection limits. Missing approval, invalid values, projector failures,
+and oversized payloads preserve only the extension namespace/name plus a
+fixed redaction marker containing no raw prefix. Open `extensions` maps on
+tool events use the same rule through `projectToolExtensions`.
+
+Projection happens before `HarnessEventStore.append`, and the runtime streams
+the exact event returned by that store. Live readers and replay therefore see
+the same safe representation. Projection warnings are available through
+`onDiagnostic` but never fail a turn. A host that calls its event store
+directly is outside this runtime boundary.
+
 Same-turn follow-ups reuse the frozen snapshot. A replacement inherits it
 unless the host supplies a complete newly admitted `replacement.admission`.
 To change model, effort, account, settings, or provider configuration, the
@@ -374,6 +389,8 @@ parsing and operating-system security posture stay in adapter-specific tests.
   normalization and fail-closed runtime admission.
 - `@serhiitroinin/fold-harness/input` — typed inline-context resolution and
   provider-neutral input-policy validation.
+- `@serhiitroinin/fold-harness/event-projection` — deny-by-default bounded
+  persistence projection for adapter-owned extension data.
 - `@serhiitroinin/fold-harness/runtime` — adapter and host lifecycle.
 - `@serhiitroinin/fold-harness/turn-queue` — bounded host-owned follow-up
   coordination with explicit dispatch boundaries.
