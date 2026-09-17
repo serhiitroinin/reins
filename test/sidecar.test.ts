@@ -203,7 +203,10 @@ interface TestConnection {
   toolCalls: HarnessSidecarToolCallParams[];
 }
 
-function connect(observed: HarnessAdapterRunRequest[] = []): TestConnection {
+function connect(
+  observed: HarnessAdapterRunRequest[] = [],
+  options: { holdToolCall?: boolean } = {},
+): TestConnection {
   const events: HarnessEvent[] = [];
   const notifications: Array<{ method: string; params: unknown }> = [];
   const toolCalls: HarnessSidecarToolCallParams[] = [];
@@ -222,6 +225,7 @@ function connect(observed: HarnessAdapterRunRequest[] = []): TestConnection {
           return { error: { code: -32601, message: "unknown host method" } };
         }
         toolCalls.push(params as HarnessSidecarToolCallParams);
+        if (options.holdToolCall) return new Promise<never>(() => undefined);
         return {
           result: { content: [{ type: "text", text: "healthy" }] },
         };
@@ -374,6 +378,33 @@ describe("harness sidecar", () => {
     expect(textEvents(connection.events, contextRun.runId)).toEqual([
       "Use the supplied snapshot.|untrusted domain data",
     ]);
+    await connection.server.end();
+  });
+
+  test("cancels a pending host tool callback with stable call and turn identity", async () => {
+    const connection = connect([], { holdToolCall: true });
+    await initialize(connection);
+    const run = await connection.client.request<{ runId: string; turnId: string }>(
+      HARNESS_SIDECAR_METHODS.runStart,
+      {
+        request: wireRequest("tool"),
+        tools: [{ name: "lookup", description: "Look up status", inputSchema: { type: "object" } }],
+      },
+    );
+    await waitFor(() => connection.toolCalls.length === 1, "pending tool call");
+    const callId = connection.toolCalls[0]?.callId;
+    await connection.client.request(HARNESS_SIDECAR_METHODS.runCancel, { runId: run.runId });
+    await waitFor(() => connection.notifications.some((entry) =>
+      entry.method === HARNESS_SIDECAR_NOTIFICATIONS.hostToolCancel
+      && (entry.params as { callId: string }).callId === callId), "tool cancellation");
+    expect(connection.notifications).toContainEqual({
+      method: HARNESS_SIDECAR_NOTIFICATIONS.hostToolCancel,
+      params: { callId, runId: run.runId, turnId: run.turnId },
+    });
+    expect(connection.events).toContainEqual(expect.objectContaining({
+      runId: run.runId,
+      payload: expect.objectContaining({ kind: "turn-completed", status: "interrupted" }),
+    }));
     await connection.server.end();
   });
 

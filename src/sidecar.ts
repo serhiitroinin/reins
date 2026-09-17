@@ -8,6 +8,7 @@ import type {
 } from "./context.js";
 import {
   createHarness,
+  HarnessAdapterError,
   HarnessRuntimeError,
   type HarnessAdapter,
   type HarnessDiagnostic,
@@ -38,6 +39,7 @@ import type {
 } from "./tools.js";
 import {
   HARNESS_SIDECAR_HOST_METHODS,
+  HARNESS_SIDECAR_ERROR_CODES,
   HARNESS_SIDECAR_METHODS,
   HARNESS_SIDECAR_NOTIFICATIONS,
   HARNESS_SIDECAR_PROTOCOL_VERSION,
@@ -65,14 +67,14 @@ import {
   type HarnessWireRunSettings,
 } from "./wire.js";
 
-const INVALID_PARAMS = -32602;
-const METHOD_NOT_FOUND = -32601;
-const NOT_INITIALIZED = -32001;
-const ALREADY_INITIALIZED = -32002;
-const RUN_NOT_FOUND = -32004;
-const ADMISSION_FAILED = -32010;
-const RUNTIME_FAILED = -32020;
-const SIDECAR_CLOSED = -32030;
+const INVALID_PARAMS = HARNESS_SIDECAR_ERROR_CODES.invalidParams;
+const METHOD_NOT_FOUND = HARNESS_SIDECAR_ERROR_CODES.methodNotFound;
+const NOT_INITIALIZED = HARNESS_SIDECAR_ERROR_CODES.notInitialized;
+const ALREADY_INITIALIZED = HARNESS_SIDECAR_ERROR_CODES.alreadyInitialized;
+const RUN_NOT_FOUND = HARNESS_SIDECAR_ERROR_CODES.runNotFound;
+const ADMISSION_FAILED = HARNESS_SIDECAR_ERROR_CODES.admissionFailed;
+const RUNTIME_FAILED = HARNESS_SIDECAR_ERROR_CODES.runtimeFailed;
+const SIDECAR_CLOSED = HARNESS_SIDECAR_ERROR_CODES.closed;
 const MAX_JSON_DEPTH = 32;
 const MAX_JSON_ENTRIES = 10_000;
 const MAX_JSON_STRING_LENGTH = 1_048_576;
@@ -644,6 +646,13 @@ function failure(error: unknown): JsonRpcFailure {
       code: RUNTIME_FAILED,
       message: error.message,
       data: { code: error.code },
+    };
+  }
+  if (error instanceof HarnessAdapterError) {
+    return {
+      code: RUNTIME_FAILED,
+      message: error.publicMessage,
+      data: { code: error.code, retryable: error.retryable },
     };
   }
   return { code: RUNTIME_FAILED, message: "The harness command failed." };

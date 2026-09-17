@@ -27,6 +27,17 @@ import type {
 
 export const HARNESS_SIDECAR_PROTOCOL_VERSION = 1 as const;
 
+export const HARNESS_SIDECAR_ERROR_CODES = {
+  methodNotFound: -32601,
+  invalidParams: -32602,
+  notInitialized: -32001,
+  alreadyInitialized: -32002,
+  runNotFound: -32004,
+  admissionFailed: -32010,
+  runtimeFailed: -32020,
+  closed: -32030,
+} as const;
+
 export const HARNESS_SIDECAR_METHODS = {
   initialize: "harness/initialize",
   capabilities: "harness/capabilities",
