@@ -546,7 +546,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
           streamEnded = true;
           const turn = active;
           if (turn && !turn.finished) {
-            turn.consumer.end("cancelled");
+            turn.consumer.end(turn.cancelling || turn.request.signal.aborted ? "cancelled" : "failed");
             turn.queue.close();
             turn.settled.resolve({ kind: "transport", ...(streamFailure === undefined ? {} : { error: streamFailure }) });
           }

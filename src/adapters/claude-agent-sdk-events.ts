@@ -633,7 +633,11 @@ export function createClaudeAgentSdkEventConsumer(
       else if (type === "rate_limit_event") {
         const snapshot = claudeAgentSdkLimitSnapshot(message.rate_limit_info);
         if (snapshot) options.onLimits?.(snapshot);
-      } else if (type === "result") finish(message);
+      } else if (
+        type === "result"
+        && text(message.subtype) !== ""
+        && typeof message.is_error === "boolean"
+      ) finish(message);
     },
     end(openToolStatus = "cancelled") {
       if (!terminal) flush(true);
