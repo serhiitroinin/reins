@@ -45,7 +45,7 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "bin": {
-    "fold-harness-sidecar": "./dist/bin/fold-harness-sidecar.js"
+    "fold-harness-sidecar": "dist/bin/fold-harness-sidecar.js"
   },
   "exports": {
     ".": {
