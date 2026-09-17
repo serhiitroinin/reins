@@ -146,6 +146,11 @@
       "bun": "./src/adapters/codex-app-server-adapter.ts",
       "import": "./dist/adapters/codex-app-server-adapter.js"
     },
+    "./adapters/codex-app-server-process": {
+      "types": "./src/adapters/codex-app-server-process.ts",
+      "bun": "./src/adapters/codex-app-server-process.ts",
+      "import": "./dist/adapters/codex-app-server-process.js"
+    },
     "./adapters/claude-agent-sdk-adapter": {
       "types": "./src/adapters/claude-agent-sdk-adapter.ts",
       "bun": "./src/adapters/claude-agent-sdk-adapter.ts",

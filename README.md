@@ -439,6 +439,8 @@ provider smoke tests and operating-system security posture remain separate.
 - `@serhiitroinin/fold-harness/mcp` — a bounded, byte-transport-neutral MCP
   server over one turn-scoped tool host.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-adapter` — a complete, provider-injected Codex adapter.
+- `@serhiitroinin/fold-harness/adapters/codex-app-server-process` — an
+  explicit Node child-process connector for Codex App Server stdio.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server` — Codex JSON-RPC lifecycle.
 - `@serhiitroinin/fold-harness/adapters/codex-app-server-events` — provider-neutral Codex events, turn usage, and account-limit snapshots.
 - `@serhiitroinin/fold-harness/adapters/claude-agent-sdk-adapter` — a complete, provider-injected Claude Agent SDK adapter.
@@ -584,6 +586,50 @@ An empty catalog is omitted and keeps that capability disabled. The current
 App Server resume request does not accept a replacement catalog, so a resumed
 thread retains its original catalog; the host should invalidate its resume
 token when that catalog is no longer compatible.
+
+Node hosts can use the optional process connector instead of rebuilding the
+stdio lifecycle. The host must still provide the entire command, argv,
+environment, cwd, thread sandbox, approval policy, and feature/configuration
+overrides. The connector never merges `process.env`, invokes a shell, reads a
+config file, finds credentials, or claims that `cwd` confines anything.
+
+```ts
+import { createCodexAppServerAdapter } from
+  "@serhiitroinin/fold-harness/adapters/codex-app-server-adapter";
+import { createCodexAppServerProcessConnector } from
+  "@serhiitroinin/fold-harness/adapters/codex-app-server-process";
+
+const adapter = createCodexAppServerAdapter({
+  clientInfo: { name: "acme-harness", version: "1" },
+  connect: createCodexAppServerProcessConnector({
+    command: "/absolute/path/to/codex",
+    args: ["app-server", "--stdio", "--strict-config"],
+    env: {
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+      HOME: privateHome,
+      CODEX_HOME: privateCodexHome,
+    },
+    cwd: scratchDirectory,
+  }),
+  thread: (request) => ({
+    cwd: scratchDirectory,
+    // Map the admitted host permission explicitly; this example stays safe.
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    ...(request.model ? { model: request.model } : {}),
+  }),
+  profile,
+  models,
+});
+```
+
+The exact environment requirement is deliberate: a daemon commonly holds
+tokens for unrelated providers and product connectors. Callers construct a
+small allowlist for the selected Codex account. Stdout, stderr, and pending
+stdin are bounded; stderr is drained and remains private unless the host opts
+into `onStderr`; cancellation closes stdin, requests graceful termination,
+then forces termination after the configured grace period. Process failures
+surface only stable safe `HarnessAdapterError` values.
 
 ## Claude adapter boundary
 

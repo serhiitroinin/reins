@@ -19,6 +19,7 @@ export * from "./transports/json-rpc.js";
 export * from "./transports/async-iterable.js";
 export * from "./adapters/codex-app-server.js";
 export * from "./adapters/codex-app-server-adapter.js";
+export * from "./adapters/codex-app-server-process.js";
 export * from "./adapters/codex-app-server-events.js";
 export * from "./adapters/claude-agent-sdk-adapter.js";
 export * from "./adapters/claude-agent-sdk-events.js";
