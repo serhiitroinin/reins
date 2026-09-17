@@ -59,6 +59,16 @@
       "bun": "./src/wire.ts",
       "import": "./dist/wire.js"
     },
+    "./sidecar-protocol": {
+      "types": "./src/sidecar-protocol.ts",
+      "bun": "./src/sidecar-protocol.ts",
+      "import": "./dist/sidecar-protocol.js"
+    },
+    "./sidecar": {
+      "types": "./src/sidecar.ts",
+      "bun": "./src/sidecar.ts",
+      "import": "./dist/sidecar.js"
+    },
     "./schema/v1/*": "./schema/v1/*",
     "./profile": {
       "types": "./src/profile.ts",
