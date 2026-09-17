@@ -67,6 +67,25 @@ child termination. Choosing a private provider home, credentials, sandbox,
 approval policy, MCP mounts, features, and filesystem/network posture remains
 the product's responsibility.
 
+The Node Claude connector is the corresponding Agent SDK deployment primitive.
+It owns the streaming `query`, input queue, interrupt and subagent controls,
+the compaction callback, and an in-process MCP server backed by the active
+`HarnessTurnTools`. That MCP server lists each host JSON Schema unchanged and
+delegates calls to the turn-scoped tool host; it does not move credentials or
+domain implementations into the package. The connector requires an exact
+environment, closed built-in tool and native-skill lists, explicit settings
+sources and permission mode, a system prompt, and `strictMcpConfig: true`.
+Additional SDK options use an explicit escape hatch whose connector-owned keys
+cannot be replaced.
+
+The connector does not turn the SDK permission callback into a security claim.
+Claude may execute calls its effective policy already allows without invoking
+that callback. A product promising approval must install and independently
+verify the corresponding policy ask/deny rules after administrator policy is
+resolved. Likewise, `cwd` places relative paths but confines nothing. The host
+still owns its private Claude home, account environment, sandbox, built-in tool
+surface, policy proof, plugins, external MCP servers, and public redaction.
+
 ## Protocol
 
 Events are append-only envelopes. The store assigns a sequence across the
@@ -471,13 +490,16 @@ with stale authority. Hosts whose configuration contains turn-only fields can
 provide `connectionKey` to select only the connection-scoped portion; account,
 model, effort, and run settings remain pinned regardless.
 
-The connection factory still owns the actual SDK query and every option that
-can change its authority: explicit environment, account and credentials,
-private provider home, working directory, tool allowlist, settings sources,
-plugins, hooks, MCP servers, sandbox, and approval rules. The adapter does not
-spawn Claude or infer any of them. Application-only context `state` is removed
-from the default provider input; only trusted instructions and untrusted
-content cross that boundary.
+The injected connection remains available for custom deployments. The packaged
+Node connector is its reference implementation and owns the actual SDK query,
+stream controls, compaction hook, and in-process application MCP bridge. Every
+option that can change authority still comes from the host: explicit
+environment, account and credentials, private provider home, working
+directory, built-in tool and skill lists, settings sources, plugins, external
+MCP servers, sandbox, and approval rules. Application-only context `state` is
+removed before the connector; its default mapper keeps trusted instruction and
+untrusted content labels distinct without pretending that a user-role Agent
+SDK message is a separate provider system role.
 
 Stable ACP v1 communication uses a host-injected raw byte connection composed
 over the official protocol SDK. `createAcpV1Adapter` owns negotiation,
