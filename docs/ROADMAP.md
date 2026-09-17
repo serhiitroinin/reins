@@ -86,27 +86,38 @@ fully dogfooded by Fold.
 - Opt-in native reliability conformance for Claude and Codex provider death,
   malformed traffic, cancellation after partial output, incompatible stored
   checkpoints, and provider-rejected resume, with live/replay equality.
+- A versioned, transport-neutral JSON-RPC sidecar command server covering
+  discovery, admitted starts, streamed events, replay, same-turn and
+  replacement steering, model/settings changes, interactions, cancellation,
+  subagent stop, session reset, shutdown, host-prepared context, and
+  bidirectional application tools.
+- Public sidecar JSON Schema plus generated Swift and Rust command payload
+  bindings.
 
 ## Next
 
-1. Land Fold's local discovery-to-admission integration after its matching
-   package prerelease is approved, removing the remaining duplicated model,
-   effort, permission, and control checks from the product lanes.
-2. Add opt-in native live smoke across fresh and resumed turns, tools,
+1. Add ready-to-use Node connectors that launch native Claude Agent SDK and
+   Codex App Server sessions from explicit, allowlisted process options. Keep
+   credentials, environment selection, working directories, and security
+   posture host-owned.
+2. Package the sidecar as a stdio executable backed by one private durable
+   local store, then prove the contract with a small Rust client. Core remains
+   persistence- and transport-neutral.
+3. Add opt-in native live smoke across fresh and resumed turns, tools,
    interactions, limits, Fast, steering, and cancellation. Provider death,
    malformed traffic, and checkpoint rejection remain deterministic injected
    transport cases rather than credential-bearing smoke cases.
-3. Specify a transport-neutral runtime command surface and optional headless
-   sidecar so Swift, Rust, and other native hosts can operate the TypeScript
-   runtime rather than only consume its protocol value types.
-4. Add portable activity or attention vocabulary only where Claude/Codex hosts
-   have a concrete non-Fold consumer and conformance case.
+4. Land Fold's local discovery-to-admission integration after its matching
+   package prerelease is approved, then dogfood the packaged sidecar at one
+   non-production boundary before 0.1.0 stable.
+5. Publish a ten-minute quickstart and cut 0.1.0 after the Node and Rust
+   examples pass the same fresh/resume/tool/interaction/steering matrix.
 
 ## Deliberately outside the first release
 
 - A React component library.
 - A mandatory HTTP or SSE transport.
-- A database implementation selected by the package.
+- Multiple database implementations selected by the package.
 - A universal sandbox claim.
 - Direct API model loops presented as equivalent to native agent sessions.
 - New provider-specific integrations beyond Claude Code and Codex.

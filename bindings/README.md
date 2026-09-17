@@ -1,8 +1,9 @@
 # Native schema bindings
 
-These modules are generated data bindings for the public v1 JSON Schema. They
-do not contain a provider SDK, transport, process launcher, credential lookup,
-tool implementation, policy, or application state.
+These modules are generated data bindings for the public v1 JSON Schema,
+including sidecar command, notification, and host-tool payloads. They do not
+contain a JSON-RPC client, provider SDK, transport, process launcher,
+credential lookup, tool implementation, policy, or application state.
 
 - `swift/` is a Swift Package with `Codable` values for native Apple and Swift
   clients.

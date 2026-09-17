@@ -19,6 +19,45 @@ provider adapter
 ACP agent, native SDK, app server, or direct model loop
 ```
 
+## Stack-agnostic command boundary
+
+`createHarnessSidecar` wraps the same runtime in a versioned JSON-RPC command
+surface. It is not a second runtime and does not reinterpret provider events.
+It performs discovery-driven admission, calls `HarnessRuntime`, streams the
+exact persisted `HarnessEvent` values, and delegates application tools back to
+the host over a bidirectional request.
+
+```text
+native, Rust, Swift, web daemon, or other product
+        │ JSON-RPC commands / event notifications
+        │ host/tool/call requests
+        ▼
+Fold Harness sidecar server
+        │
+        ├── discovery + admission
+        ├── runtime + persistence interfaces
+        └── Claude/Codex/ACP adapters
+```
+
+Model, effort, account, permission, and generic control changes are ordinary
+new-turn selections. During an active turn they require replacement steering:
+the sidecar resolves a complete new execution snapshot and admission before
+the runtime prepares context or cancels the current provider turn. Same-turn
+steering never changes the frozen execution snapshot.
+
+The native host may supply a JSON-safe prepared context that keeps trusted
+instructions separate from untrusted content. Application-only state remains
+outside the sidecar and can be recovered by run/turn identity when the sidecar
+requests a tool. Credentials, subprocess launch, filesystem/network policy,
+and the durable store implementation remain deployment concerns rather than
+command fields.
+
+The sidecar protocol is specified in `docs/SIDECAR_V1.md` and
+`schema/v1/sidecar.schema.json`. The in-process server accepts arbitrary text
+chunks and a synchronous whole-frame writer, so stdio, sockets, native IPC,
+and test transports can share the same semantics. A packaged executable is a
+deployment layer above this boundary.
+
 ## Protocol
 
 Events are append-only envelopes. The store assigns a sequence across the
