@@ -4,6 +4,7 @@ import {
   isHarnessRedactedExtensionPayload,
   projectHarnessEventPayloadForPersistence,
   type HarnessExtensionEvent,
+  type HarnessToolExtensionEvent,
 } from "../src/event-projection.ts";
 
 const extension = (payload: unknown): HarnessExtensionEvent => ({
@@ -16,13 +17,17 @@ const extension = (payload: unknown): HarnessExtensionEvent => ({
 describe("durable event projection", () => {
   test("redacts an extension payload unless its adapter explicitly approves it", () => {
     const raw = { secret: "must-not-persist" };
-    const projected = projectHarnessEventPayloadForPersistence(extension(raw), undefined);
+    const projected = projectHarnessEventPayloadForPersistence({
+      ...extension(raw),
+      rawProviderResponse: "must-not-persist-outside-payload",
+    } as HarnessExtensionEvent, undefined);
 
     expect(projected.issue?.code).toBe("EXTENSION_NOT_APPROVED");
     expect(projected.payload?.kind).toBe("extension");
     if (projected.payload?.kind !== "extension") throw new Error("extension was not retained");
     expect(isHarnessRedactedExtensionPayload(projected.payload.payload)).toBe(true);
     expect(JSON.stringify(projected.payload)).not.toContain(raw.secret);
+    expect(JSON.stringify(projected.payload)).not.toContain("must-not-persist-outside-payload");
   });
 
   test("detaches explicitly approved JSON without mutating the adapter value", () => {
@@ -146,7 +151,8 @@ describe("durable event projection", () => {
       toolKind: "search",
       title: "Search",
       extensions: { "example:raw": "secret" },
-    };
+      rawProviderResponse: "must-not-persist-outside-extensions",
+    } as const;
     const refused = projectHarnessEventPayloadForPersistence(tool, undefined);
     expect(refused.payload).toEqual({
       kind: "tool-updated",
@@ -156,12 +162,20 @@ describe("durable event projection", () => {
       truncated: true,
     });
     expect(refused.issue?.code).toBe("EXTENSION_NOT_APPROVED");
+    expect(JSON.stringify(refused.payload)).not.toContain("must-not-persist-outside-extensions");
 
     const approved = projectHarnessEventPayloadForPersistence(tool, {
       projectToolExtensions: (event) => event.extensions,
     });
     expect(approved.issue).toBeUndefined();
-    expect(approved.payload).toEqual(tool);
+    expect(approved.payload).toEqual({
+      kind: "tool-updated",
+      toolId: "tool-1",
+      toolKind: "search",
+      title: "Search",
+      extensions: { "example:raw": "secret" },
+    });
+    expect(JSON.stringify(approved.payload)).not.toContain("must-not-persist-outside-extensions");
 
     const oversized = projectHarnessEventPayloadForPersistence(tool, {
       projectToolExtensions: () => ({ raw: "x".repeat(HARNESS_EXTENSION_PAYLOAD_MAX_BYTES) }),
@@ -174,5 +188,24 @@ describe("durable event projection", () => {
       truncated: true,
     });
     expect(oversized.issue?.code).toBe("EXTENSION_VALUE_LIMIT_EXCEEDED");
+  });
+
+  test("rebuilds tool envelopes even when no extension map was supplied", () => {
+    const projected = projectHarnessEventPayloadForPersistence({
+      kind: "tool-started",
+      toolId: "tool-1",
+      toolKind: "search",
+      title: "Search",
+      rawProviderResponse: "must-not-persist",
+    } as HarnessToolExtensionEvent, undefined);
+
+    expect(projected).toEqual({
+      payload: {
+        kind: "tool-started",
+        toolId: "tool-1",
+        toolKind: "search",
+        title: "Search",
+      },
+    });
   });
 });

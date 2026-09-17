@@ -211,15 +211,65 @@ function safeProjection(
   };
 }
 
-function withoutToolExtensions(payload: HarnessToolExtensionEvent): HarnessToolExtensionEvent {
+function extensionEnvelope(
+  payload: HarnessExtensionEvent,
+  projectedPayload: HarnessContextValue,
+): HarnessExtensionEvent {
+  return {
+    kind: "extension",
+    namespace: payload.namespace,
+    name: payload.name,
+    payload: projectedPayload,
+  };
+}
+
+function toolEnvelope(
+  payload: HarnessToolExtensionEvent,
+  extensions?: Readonly<Record<string, unknown>>,
+): HarnessToolExtensionEvent {
   if (payload.kind === "tool-started") {
-    const { extensions: _extensions, ...rest } = payload;
-    void _extensions;
-    return rest;
+    return {
+      kind: "tool-started",
+      toolId: payload.toolId,
+      toolKind: payload.toolKind,
+      title: payload.title,
+      ...(payload.detail !== undefined ? { detail: payload.detail } : {}),
+      ...(payload.command !== undefined ? { command: payload.command } : {}),
+      ...(payload.paths !== undefined ? { paths: payload.paths } : {}),
+      ...(extensions !== undefined ? { extensions } : {}),
+    };
   }
-  const { extensions: _extensions, ...rest } = payload;
-  void _extensions;
-  return { ...rest, truncated: true };
+  if (payload.kind === "tool-updated") {
+    return {
+      kind: "tool-updated",
+      toolId: payload.toolId,
+      toolKind: payload.toolKind,
+      title: payload.title,
+      ...(payload.outputAppend !== undefined ? { outputAppend: payload.outputAppend } : {}),
+      ...(payload.detail !== undefined ? { detail: payload.detail } : {}),
+      ...(payload.truncated !== undefined ? { truncated: payload.truncated } : {}),
+      ...(extensions !== undefined ? { extensions } : {}),
+    };
+  }
+  return {
+    kind: "tool-completed",
+    toolId: payload.toolId,
+    status: payload.status,
+    toolKind: payload.toolKind,
+    title: payload.title,
+    ...(payload.outputAppend !== undefined ? { outputAppend: payload.outputAppend } : {}),
+    ...(payload.error !== undefined ? { error: payload.error } : {}),
+    ...(payload.exitCode !== undefined ? { exitCode: payload.exitCode } : {}),
+    ...(payload.truncated !== undefined ? { truncated: payload.truncated } : {}),
+    ...(extensions !== undefined ? { extensions } : {}),
+  };
+}
+
+function withoutToolExtensions(payload: HarnessToolExtensionEvent): HarnessToolExtensionEvent {
+  const projected = toolEnvelope(payload);
+  return projected.kind === "tool-started"
+    ? projected
+    : { ...projected, truncated: true };
 }
 
 /**
@@ -246,7 +296,7 @@ export function projectHarnessEventPayloadForPersistence(
     }
     if (!projection?.projectExtension) {
       return {
-        payload: { ...payload, payload: redacted("not-approved") },
+        payload: extensionEnvelope(payload, redacted("not-approved")),
         issue: issue(
           "EXTENSION_NOT_APPROVED",
           "An adapter event extension was not approved for durable storage and was redacted.",
@@ -258,7 +308,7 @@ export function projectHarnessEventPayloadForPersistence(
       selected = projection.projectExtension(payload);
     } catch {
       return {
-        payload: { ...payload, payload: redacted("projection-failed") },
+        payload: extensionEnvelope(payload, redacted("projection-failed")),
         issue: issue(
           "EXTENSION_PROJECTION_FAILED",
           "An adapter event extension projector failed and its payload was redacted.",
@@ -267,7 +317,7 @@ export function projectHarnessEventPayloadForPersistence(
     }
     if (selected === undefined) {
       return {
-        payload: { ...payload, payload: redacted("not-approved") },
+        payload: extensionEnvelope(payload, redacted("not-approved")),
         issue: issue(
           "EXTENSION_NOT_APPROVED",
           "An adapter event extension was not approved for durable storage and was redacted.",
@@ -276,15 +326,15 @@ export function projectHarnessEventPayloadForPersistence(
     }
     const selectedProjection = safeProjection(selected);
     return {
-      payload: { ...payload, payload: selectedProjection.value },
+      payload: extensionEnvelope(payload, selectedProjection.value),
       ...(selectedProjection.issue ? { issue: selectedProjection.issue } : {}),
     };
   }
 
-  if (
-    (payload.kind === "tool-started" || payload.kind === "tool-updated" || payload.kind === "tool-completed")
-    && payload.extensions !== undefined
-  ) {
+  if (payload.kind === "tool-started" || payload.kind === "tool-updated" || payload.kind === "tool-completed") {
+    if (payload.extensions === undefined) {
+      return { payload: toolEnvelope(payload) };
+    }
     let selected: unknown;
     try {
       selected = projection?.projectToolExtensions?.(payload);
@@ -322,10 +372,10 @@ export function projectHarnessEventPayloadForPersistence(
       };
     }
     return {
-      payload: {
-        ...payload,
-        extensions: selectedProjection.value as Readonly<Record<string, unknown>>,
-      },
+      payload: toolEnvelope(
+        payload,
+        selectedProjection.value as Readonly<Record<string, unknown>>,
+      ),
     };
   }
 
