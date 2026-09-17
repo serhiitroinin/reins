@@ -643,6 +643,11 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
                 turnId: current.turnId,
               });
             }
+          } catch (error) {
+            // The runtime aborts the turn before it dispatches adapter
+            // cancellation. A process connector may close on that signal
+            // before this best-effort interrupt reaches the provider.
+            if (!current.request.signal.aborted) throw error;
           } finally {
             await closeActive(current);
           }

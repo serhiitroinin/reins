@@ -77,4 +77,30 @@ describe("JSON-RPC transport", () => {
     peer.end("child ended");
     await expect(result).rejects.toThrow("child ended");
   });
+
+  test("retires a peer when a late inbound answer loses its output", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let outputClosed = false;
+    const peer = createJsonRpcPeer({
+      write() {
+        if (outputClosed) throw new Error("private transport failure");
+      },
+      hooks: {
+        async request() {
+          await held;
+          return { result: { ok: true } };
+        },
+      },
+    });
+    peer.text(`${JSON.stringify({ jsonrpc: "2.0", id: "tool-1", method: "tool/call" })}\n`);
+    const pending = peer.request("turn/status");
+    const rejected = pending.catch((error: unknown) => error);
+
+    outputClosed = true;
+    release();
+
+    expect(await rejected).toEqual(new Error("the JSON-RPC output closed"));
+    await expect(peer.request("turn/start")).rejects.toThrow("the JSON-RPC output closed");
+  });
 });

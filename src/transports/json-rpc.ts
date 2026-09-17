@@ -60,6 +60,12 @@ export function createJsonRpcPeer(options: JsonRpcPeerOptions): JsonRpcPeer {
   let closed: string | null = null;
 
   const send = (message: unknown): void => options.write(`${JSON.stringify(message)}\n`);
+  const closeWaiting = (reason: string): void => {
+    if (closed !== null) return;
+    closed = reason;
+    for (const pending of waiting.values()) pending.reject(new Error(reason));
+    waiting.clear();
+  };
   const answerRequest = async (method: string, params: unknown, id: JsonRpcId): Promise<void> => {
     let answer: JsonRpcRequestAnswer;
     try {
@@ -75,9 +81,15 @@ export function createJsonRpcPeer(options: JsonRpcPeerOptions): JsonRpcPeer {
       };
     }
     if (closed !== null) return;
-    send("error" in answer
-      ? { jsonrpc: "2.0", id, error: answer.error }
-      : { jsonrpc: "2.0", id, result: answer.result });
+    try {
+      send("error" in answer
+        ? { jsonrpc: "2.0", id, error: answer.error }
+        : { jsonrpc: "2.0", id, result: answer.result });
+    } catch {
+      // An inbound request can finish after the process transport closes.
+      // Retire the peer instead of creating an unhandled background failure.
+      closeWaiting("the JSON-RPC output closed");
+    }
   };
 
   const reader = createNdjsonReader((message) => {
@@ -116,18 +128,21 @@ export function createJsonRpcPeer(options: JsonRpcPeerOptions): JsonRpcPeer {
     end(reason = "the JSON-RPC peer ended") {
       if (closed !== null) return;
       reader.end();
-      closed = reason;
-      for (const pending of waiting.values()) pending.reject(new Error(reason));
-      waiting.clear();
+      closeWaiting(reason);
     },
     request<T>(method: string, params?: unknown): Promise<T> {
       if (closed !== null) return Promise.reject(new Error(closed));
       const id = ++nextId;
       return new Promise<T>((resolve, reject) => {
         waiting.set(id, { method, resolve: (value) => resolve(value as T), reject });
-        send(params === undefined
-          ? { jsonrpc: "2.0", id, method }
-          : { jsonrpc: "2.0", id, method, params });
+        try {
+          send(params === undefined
+            ? { jsonrpc: "2.0", id, method }
+            : { jsonrpc: "2.0", id, method, params });
+        } catch (error) {
+          waiting.delete(id);
+          reject(error);
+        }
       });
     },
     notify(method, params) {
