@@ -100,6 +100,17 @@ function createAdapter(observed: HarnessAdapterRunRequest[]): HarnessAdapter {
         };
         return;
       }
+      if (text === "invalid-tool") {
+        const cyclic: Record<string, unknown> = {};
+        cyclic.self = cyclic;
+        const result = await request.tools.call("lookup", cyclic);
+        const value = result.content[0];
+        yield {
+          kind: "assistant-text",
+          text: `${result.code ?? "missing"}:${value?.type === "text" ? value.text : "missing"}`,
+        };
+        return;
+      }
       if (text === "context") {
         const contribution = request.context.sources[0]?.value;
         const content = contribution?.content[0];
@@ -360,6 +371,18 @@ describe("harness sidecar", () => {
       name: "lookup",
       input: { query: "status" },
     })]);
+    await waitFor(() => runSettled(connection, toolRun.runId));
+
+    const invalidToolRun = await connection.client.request<{ runId: string }>(HARNESS_SIDECAR_METHODS.runStart, {
+      request: wireRequest("invalid-tool"),
+      tools: [{ name: "lookup", description: "Look up status", inputSchema: { type: "object" } }],
+    });
+    await waitFor(() => textEvents(connection.events, invalidToolRun.runId).length === 1, "invalid tool result");
+    expect(textEvents(connection.events, invalidToolRun.runId)).toEqual([
+      "TOOL_INPUT_INVALID:Invalid input for tool: lookup",
+    ]);
+    expect(connection.toolCalls).toHaveLength(1);
+    await waitFor(() => runSettled(connection, invalidToolRun.runId));
 
     const contextRun = await connection.client.request<{ runId: string }>(HARNESS_SIDECAR_METHODS.runStart, {
       request: wireRequest("context"),

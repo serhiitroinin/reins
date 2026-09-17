@@ -151,6 +151,7 @@ function cloneJson(
   path: string,
   state: { entries: number },
   depth = 0,
+  ancestors: Set<object> = new Set(),
 ): HarnessJsonValue {
   if (depth > MAX_JSON_DEPTH) throw new SidecarRequestError(INVALID_PARAMS, `${path} exceeds the JSON depth limit`);
   if (value === null || typeof value === "boolean") return value;
@@ -164,22 +165,48 @@ function cloneJson(
   if (typeof value !== "object" || value === null) {
     throw new SidecarRequestError(INVALID_PARAMS, `${path} must contain only JSON values`);
   }
-  if (Array.isArray(value)) {
-    state.entries += value.length;
+  if (ancestors.has(value)) throw new SidecarRequestError(INVALID_PARAMS, `${path} must not contain a cycle`);
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Reflect.ownKeys(value).length !== value.length + 1) {
+        throw new SidecarRequestError(INVALID_PARAMS, `${path} must not contain array holes or extra properties`);
+      }
+      state.entries += value.length;
+      if (state.entries > MAX_JSON_ENTRIES) {
+        throw new SidecarRequestError(INVALID_PARAMS, `${path} exceeds the JSON collection limit`);
+      }
+      return value.map((entry, index) => {
+        if (!Object.hasOwn(value, index)) {
+          throw new SidecarRequestError(INVALID_PARAMS, `${path} must not contain array holes or extra properties`);
+        }
+        return cloneJson(entry, `${path}[${index}]`, state, depth + 1, ancestors);
+      });
+    }
+    const prototype = Object.getPrototypeOf(value) as object | null;
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new SidecarRequestError(INVALID_PARAMS, `${path} must contain only plain JSON objects`);
+    }
+    const keys = Reflect.ownKeys(value);
+    state.entries += keys.length;
     if (state.entries > MAX_JSON_ENTRIES) {
       throw new SidecarRequestError(INVALID_PARAMS, `${path} exceeds the JSON collection limit`);
     }
-    return value.map((entry, index) => cloneJson(entry, `${path}[${index}]`, state, depth + 1));
+    const result: Record<string, HarnessJsonValue> = {};
+    for (const key of keys) {
+      if (typeof key !== "string") {
+        throw new SidecarRequestError(INVALID_PARAMS, `${path} must not contain symbol keys`);
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !("value" in descriptor)) {
+        throw new SidecarRequestError(INVALID_PARAMS, `${path}.${key} must be an enumerable data property`);
+      }
+      result[key] = cloneJson(descriptor.value, `${path}.${key}`, state, depth + 1, ancestors);
+    }
+    return result;
+  } finally {
+    ancestors.delete(value);
   }
-  const source = value as JsonRecord;
-  const keys = Object.keys(source);
-  state.entries += keys.length;
-  if (state.entries > MAX_JSON_ENTRIES) {
-    throw new SidecarRequestError(INVALID_PARAMS, `${path} exceeds the JSON collection limit`);
-  }
-  const result: Record<string, HarnessJsonValue> = {};
-  for (const key of keys) result[key] = cloneJson(source[key], `${path}.${key}`, state, depth + 1);
-  return result;
 }
 
 function jsonObject(value: unknown, path: string): HarnessJsonObject {

@@ -19,6 +19,7 @@ import type { HarnessDiagnostic } from "./runtime.js";
 import type { HarnessToolDescriptor, HarnessToolResult } from "./tools.js";
 import type {
   HarnessJsonObject,
+  HarnessJsonValue,
   HarnessWireDiscoveryRequest,
   HarnessWireInput,
   HarnessWireRunRequest,
@@ -207,7 +208,7 @@ export interface HarnessSidecarToolCallParams extends HarnessSidecarRunIdentity 
   session: HarnessSessionKey;
   adapterId: string;
   name: string;
-  input: unknown;
+  input: HarnessJsonValue;
 }
 
 export type HarnessSidecarToolCallResult = HarnessToolResult;
