@@ -24,6 +24,8 @@ try {
     cwd: resolve("."),
     stdout: "inherit",
     stderr: "inherit",
+    timeout: 60_000,
+    killSignal: "SIGTERM",
   });
   if (result.exitCode !== 0) process.exit(result.exitCode);
 } finally {
