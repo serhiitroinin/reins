@@ -140,7 +140,7 @@ export async function runAdapterReliabilityConformance(
       const status = await run.done;
       const durable = await persistence.events.list(SESSION, fixture.adapterId);
       same(live, durable, "live events differed from durable replay");
-      return { live, status };
+      return { live, status, providerCloses: fixture.providerCloses() };
     } finally {
       await runtime.close();
     }
@@ -148,7 +148,7 @@ export async function runAdapterReliabilityConformance(
 
   await runCase("provider death", async () => {
     const closes = fixture.providerCloses();
-    const { live, status } = await runScenario("provider-death");
+    const { live, status, providerCloses } = await runScenario("provider-death");
     check(status === "error", "provider death did not fail the run");
     check(live.some((event) => event.payload.kind === "assistant-text"
       && event.payload.text.includes(RELIABILITY.partialText)), "partial provider output was lost");
@@ -161,7 +161,7 @@ export async function runAdapterReliabilityConformance(
     );
     assertTerminal(live, "error");
     assertSafe(live);
-    check(fixture.providerCloses() > closes, "the dead provider resource was not closed");
+    check(providerCloses > closes, "the dead provider resource was not closed before runtime shutdown");
   });
 
   await runCase("malformed traffic recovery", async () => {
