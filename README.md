@@ -81,6 +81,39 @@ const run = harness.start({
 for await (const event of run.events) console.log(event.payload);
 ```
 
+## Any-stack sidecar contract
+
+`createHarnessSidecar` exposes that same runtime as a versioned JSON-RPC 2.0
+command server over caller-owned text I/O. A native, Rust, Swift, desktop, web
+daemon, or other host can discover models and limits; select permissions,
+effort, and controls such as Codex Fast; start turns; consume every streamed
+event; steer or replace an active turn; answer interactions; stop subagents;
+cancel; replay; reset; and shut down without reproducing provider semantics.
+
+The sidecar also calls the host back for application tools. Tool catalogs and
+trusted/untrusted prepared context can be supplied per turn, while credentials,
+process policy, domain state, persistence, and UI remain outside the package.
+
+```ts
+import { createHarnessSidecar } from "@serhiitroinin/fold-harness/sidecar";
+
+const sidecar = createHarnessSidecar({
+  adapters,
+  persistence,
+  write: (line) => nativeTransport.writeFully(line),
+});
+
+nativeTransport.onText((chunk) => sidecar.text(chunk));
+nativeTransport.onClose(() => sidecar.end());
+```
+
+The public JSON Schema and generated Swift/Rust bindings include the command,
+notification, and host-tool payloads. See [sidecar protocol v1](docs/SIDECAR_V1.md)
+for the method table, replacement model/settings flow, streaming sequence,
+tool callbacks, and error boundary. A packaged stdio process and durable local
+store are still roadmap items; the contract and reference server are usable
+now from an embedding Node process.
+
 An application that already admitted a turn may pass runtime-only start
 options as the second argument. Host-supplied IDs keep product and harness
 events correlated; a supplied controller becomes the run's controller; a
@@ -388,6 +421,10 @@ provider smoke tests and operating-system security posture remain separate.
 - `@serhiitroinin/fold-harness/protocol` — browser-safe public contracts.
 - `@serhiitroinin/fold-harness/wire` — JSON-safe run request encoding for
   transports and native hosts.
+- `@serhiitroinin/fold-harness/sidecar-protocol` — versioned commands,
+  notifications, host tool callbacks, and method identifiers.
+- `@serhiitroinin/fold-harness/sidecar` — the transport-neutral JSON-RPC
+  reference server around the complete runtime.
 - `@serhiitroinin/fold-harness/profile` — model, permission, control, and limit discovery contracts.
 - `@serhiitroinin/fold-harness/admission` — discovery-driven request
   normalization and fail-closed runtime admission.
@@ -413,17 +450,19 @@ provider smoke tests and operating-system security posture remain separate.
 - `@serhiitroinin/fold-harness/adapters/opencode-acp` — an OpenCode ACP
   composition helper for exact model, effort, and host-defined mode mapping.
 - `@serhiitroinin/fold-harness/testing` — deterministic host fixtures.
-- `@serhiitroinin/fold-harness/schema/v1/protocol.schema.json` and
-  `discovery.schema.json` — versioned JSON Schema 2020-12 contracts.
+- `@serhiitroinin/fold-harness/schema/v1/protocol.schema.json`,
+  `discovery.schema.json`, and `sidecar.schema.json` — versioned JSON Schema
+  2020-12 contracts.
 
 See [the architecture](docs/ARCHITECTURE.md) and [extraction roadmap](docs/ROADMAP.md).
 
 ## Native and non-JavaScript hosts
 
 The npm tarball includes the v1 schema manifest plus generated Swift `Codable`
-and Rust Serde data bindings. They model the portable protocol only; a native
-product chooses its own transport, persistence, UI, provider processes,
-credentials, and security policy.
+and Rust Serde data bindings. They model the portable protocol and sidecar
+command payloads, not a provider SDK or JSON-RPC client. A native product still
+chooses its outer transport, UI, provider processes, credentials, and security
+policy; the sidecar reference server supplies the runtime semantics.
 
 ```ts
 import { encodeHarnessRunRequest } from "@serhiitroinin/fold-harness/wire";

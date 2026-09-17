@@ -12,6 +12,7 @@ const common = [
   "--src", join(root, "scripts/bindings-v1.schema.json"),
   "--additional-schema", join(root, "schema/v1/protocol.schema.json"),
   "--additional-schema", join(root, "schema/v1/discovery.schema.json"),
+  "--additional-schema", join(root, "schema/v1/sidecar.schema.json"),
   "--top-level", "V1",
   "--no-date-times",
   "--alphabetize-properties",

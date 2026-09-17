@@ -35,9 +35,33 @@ pub struct V1 {
 
     pub run_request: RunRequest,
 
-    pub tool_descriptor: ToolDescriptor,
+    pub sidecar_diagnostic_notification: SidecarDiagnosticNotificationClass,
 
-    pub tool_result: ToolResult,
+    pub sidecar_events_list_params: SidecarEventsListParamsClass,
+
+    pub sidecar_follow_up_params: SidecarFollowUpParamsClass,
+
+    pub sidecar_initialize_params: SidecarInitializeParamsClass,
+
+    pub sidecar_initialize_result: SidecarInitializeResultClass,
+
+    pub sidecar_respond_params: SidecarRespondParamsClass,
+
+    pub sidecar_run_settled_notification: SidecarRunSettledNotificationClass,
+
+    pub sidecar_run_start_params: SidecarRunStartParamsClass,
+
+    pub sidecar_stop_subagent_params: HarnessSidecarStopSubagentParams,
+
+    pub sidecar_tool_call_params: SidecarToolCallParamsClass,
+
+    pub sidecar_tool_call_result: SidecarToolCallResult,
+
+    pub sidecar_tool_cancel_notification: SidecarToolCancelNotificationClass,
+
+    pub tool_descriptor: ToolDescriptorElement,
+
+    pub tool_result: SidecarToolCallResult,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -76,7 +100,7 @@ pub struct Capabilities {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cancel {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub constraints: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -87,16 +111,16 @@ pub struct Cancel {
 /// A value representable by RFC 8259 JSON without coercion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum ProtocolSchema {
+pub enum InputValue {
     Bool(bool),
 
     Double(f64),
 
     PurpleString(String),
 
-    UnionArray(Vec<Option<ProtocolSchema>>),
+    UnionArray(Vec<Option<InputValue>>),
 
-    UnionMap(HashMap<String, Option<ProtocolSchema>>),
+    UnionMap(HashMap<String, Option<InputValue>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -112,7 +136,7 @@ pub enum Support {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Interactions {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub constraints: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -136,7 +160,7 @@ pub enum Recovery {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Steering {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub constraints: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -162,7 +186,7 @@ pub enum Preferred {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Subagents {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub constraints: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub constraints: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub controls: Option<Vec<Control>>,
@@ -480,7 +504,7 @@ pub struct Payload {
     pub exit_code: Option<i64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub extensions: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interaction: Option<Interaction>,
@@ -508,7 +532,7 @@ pub struct Payload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paths: Option<Vec<String>>,
 
-    pub payload: Option<ProtocolSchema>,
+    pub payload: Option<InputValue>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -564,7 +588,7 @@ pub struct Interaction {
     pub kind: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub metadata: Option<HashMap<String, Option<InputValue>>>,
 
     pub title: String,
 }
@@ -637,7 +661,7 @@ pub struct Usage {
     pub output_tokens: Option<i64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub provider: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<i64>,
@@ -671,7 +695,7 @@ pub struct RecordElement {
 
     pub label: String,
 
-    pub payload: Option<ProtocolSchema>,
+    pub payload: Option<InputValue>,
 
     pub version: i64,
 }
@@ -943,7 +967,7 @@ pub struct RunRequest {
 
     /// JSON-safe adapter-specific configuration. This escape hatch is not a portable UI contract.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub configuration: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub configuration: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
@@ -951,10 +975,10 @@ pub struct RunRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inline_context: Option<InlineContext>,
 
-    pub input: Vec<InputElement>,
+    pub input: Vec<InputClass>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub metadata: Option<HashMap<String, Option<InputValue>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -969,7 +993,7 @@ pub struct RunRequest {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InputElement {
+pub struct InputClass {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_id: Option<String>,
 
@@ -1039,36 +1063,311 @@ pub struct SettingsPermission {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolDescriptor {
-    pub description: String,
+pub struct SidecarDiagnosticNotificationClass {
+    pub diagnostic: Diagnostic,
+}
 
-    pub input_schema: HashMap<String, Option<ProtocolSchema>>,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostic {
+    pub adapter_id: String,
+
+    pub code: String,
+
+    pub message: String,
+
+    pub phase: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub retryable: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+
+    pub schema_version: i64,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<Session>,
+
+    pub severity: Severity,
+
+    pub timestamp: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    Error,
+
+    Warning,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarEventsListParamsClass {
+    pub adapter_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<i64>,
+
+    pub session: Session,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarFollowUpParamsClass {
+    pub expected_turn_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inline_context: Option<InlineContext>,
+
+    pub input: Vec<InputClass>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, Option<InputValue>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<Replacement>,
+
+    pub run_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<Preferred>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Replacement {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<Context>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution: Option<Execution>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_binding: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ToolDescriptorElement>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Context {
+    pub sources: Vec<SourceElement>,
+
+    pub unavailable: Vec<UnavailableElement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceElement {
+    pub source_id: String,
+
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Value {
+    pub content: Vec<InputClass>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnavailableElement {
+    pub code: String,
+
+    pub message: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retryable: Option<bool>,
+
+    pub source_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Execution {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<HashMap<String, Option<InputValue>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<Settings>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolDescriptorElement {
+    pub description: String,
+
+    pub input_schema: HashMap<String, Option<InputValue>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, Option<InputValue>>>,
 
     pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolResult {
+pub struct SidecarInitializeParamsClass {
+    pub client: Client,
+
+    pub protocol_version: i64,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ToolDescriptorElement>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Client {
+    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarInitializeResultClass {
+    pub adapters: Vec<String>,
+
+    pub host_methods: Vec<String>,
+
+    pub methods: Vec<String>,
+
+    pub notifications: Vec<String>,
+
+    pub protocol_version: i64,
+
+    pub server: Server,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Server {
+    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarRespondParamsClass {
+    pub interaction_id: String,
+
+    pub response: Response,
+
+    pub run_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarRunSettledNotificationClass {
+    pub run_id: String,
+
+    pub status: SidecarRunSettledNotificationStatus,
+
+    pub turn_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SidecarRunSettledNotificationStatus {
+    Completed,
+
+    Error,
+
+    Interrupted,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarRunStartParamsClass {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<Context>,
+
+    pub request: RunRequest,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_binding: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ToolDescriptorElement>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessSidecarStopSubagentParams {
+    pub run_id: String,
+
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarToolCallParamsClass {
+    pub adapter_id: String,
+
+    pub call_id: String,
+
+    pub input: Option<InputValue>,
+
+    pub name: String,
+
+    pub protocol_version: i64,
+
+    pub run_id: String,
+
+    pub session: Session,
+
+    pub turn_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarToolCallResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
 
-    pub content: Vec<ContentElement>,
+    pub content: Vec<SidecarToolCallResultContent>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Option<ProtocolSchema>>>,
+    pub metadata: Option<HashMap<String, Option<InputValue>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ContentElement {
+pub struct SidecarToolCallResultContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
 
@@ -1076,7 +1375,7 @@ pub struct ContentElement {
     pub media_type: Option<String>,
 
     #[serde(rename = "type")]
-    pub protocol_schema_type: ContentType,
+    pub protocol_schema_type: PurpleType,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -1087,10 +1386,20 @@ pub struct ContentElement {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ContentType {
+pub enum PurpleType {
     Image,
 
     Resource,
 
     Text,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarToolCancelNotificationClass {
+    pub call_id: String,
+
+    pub run_id: String,
+
+    pub turn_id: String,
 }

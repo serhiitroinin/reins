@@ -21,7 +21,19 @@
     "modelCatalogDiscovery": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessModelCatalogDiscovery" },
     "limitSnapshot": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessLimitSnapshot" },
     "limitSnapshotDiscovery": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessLimitSnapshotDiscovery" },
-    "resolvedConfiguration": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/ResolvedHarnessConfiguration" }
+    "resolvedConfiguration": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/ResolvedHarnessConfiguration" },
+    "sidecarInitializeParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarInitializeParams" },
+    "sidecarInitializeResult": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarInitializeResult" },
+    "sidecarRunStartParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarRunStartParams" },
+    "sidecarFollowUpParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarFollowUpParams" },
+    "sidecarRespondParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarRespondParams" },
+    "sidecarStopSubagentParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarStopSubagentParams" },
+    "sidecarEventsListParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarEventsListParams" },
+    "sidecarRunSettledNotification": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarRunSettledNotification" },
+    "sidecarDiagnosticNotification": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarDiagnosticNotification" },
+    "sidecarToolCallParams": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarToolCallParams" },
+    "sidecarToolCallResult": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarToolCallResult" },
+    "sidecarToolCancelNotification": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarToolCancelNotification" }
   },
   "required": [
     "capabilities",
@@ -40,6 +52,18 @@
     "modelCatalogDiscovery",
     "limitSnapshot",
     "limitSnapshotDiscovery",
-    "resolvedConfiguration"
+    "resolvedConfiguration",
+    "sidecarInitializeParams",
+    "sidecarInitializeResult",
+    "sidecarRunStartParams",
+    "sidecarFollowUpParams",
+    "sidecarRespondParams",
+    "sidecarStopSubagentParams",
+    "sidecarEventsListParams",
+    "sidecarRunSettledNotification",
+    "sidecarDiagnosticNotification",
+    "sidecarToolCallParams",
+    "sidecarToolCallResult",
+    "sidecarToolCancelNotification"
   ]
 }

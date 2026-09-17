@@ -23,8 +23,20 @@ public struct FHV1: Codable {
     public let modelCatalogDiscovery: FHModelCatalogDiscovery
     public let resolvedConfiguration: FHResolvedConfiguration
     public let runRequest: FHRunRequest
-    public let toolDescriptor: FHToolDescriptor
-    public let toolResult: FHToolResult
+    public let sidecarDiagnosticNotification: FHSidecarDiagnosticNotificationClass
+    public let sidecarEventsListParams: FHSidecarEventsListParamsClass
+    public let sidecarFollowUpParams: FHSidecarFollowUpParamsClass
+    public let sidecarInitializeParams: FHSidecarInitializeParamsClass
+    public let sidecarInitializeResult: FHSidecarInitializeResultClass
+    public let sidecarRespondParams: FHSidecarRespondParamsClass
+    public let sidecarRunSettledNotification: FHSidecarRunSettledNotificationClass
+    public let sidecarRunStartParams: FHSidecarRunStartParamsClass
+    public let sidecarStopSubagentParams: FHHarnessSidecarStopSubagentParams
+    public let sidecarToolCallParams: FHSidecarToolCallParamsClass
+    public let sidecarToolCallResult: FHSidecarToolCallResult
+    public let sidecarToolCancelNotification: FHSidecarToolCancelNotificationClass
+    public let toolDescriptor: FHToolDescriptorElement
+    public let toolResult: FHSidecarToolCallResult
 
     public enum CodingKeys: String, CodingKey {
         case capabilities = "capabilities"
@@ -42,11 +54,23 @@ public struct FHV1: Codable {
         case modelCatalogDiscovery = "modelCatalogDiscovery"
         case resolvedConfiguration = "resolvedConfiguration"
         case runRequest = "runRequest"
+        case sidecarDiagnosticNotification = "sidecarDiagnosticNotification"
+        case sidecarEventsListParams = "sidecarEventsListParams"
+        case sidecarFollowUpParams = "sidecarFollowUpParams"
+        case sidecarInitializeParams = "sidecarInitializeParams"
+        case sidecarInitializeResult = "sidecarInitializeResult"
+        case sidecarRespondParams = "sidecarRespondParams"
+        case sidecarRunSettledNotification = "sidecarRunSettledNotification"
+        case sidecarRunStartParams = "sidecarRunStartParams"
+        case sidecarStopSubagentParams = "sidecarStopSubagentParams"
+        case sidecarToolCallParams = "sidecarToolCallParams"
+        case sidecarToolCallResult = "sidecarToolCallResult"
+        case sidecarToolCancelNotification = "sidecarToolCancelNotification"
         case toolDescriptor = "toolDescriptor"
         case toolResult = "toolResult"
     }
 
-    public init(capabilities: FHCapabilities, discoveryRequest: FHDiscovery, engineProfile: FHEngineProfile, engineProfileDiscovery: FHEngineProfileDiscovery, event: FHEvent, inlineContext: FHInlineContext, inputPolicy: FHInputPolicy, interaction: FHInteraction, interactionResponse: FHResponse, limitSnapshot: FHLimitSnapshot, limitSnapshotDiscovery: FHLimitSnapshotDiscovery, modelCatalog: FHModelCatalog, modelCatalogDiscovery: FHModelCatalogDiscovery, resolvedConfiguration: FHResolvedConfiguration, runRequest: FHRunRequest, toolDescriptor: FHToolDescriptor, toolResult: FHToolResult) {
+    public init(capabilities: FHCapabilities, discoveryRequest: FHDiscovery, engineProfile: FHEngineProfile, engineProfileDiscovery: FHEngineProfileDiscovery, event: FHEvent, inlineContext: FHInlineContext, inputPolicy: FHInputPolicy, interaction: FHInteraction, interactionResponse: FHResponse, limitSnapshot: FHLimitSnapshot, limitSnapshotDiscovery: FHLimitSnapshotDiscovery, modelCatalog: FHModelCatalog, modelCatalogDiscovery: FHModelCatalogDiscovery, resolvedConfiguration: FHResolvedConfiguration, runRequest: FHRunRequest, sidecarDiagnosticNotification: FHSidecarDiagnosticNotificationClass, sidecarEventsListParams: FHSidecarEventsListParamsClass, sidecarFollowUpParams: FHSidecarFollowUpParamsClass, sidecarInitializeParams: FHSidecarInitializeParamsClass, sidecarInitializeResult: FHSidecarInitializeResultClass, sidecarRespondParams: FHSidecarRespondParamsClass, sidecarRunSettledNotification: FHSidecarRunSettledNotificationClass, sidecarRunStartParams: FHSidecarRunStartParamsClass, sidecarStopSubagentParams: FHHarnessSidecarStopSubagentParams, sidecarToolCallParams: FHSidecarToolCallParamsClass, sidecarToolCallResult: FHSidecarToolCallResult, sidecarToolCancelNotification: FHSidecarToolCancelNotificationClass, toolDescriptor: FHToolDescriptorElement, toolResult: FHSidecarToolCallResult) {
         self.capabilities = capabilities
         self.discoveryRequest = discoveryRequest
         self.engineProfile = engineProfile
@@ -62,6 +86,18 @@ public struct FHV1: Codable {
         self.modelCatalogDiscovery = modelCatalogDiscovery
         self.resolvedConfiguration = resolvedConfiguration
         self.runRequest = runRequest
+        self.sidecarDiagnosticNotification = sidecarDiagnosticNotification
+        self.sidecarEventsListParams = sidecarEventsListParams
+        self.sidecarFollowUpParams = sidecarFollowUpParams
+        self.sidecarInitializeParams = sidecarInitializeParams
+        self.sidecarInitializeResult = sidecarInitializeResult
+        self.sidecarRespondParams = sidecarRespondParams
+        self.sidecarRunSettledNotification = sidecarRunSettledNotification
+        self.sidecarRunStartParams = sidecarRunStartParams
+        self.sidecarStopSubagentParams = sidecarStopSubagentParams
+        self.sidecarToolCallParams = sidecarToolCallParams
+        self.sidecarToolCallResult = sidecarToolCallResult
+        self.sidecarToolCancelNotification = sidecarToolCancelNotification
         self.toolDescriptor = toolDescriptor
         self.toolResult = toolResult
     }
@@ -121,7 +157,7 @@ public struct FHCapabilities: Codable {
 
 // MARK: - FHCancel
 public struct FHCancel: Codable {
-    public let constraints: [String: FHProtocolSchema]?
+    public let constraints: [String: FHInputValue]?
     public let description: String?
     public let support: FHSupport
 
@@ -131,7 +167,7 @@ public struct FHCancel: Codable {
         case support = "support"
     }
 
-    public init(constraints: [String: FHProtocolSchema]?, description: String?, support: FHSupport) {
+    public init(constraints: [String: FHInputValue]?, description: String?, support: FHSupport) {
         self.constraints = constraints
         self.description = description
         self.support = support
@@ -139,12 +175,12 @@ public struct FHCancel: Codable {
 }
 
 /// A value representable by RFC 8259 JSON without coercion.
-public enum FHProtocolSchema: Codable {
+public enum FHInputValue: Codable {
     case bool(Bool)
     case double(Double)
     case string(String)
-    case unionArray([FHProtocolSchema])
-    case unionMap([String: FHProtocolSchema])
+    case unionArray([FHInputValue])
+    case unionMap([String: FHInputValue])
     case null
 
     public init(from decoder: Decoder) throws {
@@ -153,7 +189,7 @@ public enum FHProtocolSchema: Codable {
             self = .bool(x)
             return
         }
-        if let x = try? container.decode([FHProtocolSchema].self) {
+        if let x = try? container.decode([FHInputValue].self) {
             self = .unionArray(x)
             return
         }
@@ -161,7 +197,7 @@ public enum FHProtocolSchema: Codable {
             self = .double(x)
             return
         }
-        if let x = try? container.decode([String: FHProtocolSchema].self) {
+        if let x = try? container.decode([String: FHInputValue].self) {
             self = .unionMap(x)
             return
         }
@@ -173,7 +209,7 @@ public enum FHProtocolSchema: Codable {
             self = .null
             return
         }
-        throw DecodingError.typeMismatch(FHProtocolSchema.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for FHProtocolSchema"))
+        throw DecodingError.typeMismatch(FHInputValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for FHInputValue"))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -203,7 +239,7 @@ public enum FHSupport: String, Codable {
 
 // MARK: - FHInteractions
 public struct FHInteractions: Codable {
-    public let constraints: [String: FHProtocolSchema]?
+    public let constraints: [String: FHInputValue]?
     public let description: String?
     public let recovery: FHRecovery?
     public let support: FHSupport
@@ -215,7 +251,7 @@ public struct FHInteractions: Codable {
         case support = "support"
     }
 
-    public init(constraints: [String: FHProtocolSchema]?, description: String?, recovery: FHRecovery?, support: FHSupport) {
+    public init(constraints: [String: FHInputValue]?, description: String?, recovery: FHRecovery?, support: FHSupport) {
         self.constraints = constraints
         self.description = description
         self.recovery = recovery
@@ -230,7 +266,7 @@ public enum FHRecovery: String, Codable {
 
 // MARK: - FHSteering
 public struct FHSteering: Codable {
-    public let constraints: [String: FHProtocolSchema]?
+    public let constraints: [String: FHInputValue]?
     public let description: String?
     public let preferred: FHPreferred?
     public let strategies: [FHPreferred]
@@ -244,7 +280,7 @@ public struct FHSteering: Codable {
         case support = "support"
     }
 
-    public init(constraints: [String: FHProtocolSchema]?, description: String?, preferred: FHPreferred?, strategies: [FHPreferred], support: FHSupport) {
+    public init(constraints: [String: FHInputValue]?, description: String?, preferred: FHPreferred?, strategies: [FHPreferred], support: FHSupport) {
         self.constraints = constraints
         self.description = description
         self.preferred = preferred
@@ -260,7 +296,7 @@ public enum FHPreferred: String, Codable {
 
 // MARK: - FHSubagents
 public struct FHSubagents: Codable {
-    public let constraints: [String: FHProtocolSchema]?
+    public let constraints: [String: FHInputValue]?
     public let controls: [FHControl]?
     public let description: String?
     public let support: FHSupport
@@ -272,7 +308,7 @@ public struct FHSubagents: Codable {
         case support = "support"
     }
 
-    public init(constraints: [String: FHProtocolSchema]?, controls: [FHControl]?, description: String?, support: FHSupport) {
+    public init(constraints: [String: FHInputValue]?, controls: [FHControl]?, description: String?, support: FHSupport) {
         self.constraints = constraints
         self.controls = controls
         self.description = description
@@ -727,7 +763,7 @@ public struct FHPayload: Codable {
     public let detail: String?
     public let error: String?
     public let exitCode: Int?
-    public let extensions: [String: FHProtocolSchema]?
+    public let extensions: [String: FHInputValue]?
     public let interaction: FHInteraction?
     public let interactionID: String?
     public let kind: String
@@ -737,7 +773,7 @@ public struct FHPayload: Codable {
     public let namespace: String?
     public let outputAppend: String?
     public let paths: [String]?
-    public let payload: FHProtocolSchema?
+    public let payload: FHInputValue?
     public let reason: String?
     public let response: FHResponse?
     public let retryable: Bool?
@@ -781,7 +817,7 @@ public struct FHPayload: Codable {
         case usage = "usage"
     }
 
-    public init(accountID: String?, code: String?, command: String?, detail: String?, error: String?, exitCode: Int?, extensions: [String: FHProtocolSchema]?, interaction: FHInteraction?, interactionID: String?, kind: String, message: String?, model: String?, name: String?, namespace: String?, outputAppend: String?, paths: [String]?, payload: FHProtocolSchema?, reason: String?, response: FHResponse?, retryable: Bool?, status: FHPayloadStatus?, steps: [FHStepElement]?, text: String?, title: String?, toolID: String?, toolKind: String?, truncated: Bool?, usage: FHUsage?) {
+    public init(accountID: String?, code: String?, command: String?, detail: String?, error: String?, exitCode: Int?, extensions: [String: FHInputValue]?, interaction: FHInteraction?, interactionID: String?, kind: String, message: String?, model: String?, name: String?, namespace: String?, outputAppend: String?, paths: [String]?, payload: FHInputValue?, reason: String?, response: FHResponse?, retryable: Bool?, status: FHPayloadStatus?, steps: [FHStepElement]?, text: String?, title: String?, toolID: String?, toolKind: String?, truncated: Bool?, usage: FHUsage?) {
         self.accountID = accountID
         self.code = code
         self.command = command
@@ -821,7 +857,7 @@ public struct FHInteraction: Codable {
     public let expiresAt: String?
     public let id: String
     public let kind: String
-    public let metadata: [String: FHProtocolSchema]?
+    public let metadata: [String: FHInputValue]?
     public let title: String
 
     public enum CodingKeys: String, CodingKey {
@@ -835,7 +871,7 @@ public struct FHInteraction: Codable {
         case title = "title"
     }
 
-    public init(acceptsText: Bool?, choices: [FHChoiceElement]?, detail: String?, expiresAt: String?, id: String, kind: String, metadata: [String: FHProtocolSchema]?, title: String) {
+    public init(acceptsText: Bool?, choices: [FHChoiceElement]?, detail: String?, expiresAt: String?, id: String, kind: String, metadata: [String: FHInputValue]?, title: String) {
         self.acceptsText = acceptsText
         self.choices = choices
         self.detail = detail
@@ -920,7 +956,7 @@ public struct FHUsage: Codable {
     public let durationMS: Double?
     public let inputTokens: Int?
     public let outputTokens: Int?
-    public let provider: [String: FHProtocolSchema]?
+    public let provider: [String: FHInputValue]?
     public let totalTokens: Int?
 
     public enum CodingKeys: String, CodingKey {
@@ -933,7 +969,7 @@ public struct FHUsage: Codable {
         case totalTokens = "totalTokens"
     }
 
-    public init(cachedInputTokens: Int?, costUsd: Double?, durationMS: Double?, inputTokens: Int?, outputTokens: Int?, provider: [String: FHProtocolSchema]?, totalTokens: Int?) {
+    public init(cachedInputTokens: Int?, costUsd: Double?, durationMS: Double?, inputTokens: Int?, outputTokens: Int?, provider: [String: FHInputValue]?, totalTokens: Int?) {
         self.cachedInputTokens = cachedInputTokens
         self.costUsd = costUsd
         self.durationMS = durationMS
@@ -985,7 +1021,7 @@ public struct FHRecordElement: Codable {
     public let id: String
     public let kind: String
     public let label: String
-    public let payload: FHProtocolSchema
+    public let payload: FHInputValue
     public let version: Int
 
     public enum CodingKeys: String, CodingKey {
@@ -997,7 +1033,7 @@ public struct FHRecordElement: Codable {
         case version = "version"
     }
 
-    public init(binding: FHBinding?, id: String, kind: String, label: String, payload: FHProtocolSchema, version: Int) {
+    public init(binding: FHBinding?, id: String, kind: String, label: String, payload: FHInputValue, version: Int) {
         self.binding = binding
         self.id = id
         self.kind = kind
@@ -1341,11 +1377,11 @@ public struct FHRunRequest: Codable {
     public let accountID: String?
     public let adapterID: String
     /// JSON-safe adapter-specific configuration. This escape hatch is not a portable UI contract.
-    public let configuration: [String: FHProtocolSchema]?
+    public let configuration: [String: FHInputValue]?
     public let effort: String?
     public let inlineContext: FHInlineContext?
-    public let input: [FHInputElement]
-    public let metadata: [String: FHProtocolSchema]?
+    public let input: [FHInputClass]
+    public let metadata: [String: FHInputValue]?
     public let model: String?
     public let schemaVersion: Int
     public let session: FHSession
@@ -1365,7 +1401,7 @@ public struct FHRunRequest: Codable {
         case settings = "settings"
     }
 
-    public init(accountID: String?, adapterID: String, configuration: [String: FHProtocolSchema]?, effort: String?, inlineContext: FHInlineContext?, input: [FHInputElement], metadata: [String: FHProtocolSchema]?, model: String?, schemaVersion: Int, session: FHSession, settings: FHSettings?) {
+    public init(accountID: String?, adapterID: String, configuration: [String: FHInputValue]?, effort: String?, inlineContext: FHInlineContext?, input: [FHInputClass], metadata: [String: FHInputValue]?, model: String?, schemaVersion: Int, session: FHSession, settings: FHSettings?) {
         self.accountID = accountID
         self.adapterID = adapterID
         self.configuration = configuration
@@ -1380,8 +1416,8 @@ public struct FHRunRequest: Codable {
     }
 }
 
-// MARK: - FHInputElement
-public struct FHInputElement: Codable {
+// MARK: - FHInputClass
+public struct FHInputClass: Codable {
     public let contextID: String?
     public let data: String?
     public let encoding: FHEncoding?
@@ -1463,11 +1499,245 @@ public struct FHSettingsPermission: Codable {
     }
 }
 
-// MARK: - FHToolDescriptor
-public struct FHToolDescriptor: Codable {
+// MARK: - FHSidecarDiagnosticNotificationClass
+public struct FHSidecarDiagnosticNotificationClass: Codable {
+    public let diagnostic: FHDiagnostic
+
+    public enum CodingKeys: String, CodingKey {
+        case diagnostic = "diagnostic"
+    }
+
+    public init(diagnostic: FHDiagnostic) {
+        self.diagnostic = diagnostic
+    }
+}
+
+// MARK: - FHDiagnostic
+public struct FHDiagnostic: Codable {
+    public let adapterID: String
+    public let code: String
+    public let message: String
+    public let phase: String
+    public let retryable: Bool?
+    public let runID: String?
+    public let schemaVersion: Int
+    public let session: FHSession?
+    public let severity: FHSeverity
+    public let timestamp: String
+    public let turnID: String?
+
+    public enum CodingKeys: String, CodingKey {
+        case adapterID = "adapterId"
+        case code = "code"
+        case message = "message"
+        case phase = "phase"
+        case retryable = "retryable"
+        case runID = "runId"
+        case schemaVersion = "schemaVersion"
+        case session = "session"
+        case severity = "severity"
+        case timestamp = "timestamp"
+        case turnID = "turnId"
+    }
+
+    public init(adapterID: String, code: String, message: String, phase: String, retryable: Bool?, runID: String?, schemaVersion: Int, session: FHSession?, severity: FHSeverity, timestamp: String, turnID: String?) {
+        self.adapterID = adapterID
+        self.code = code
+        self.message = message
+        self.phase = phase
+        self.retryable = retryable
+        self.runID = runID
+        self.schemaVersion = schemaVersion
+        self.session = session
+        self.severity = severity
+        self.timestamp = timestamp
+        self.turnID = turnID
+    }
+}
+
+public enum FHSeverity: String, Codable {
+    case error = "error"
+    case warning = "warning"
+}
+
+// MARK: - FHSidecarEventsListParamsClass
+public struct FHSidecarEventsListParamsClass: Codable {
+    public let adapterID: String
+    public let after: Int?
+    public let session: FHSession
+
+    public enum CodingKeys: String, CodingKey {
+        case adapterID = "adapterId"
+        case after = "after"
+        case session = "session"
+    }
+
+    public init(adapterID: String, after: Int?, session: FHSession) {
+        self.adapterID = adapterID
+        self.after = after
+        self.session = session
+    }
+}
+
+// MARK: - FHSidecarFollowUpParamsClass
+public struct FHSidecarFollowUpParamsClass: Codable {
+    public let expectedTurnID: String
+    public let inlineContext: FHInlineContext?
+    public let input: [FHInputClass]
+    public let metadata: [String: FHInputValue]?
+    public let replacement: FHReplacement?
+    public let runID: String
+    public let strategy: FHPreferred?
+
+    public enum CodingKeys: String, CodingKey {
+        case expectedTurnID = "expectedTurnId"
+        case inlineContext = "inlineContext"
+        case input = "input"
+        case metadata = "metadata"
+        case replacement = "replacement"
+        case runID = "runId"
+        case strategy = "strategy"
+    }
+
+    public init(expectedTurnID: String, inlineContext: FHInlineContext?, input: [FHInputClass], metadata: [String: FHInputValue]?, replacement: FHReplacement?, runID: String, strategy: FHPreferred?) {
+        self.expectedTurnID = expectedTurnID
+        self.inlineContext = inlineContext
+        self.input = input
+        self.metadata = metadata
+        self.replacement = replacement
+        self.runID = runID
+        self.strategy = strategy
+    }
+}
+
+// MARK: - FHReplacement
+public struct FHReplacement: Codable {
+    public let context: FHContext?
+    public let execution: FHExecution?
+    public let runID: String?
+    public let sessionBinding: String?
+    public let tools: [FHToolDescriptorElement]?
+    public let turnID: String?
+
+    public enum CodingKeys: String, CodingKey {
+        case context = "context"
+        case execution = "execution"
+        case runID = "runId"
+        case sessionBinding = "sessionBinding"
+        case tools = "tools"
+        case turnID = "turnId"
+    }
+
+    public init(context: FHContext?, execution: FHExecution?, runID: String?, sessionBinding: String?, tools: [FHToolDescriptorElement]?, turnID: String?) {
+        self.context = context
+        self.execution = execution
+        self.runID = runID
+        self.sessionBinding = sessionBinding
+        self.tools = tools
+        self.turnID = turnID
+    }
+}
+
+// MARK: - FHContext
+public struct FHContext: Codable {
+    public let sources: [FHSourceElement]
+    public let unavailable: [FHUnavailableElement]
+
+    public enum CodingKeys: String, CodingKey {
+        case sources = "sources"
+        case unavailable = "unavailable"
+    }
+
+    public init(sources: [FHSourceElement], unavailable: [FHUnavailableElement]) {
+        self.sources = sources
+        self.unavailable = unavailable
+    }
+}
+
+// MARK: - FHSourceElement
+public struct FHSourceElement: Codable {
+    public let sourceID: String
+    public let value: FHValue
+
+    public enum CodingKeys: String, CodingKey {
+        case sourceID = "sourceId"
+        case value = "value"
+    }
+
+    public init(sourceID: String, value: FHValue) {
+        self.sourceID = sourceID
+        self.value = value
+    }
+}
+
+// MARK: - FHValue
+public struct FHValue: Codable {
+    public let content: [FHInputClass]
+    public let instructions: String?
+
+    public enum CodingKeys: String, CodingKey {
+        case content = "content"
+        case instructions = "instructions"
+    }
+
+    public init(content: [FHInputClass], instructions: String?) {
+        self.content = content
+        self.instructions = instructions
+    }
+}
+
+// MARK: - FHUnavailableElement
+public struct FHUnavailableElement: Codable {
+    public let code: String
+    public let message: String
+    public let retryable: Bool?
+    public let sourceID: String
+
+    public enum CodingKeys: String, CodingKey {
+        case code = "code"
+        case message = "message"
+        case retryable = "retryable"
+        case sourceID = "sourceId"
+    }
+
+    public init(code: String, message: String, retryable: Bool?, sourceID: String) {
+        self.code = code
+        self.message = message
+        self.retryable = retryable
+        self.sourceID = sourceID
+    }
+}
+
+// MARK: - FHExecution
+public struct FHExecution: Codable {
+    public let accountID: String?
+    public let configuration: [String: FHInputValue]?
+    public let effort: String?
+    public let model: String?
+    public let settings: FHSettings?
+
+    public enum CodingKeys: String, CodingKey {
+        case accountID = "accountId"
+        case configuration = "configuration"
+        case effort = "effort"
+        case model = "model"
+        case settings = "settings"
+    }
+
+    public init(accountID: String?, configuration: [String: FHInputValue]?, effort: String?, model: String?, settings: FHSettings?) {
+        self.accountID = accountID
+        self.configuration = configuration
+        self.effort = effort
+        self.model = model
+        self.settings = settings
+    }
+}
+
+// MARK: - FHToolDescriptorElement
+public struct FHToolDescriptorElement: Codable {
     public let description: String
-    public let inputSchema: [String: FHProtocolSchema]
-    public let metadata: [String: FHProtocolSchema]?
+    public let inputSchema: [String: FHInputValue]
+    public let metadata: [String: FHInputValue]?
     public let name: String
 
     public enum CodingKeys: String, CodingKey {
@@ -1477,7 +1747,7 @@ public struct FHToolDescriptor: Codable {
         case name = "name"
     }
 
-    public init(description: String, inputSchema: [String: FHProtocolSchema], metadata: [String: FHProtocolSchema]?, name: String) {
+    public init(description: String, inputSchema: [String: FHInputValue], metadata: [String: FHInputValue]?, name: String) {
         self.description = description
         self.inputSchema = inputSchema
         self.metadata = metadata
@@ -1485,12 +1755,213 @@ public struct FHToolDescriptor: Codable {
     }
 }
 
-// MARK: - FHToolResult
-public struct FHToolResult: Codable {
+// MARK: - FHSidecarInitializeParamsClass
+public struct FHSidecarInitializeParamsClass: Codable {
+    public let client: FHClient
+    public let protocolVersion: Int
+    public let tools: [FHToolDescriptorElement]?
+
+    public enum CodingKeys: String, CodingKey {
+        case client = "client"
+        case protocolVersion = "protocolVersion"
+        case tools = "tools"
+    }
+
+    public init(client: FHClient, protocolVersion: Int, tools: [FHToolDescriptorElement]?) {
+        self.client = client
+        self.protocolVersion = protocolVersion
+        self.tools = tools
+    }
+}
+
+// MARK: - FHClient
+public struct FHClient: Codable {
+    public let name: String
+    public let version: String?
+
+    public enum CodingKeys: String, CodingKey {
+        case name = "name"
+        case version = "version"
+    }
+
+    public init(name: String, version: String?) {
+        self.name = name
+        self.version = version
+    }
+}
+
+// MARK: - FHSidecarInitializeResultClass
+public struct FHSidecarInitializeResultClass: Codable {
+    public let adapters: [String]
+    public let hostMethods: [String]
+    public let methods: [String]
+    public let notifications: [String]
+    public let protocolVersion: Int
+    public let server: FHServer
+
+    public enum CodingKeys: String, CodingKey {
+        case adapters = "adapters"
+        case hostMethods = "hostMethods"
+        case methods = "methods"
+        case notifications = "notifications"
+        case protocolVersion = "protocolVersion"
+        case server = "server"
+    }
+
+    public init(adapters: [String], hostMethods: [String], methods: [String], notifications: [String], protocolVersion: Int, server: FHServer) {
+        self.adapters = adapters
+        self.hostMethods = hostMethods
+        self.methods = methods
+        self.notifications = notifications
+        self.protocolVersion = protocolVersion
+        self.server = server
+    }
+}
+
+// MARK: - FHServer
+public struct FHServer: Codable {
+    public let name: String
+    public let version: String?
+
+    public enum CodingKeys: String, CodingKey {
+        case name = "name"
+        case version = "version"
+    }
+
+    public init(name: String, version: String?) {
+        self.name = name
+        self.version = version
+    }
+}
+
+// MARK: - FHSidecarRespondParamsClass
+public struct FHSidecarRespondParamsClass: Codable {
+    public let interactionID: String
+    public let response: FHResponse
+    public let runID: String
+
+    public enum CodingKeys: String, CodingKey {
+        case interactionID = "interactionId"
+        case response = "response"
+        case runID = "runId"
+    }
+
+    public init(interactionID: String, response: FHResponse, runID: String) {
+        self.interactionID = interactionID
+        self.response = response
+        self.runID = runID
+    }
+}
+
+// MARK: - FHSidecarRunSettledNotificationClass
+public struct FHSidecarRunSettledNotificationClass: Codable {
+    public let runID: String
+    public let status: FHSidecarRunSettledNotificationStatus
+    public let turnID: String
+
+    public enum CodingKeys: String, CodingKey {
+        case runID = "runId"
+        case status = "status"
+        case turnID = "turnId"
+    }
+
+    public init(runID: String, status: FHSidecarRunSettledNotificationStatus, turnID: String) {
+        self.runID = runID
+        self.status = status
+        self.turnID = turnID
+    }
+}
+
+public enum FHSidecarRunSettledNotificationStatus: String, Codable {
+    case completed = "completed"
+    case error = "error"
+    case interrupted = "interrupted"
+}
+
+// MARK: - FHSidecarRunStartParamsClass
+public struct FHSidecarRunStartParamsClass: Codable {
+    public let context: FHContext?
+    public let request: FHRunRequest
+    public let runID: String?
+    public let sessionBinding: String?
+    public let tools: [FHToolDescriptorElement]?
+    public let turnID: String?
+
+    public enum CodingKeys: String, CodingKey {
+        case context = "context"
+        case request = "request"
+        case runID = "runId"
+        case sessionBinding = "sessionBinding"
+        case tools = "tools"
+        case turnID = "turnId"
+    }
+
+    public init(context: FHContext?, request: FHRunRequest, runID: String?, sessionBinding: String?, tools: [FHToolDescriptorElement]?, turnID: String?) {
+        self.context = context
+        self.request = request
+        self.runID = runID
+        self.sessionBinding = sessionBinding
+        self.tools = tools
+        self.turnID = turnID
+    }
+}
+
+// MARK: - FHHarnessSidecarStopSubagentParams
+public struct FHHarnessSidecarStopSubagentParams: Codable {
+    public let runID: String
+    public let taskID: String
+
+    public enum CodingKeys: String, CodingKey {
+        case runID = "runId"
+        case taskID = "taskId"
+    }
+
+    public init(runID: String, taskID: String) {
+        self.runID = runID
+        self.taskID = taskID
+    }
+}
+
+// MARK: - FHSidecarToolCallParamsClass
+public struct FHSidecarToolCallParamsClass: Codable {
+    public let adapterID: String
+    public let callID: String
+    public let input: FHInputValue
+    public let name: String
+    public let protocolVersion: Int
+    public let runID: String
+    public let session: FHSession
+    public let turnID: String
+
+    public enum CodingKeys: String, CodingKey {
+        case adapterID = "adapterId"
+        case callID = "callId"
+        case input = "input"
+        case name = "name"
+        case protocolVersion = "protocolVersion"
+        case runID = "runId"
+        case session = "session"
+        case turnID = "turnId"
+    }
+
+    public init(adapterID: String, callID: String, input: FHInputValue, name: String, protocolVersion: Int, runID: String, session: FHSession, turnID: String) {
+        self.adapterID = adapterID
+        self.callID = callID
+        self.input = input
+        self.name = name
+        self.protocolVersion = protocolVersion
+        self.runID = runID
+        self.session = session
+        self.turnID = turnID
+    }
+}
+
+// MARK: - FHSidecarToolCallResult
+public struct FHSidecarToolCallResult: Codable {
     public let code: String?
-    public let content: [FHContentElement]
+    public let content: [FHSidecarToolCallResultContent]
     public let isError: Bool?
-    public let metadata: [String: FHProtocolSchema]?
+    public let metadata: [String: FHInputValue]?
 
     public enum CodingKeys: String, CodingKey {
         case code = "code"
@@ -1499,7 +1970,7 @@ public struct FHToolResult: Codable {
         case metadata = "metadata"
     }
 
-    public init(code: String?, content: [FHContentElement], isError: Bool?, metadata: [String: FHProtocolSchema]?) {
+    public init(code: String?, content: [FHSidecarToolCallResultContent], isError: Bool?, metadata: [String: FHInputValue]?) {
         self.code = code
         self.content = content
         self.isError = isError
@@ -1507,12 +1978,12 @@ public struct FHToolResult: Codable {
     }
 }
 
-// MARK: - FHContentElement
-public struct FHContentElement: Codable {
+// MARK: - FHSidecarToolCallResultContent
+public struct FHSidecarToolCallResultContent: Codable {
     public let data: String?
     public let mediaType: String?
     public let text: String?
-    public let type: FHContentType
+    public let type: FHPurpleType
     public let uri: String?
 
     public enum CodingKeys: String, CodingKey {
@@ -1523,7 +1994,7 @@ public struct FHContentElement: Codable {
         case uri = "uri"
     }
 
-    public init(data: String?, mediaType: String?, text: String?, type: FHContentType, uri: String?) {
+    public init(data: String?, mediaType: String?, text: String?, type: FHPurpleType, uri: String?) {
         self.data = data
         self.mediaType = mediaType
         self.text = text
@@ -1532,8 +2003,27 @@ public struct FHContentElement: Codable {
     }
 }
 
-public enum FHContentType: String, Codable {
+public enum FHPurpleType: String, Codable {
     case image = "image"
     case resource = "resource"
     case text = "text"
+}
+
+// MARK: - FHSidecarToolCancelNotificationClass
+public struct FHSidecarToolCancelNotificationClass: Codable {
+    public let callID: String
+    public let runID: String
+    public let turnID: String
+
+    public enum CodingKeys: String, CodingKey {
+        case callID = "callId"
+        case runID = "runId"
+        case turnID = "turnId"
+    }
+
+    public init(callID: String, runID: String, turnID: String) {
+        self.callID = callID
+        self.runID = runID
+        self.turnID = turnID
+    }
 }

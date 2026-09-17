@@ -1,6 +1,8 @@
 /** Public entry point for the Fold Harness runtime. */
 export * from "./protocol.js";
 export * from "./wire.js";
+export * from "./sidecar-protocol.js";
+export * from "./sidecar.js";
 export * from "./profile.js";
 export * from "./admission.js";
 export * from "./input.js";

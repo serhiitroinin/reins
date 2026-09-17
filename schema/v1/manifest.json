@@ -3,7 +3,8 @@
   "dialect": "https://json-schema.org/draft/2020-12/schema",
   "documents": {
     "protocol": "./protocol.schema.json",
-    "discovery": "./discovery.schema.json"
+    "discovery": "./discovery.schema.json",
+    "sidecar": "./sidecar.schema.json"
   },
   "roots": {
     "capabilities": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessCapabilities",
@@ -22,6 +23,19 @@
     "modelCatalogDiscovery": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessModelCatalogDiscovery",
     "limitSnapshot": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessLimitSnapshot",
     "limitSnapshotDiscovery": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessLimitSnapshotDiscovery",
-    "resolvedConfiguration": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/ResolvedHarnessConfiguration"
+    "resolvedConfiguration": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/ResolvedHarnessConfiguration",
+    "sidecarInitializeParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarInitializeParams",
+    "sidecarInitializeResult": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarInitializeResult",
+    "sidecarRunStartParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarRunStartParams",
+    "sidecarFollowUpParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarFollowUpParams",
+    "sidecarRespondParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarRespondParams",
+    "sidecarStopSubagentParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarStopSubagentParams",
+    "sidecarEventsListParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarEventsListParams",
+    "sidecarEventNotification": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarEventNotification",
+    "sidecarRunSettledNotification": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarRunSettledNotification",
+    "sidecarDiagnosticNotification": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarDiagnosticNotification",
+    "sidecarToolCallParams": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarToolCallParams",
+    "sidecarToolCallResult": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarToolCallResult",
+    "sidecarToolCancelNotification": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json#/$defs/HarnessSidecarToolCancelNotification"
   }
 }
