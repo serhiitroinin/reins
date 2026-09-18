@@ -208,25 +208,16 @@ function title(value: string): string {
     .join(" ");
 }
 
-/** Convert one Agent SDK push update without retaining its wire type. */
-export function claudeAgentSdkLimitSnapshot(value: unknown): HarnessLimitSnapshot | null {
-  const info = record(value);
-  if (info === null) return null;
-  const id = text(info.rateLimitType) || text(info.rate_limit_type) || "five_hour";
-  const usedPercent = finite(info.utilization);
-  if (usedPercent === undefined) return null;
-  const resetsSeconds = finite(info.resetsAt) ?? finite(info.resets_at);
-  let resetsAt: string | undefined;
-  if (resetsSeconds !== undefined) {
-    const date = new Date(resetsSeconds * 1_000);
-    if (Number.isFinite(date.getTime())) resetsAt = date.toISOString();
-  }
-  const windowDurationMs = id === "five_hour"
-    ? 300 * 60_000
-    : id.startsWith("seven_day") ? 10_080 * 60_000 : undefined;
-  const limit: HarnessLimit = {
+function windowDuration(id: string): number | undefined {
+  if (id === "five_hour") return 300 * 60_000;
+  return id.startsWith("seven_day") ? 10_080 * 60_000 : undefined;
+}
+
+function rateLimit(id: string, usedPercent: number, resetsAt?: string, label?: string): HarnessLimit {
+  const windowDurationMs = windowDuration(id);
+  return {
     id,
-    label: LIMIT_LABELS[id] ?? title(id),
+    label: label ?? LIMIT_LABELS[id] ?? title(id),
     kind: "rate",
     scope: "account",
     unit: "%",
@@ -234,7 +225,45 @@ export function claudeAgentSdkLimitSnapshot(value: unknown): HarnessLimitSnapsho
     ...(resetsAt ? { resetsAt } : {}),
     ...(windowDurationMs !== undefined ? { windowDurationMs } : {}),
   };
-  return { limits: [limit] };
+}
+
+/** Stream updates report a fraction of one. Larger values are already a percentage. */
+function streamedPercent(value: unknown): number | undefined {
+  const used = finite(value);
+  if (used === undefined) return undefined;
+  return used <= 1 ? used * 100 : used;
+}
+
+function isoFromSeconds(value: unknown): string | undefined {
+  const seconds = finite(value);
+  if (seconds === undefined) return undefined;
+  const date = new Date(seconds * 1_000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
+/**
+ * Convert one Agent SDK push update without retaining its wire type.
+ *
+ * An update names one window at the top level and may carry every current
+ * window under `unifiedWindows`. Both are read; the named window wins.
+ */
+export function claudeAgentSdkLimitSnapshot(value: unknown): HarnessLimitSnapshot | null {
+  const info = record(value);
+  if (info === null) return null;
+  const limits = new Map<string, HarnessLimit>();
+  const windows = record(info.unifiedWindows) ?? record(info.unified_windows) ?? {};
+  for (const [id, entry] of Object.entries(windows)) {
+    const window = record(entry);
+    const usedPercent = streamedPercent(window?.utilization);
+    if (window === null || usedPercent === undefined) continue;
+    limits.set(id, rateLimit(id, usedPercent, isoFromSeconds(window.resetsAt ?? window.resets_at)));
+  }
+  const usedPercent = streamedPercent(info.utilization);
+  if (usedPercent !== undefined) {
+    const id = text(info.rateLimitType) || text(info.rate_limit_type) || "five_hour";
+    limits.set(id, rateLimit(id, usedPercent, isoFromSeconds(info.resetsAt ?? info.resets_at)));
+  }
+  return limits.size > 0 ? { limits: [...limits.values()] } : null;
 }
 
 interface OpenTool {

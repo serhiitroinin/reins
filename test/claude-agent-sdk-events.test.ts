@@ -417,4 +417,45 @@ describe("Claude Agent SDK event consumer", () => {
       }],
     });
   });
+
+  test("reads the windows a live update carries without a named utilization", () => {
+    expect(claudeAgentSdkLimitSnapshot({
+      status: "allowed",
+      resetsAt: 1_789_747_200,
+      rateLimitType: "five_hour",
+      unifiedWindows: {
+        five_hour: { utilization: 0, resetsAt: 1_789_747_200 },
+        seven_day: { utilization: 0.68, resetsAt: 1_789_884_000 },
+      },
+    })).toEqual({
+      limits: [
+        {
+          id: "five_hour",
+          label: "5-hour",
+          kind: "rate",
+          scope: "account",
+          unit: "%",
+          usedPercent: 0,
+          resetsAt: "2026-09-18T16:00:00.000Z",
+          windowDurationMs: 18_000_000,
+        },
+        {
+          id: "seven_day",
+          label: "Weekly",
+          kind: "rate",
+          scope: "account",
+          unit: "%",
+          usedPercent: 68,
+          resetsAt: "2026-09-20T06:00:00.000Z",
+          windowDurationMs: 604_800_000,
+        },
+      ],
+    });
+    expect(claudeAgentSdkLimitSnapshot({
+      rateLimitType: "seven_day",
+      utilization: 0.91,
+      unifiedWindows: { seven_day: { utilization: 0.9 } },
+    })).toMatchObject({ limits: [{ id: "seven_day", usedPercent: 91 }] });
+    expect(claudeAgentSdkLimitSnapshot({ status: "allowed", rateLimitType: "five_hour" })).toBeNull();
+  });
 });
