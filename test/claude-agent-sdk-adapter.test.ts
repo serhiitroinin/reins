@@ -725,4 +725,112 @@ describe("Claude Agent SDK adapter", () => {
     await opened.close();
     expect(state.closes).toBe(1);
   });
+
+  test("answers a limit request without an account from the account that last reported", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    const adapter = createClaudeAgentSdkAdapter({
+      now: () => new Date("2026-09-18T12:00:00.000Z"),
+      connect: () => ({
+        messages,
+        send() {
+          messages.push({
+            type: "rate_limit_event",
+            rate_limit_info: {
+              status: "allowed",
+              rateLimitType: "five_hour",
+              unifiedWindows: { five_hour: { utilization: 0.2 }, seven_day: { utilization: 0.68 } },
+            },
+          });
+          messages.push({ type: "result", subtype: "success", is_error: false });
+        },
+        interrupt() {},
+        close() { messages.close(); },
+      }),
+    });
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "keying" },
+      resumeToken: null,
+      signal: new AbortController().signal,
+    });
+    await collect(session.run(adapterRequest("keying", "one", { accountId: "account-a" })));
+
+    expect(await adapter.limits?.({})).toMatchObject({
+      status: "available",
+      fetchedAt: "2026-09-18T12:00:00.000Z",
+      value: { limits: [{ id: "five_hour", usedPercent: 20 }, { id: "seven_day", usedPercent: 68 }] },
+    });
+    expect(await adapter.limits?.({ accountId: "account-b" })).toEqual({ status: "unsupported" });
+    await session.close();
+  });
+
+  test("merges newer observed limits over the host limit source", async () => {
+    const messages = createPushableAsyncIterable<unknown>();
+    let clock = "2026-09-18T12:00:00.000Z";
+    const adapter = createClaudeAgentSdkAdapter({
+      now: () => new Date(clock),
+      limits: () => ({
+        status: "available",
+        fetchedAt: "2026-09-18T11:59:00.000Z",
+        expiresAt: "2026-09-18T12:00:00.000Z",
+        value: {
+          planLabel: "Max",
+          limits: [
+            { id: "five_hour", label: "5-hour", kind: "rate", scope: "account", unit: "%", usedPercent: 10 },
+            { id: "seven_day", label: "Weekly", kind: "rate", scope: "account", unit: "%", usedPercent: 60 },
+          ],
+        },
+      }),
+      connect: () => ({
+        messages,
+        send() {
+          messages.push({
+            type: "rate_limit_event",
+            rate_limit_info: { rateLimitType: "five_hour", utilization: 0.35 },
+          });
+          messages.push({ type: "result", subtype: "success", is_error: false });
+        },
+        interrupt() {},
+        close() { messages.close(); },
+      }),
+    });
+    expect(await adapter.limits?.({})).toMatchObject({
+      fetchedAt: "2026-09-18T11:59:00.000Z",
+      value: { limits: [{ usedPercent: 10 }, { usedPercent: 60 }] },
+    });
+
+    const session = await adapter.open({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "merge" },
+      resumeToken: null,
+      signal: new AbortController().signal,
+    });
+    await collect(session.run(adapterRequest("merge", "one")));
+    expect(await adapter.limits?.({})).toEqual({
+      status: "available",
+      fetchedAt: "2026-09-18T12:00:00.000Z",
+      expiresAt: "2026-09-18T12:00:00.000Z",
+      value: {
+        planLabel: "Max",
+        limits: [
+          {
+            id: "five_hour",
+            label: "5-hour",
+            kind: "rate",
+            scope: "account",
+            unit: "%",
+            usedPercent: 35,
+            windowDurationMs: 18_000_000,
+          },
+          { id: "seven_day", label: "Weekly", kind: "rate", scope: "account", unit: "%", usedPercent: 60 },
+        ],
+      },
+    });
+
+    clock = "2026-09-18T11:00:00.000Z";
+    await collect(session.run(adapterRequest("merge", "two")));
+    expect(await adapter.limits?.({})).toMatchObject({
+      fetchedAt: "2026-09-18T11:59:00.000Z",
+      value: { limits: [{ id: "five_hour", usedPercent: 10 }, { id: "seven_day", usedPercent: 60 }] },
+    });
+    await session.close();
+  });
 });

@@ -623,4 +623,30 @@ describe("Codex App Server adapter", () => {
     expect(JSON.stringify(events)).not.toContain("secret from application internals");
     await runtime.close();
   });
+
+  test("answers a limit request without an account from the account that last reported", async () => {
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "limits-test", version: "1" },
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => checkpointConnection([], false, {
+        limitId: "codex",
+        primary: { usedPercent: 25, windowDurationMins: 300 },
+      }),
+    });
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "keying" },
+      adapterId: adapter.id,
+      accountId: "account-a",
+      input: [{ type: "text", text: "hello" }],
+    });
+    await collect(run.events);
+
+    expect(await runtime.limits(adapter.id)).toMatchObject({
+      status: "available",
+      value: { limits: [{ id: "codex:primary", usedPercent: 25 }] },
+    });
+    expect(await runtime.limits(adapter.id, { accountId: "account-b" })).toEqual({ status: "unsupported" });
+    await runtime.close();
+  });
 });

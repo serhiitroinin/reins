@@ -45,6 +45,7 @@ import {
   type CodexAppServerEventConsumerOptions,
   type CodexAppServerTurnOutcome,
 } from "./codex-app-server-events.js";
+import { createObservedLimits } from "./observed-limits.js";
 
 export interface CodexAppServerConnection {
   /** Write one complete JSON-RPC line to the provider. */
@@ -350,7 +351,7 @@ async function closeActive(active: ActiveTurn): Promise<void> {
 export function createCodexAppServerAdapter(options: CodexAppServerAdapterOptions): HarnessAdapter {
   const id = options.id ?? "codex";
   const now = options.now ?? (() => new Date());
-  const observedLimits = new Map<string, { snapshot: HarnessLimitSnapshot; fetchedAt: string }>();
+  const observedLimits = createObservedLimits(now);
 
   return {
     id,
@@ -361,15 +362,10 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
     capabilities: () => options.capabilities ?? CODEX_APP_SERVER_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultProfile(id), request),
     models: (request) => discovery(options.models, request),
-    limits: (request) => options.limits
-      ? discovery(options.limits, request)
-      : observedLimits.has(request.accountId ?? "")
-        ? {
-            status: "available",
-            value: observedLimits.get(request.accountId ?? "")!.snapshot,
-            fetchedAt: observedLimits.get(request.accountId ?? "")!.fetchedAt,
-          }
-        : { status: "unsupported" },
+    limits: async (request) => observedLimits.resolve(
+      request,
+      options.limits ? await discovery(options.limits, request) : undefined,
+    ),
 
     async open({ session, resumeToken, persistCheckpoint }) {
       let checkpoint = resumeToken;
@@ -463,10 +459,7 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
                 settled.resolve({ kind: "terminal", outcome });
               },
               onLimits(snapshot) {
-                observedLimits.set(connectRequest.accountId ?? "", {
-                  snapshot,
-                  fetchedAt: now().toISOString(),
-                });
+                observedLimits.record(connectRequest.accountId, snapshot);
                 options.onLimits?.(snapshot, connectRequest);
               },
             });

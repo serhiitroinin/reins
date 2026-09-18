@@ -41,6 +41,7 @@ import {
   type ClaudeAgentSdkPublicError,
   type ClaudeAgentSdkTurnOutcome,
 } from "./claude-agent-sdk-events.js";
+import { createObservedLimits } from "./observed-limits.js";
 
 export interface ClaudeAgentSdkContextContribution {
   instructions?: string;
@@ -425,10 +426,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
     throw new Error("interruptTimeoutMs must be a positive number");
   }
   const now = options.now ?? (() => new Date());
-  const observedLimits = new Map<string, {
-    limits: Map<string, HarnessLimitSnapshot["limits"][number]>;
-    fetchedAt: string;
-  }>();
+  const observedLimits = createObservedLimits(now);
 
   return {
     id,
@@ -443,17 +441,10 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
     capabilities: () => options.capabilities ?? CLAUDE_AGENT_SDK_CAPABILITIES,
     profile: (request) => discovery(options.profile ?? defaultProfile(id), request),
     models: (request) => discovery(options.models, request),
-    limits: (request) => {
-      if (options.limits) return discovery(options.limits, request);
-      const observed = observedLimits.get(request.accountId ?? "");
-      return observed && observed.limits.size > 0
-        ? {
-            status: "available",
-            value: { limits: [...observed.limits.values()] },
-            fetchedAt: observed.fetchedAt,
-          }
-        : { status: "unsupported" };
-    },
+    limits: async (request) => observedLimits.resolve(
+      request,
+      options.limits ? await discovery(options.limits, request) : undefined,
+    ),
 
     async open({ session, resumeToken, persistCheckpoint }) {
       let checkpoint = resumeToken;
@@ -704,15 +695,7 @@ export function createClaudeAgentSdkAdapter(options: ClaudeAgentSdkAdapterOption
                 .then(() => options.onCheckpoint?.(value, checkpointRequest(requestValue)));
             },
             onLimits(snapshot) {
-              const account = connectionAccountId ?? "";
-              const fetchedAt = now().toISOString();
-              let observed = observedLimits.get(account);
-              if (!observed) {
-                observed = { limits: new Map(), fetchedAt };
-                observedLimits.set(account, observed);
-              }
-              for (const limit of snapshot.limits) observed.limits.set(limit.id, limit);
-              observed.fetchedAt = fetchedAt;
+              observedLimits.record(connectionAccountId, snapshot);
               options.onLimits?.(snapshot, {
                 session,
                 ...(connectionAccountId ? { accountId: connectionAccountId } : {}),
