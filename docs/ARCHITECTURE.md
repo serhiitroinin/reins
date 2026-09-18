@@ -134,7 +134,15 @@ Available results may include fetch and expiry timestamps, which the shared
 freshness helper classifies without exposing cache implementation details.
 Unavailable results may include a safe adapter error code for diagnostics.
 Observed native limit snapshots are timestamped and account-scoped so one
-login can never inherit another login's quota display.
+login can never inherit another login's quota display. A request that names no
+account reads the account that reported last.
+
+The native adapters ship live discovery sources. `createClaudeAgentSdkDiscovery`
+reads the Agent SDK control channel, and `createCodexAppServerDiscovery` reads
+`model/list` and `account/rateLimits/read`. Each probe is one short process
+with no turn, no tools, and only the host's exact environment. Results are
+cached with `fetchedAt`. Limits that a provider streams during a turn are
+merged over the probe result by limit id when they are newer.
 
 An engine profile owns its permission vocabulary. The core does not pretend a
 Claude approval policy and a Codex sandbox mode mean the same thing. Permission
