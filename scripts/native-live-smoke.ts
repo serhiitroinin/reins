@@ -11,7 +11,9 @@ import {
   CODEX_SERVICE_TIER_CONTROL_ID,
   createClaudeAgentSdkAdapter,
   createClaudeAgentSdkConnector,
+  createClaudeAgentSdkDiscovery,
   createCodexAppServerAdapter,
+  createCodexAppServerDiscovery,
   createCodexAppServerProcessConnector,
   createHarness,
   createMemoryPersistence,
@@ -21,7 +23,6 @@ import {
   type HarnessEngineProfile,
   type HarnessEvent,
   type HarnessLimitSnapshot,
-  type HarnessModelCatalog,
   type HarnessRun,
   type HarnessRunRequest,
   type HarnessRuntime,
@@ -124,23 +125,6 @@ function selectedModel(provider: Provider): string | undefined {
   return process.env.FOLD_HARNESS_LIVE_MODEL ?? (provider === "claude" ? "sonnet" : undefined);
 }
 
-function models(provider: Provider): HarnessDiscovery<HarnessModelCatalog> {
-  const model = selectedModel(provider);
-  return model
-    ? {
-        status: "available",
-        value: {
-          selection: "optional",
-          defaultModelId: model,
-          models: [{ id: model, label: model }],
-        },
-      }
-    : {
-        status: "unsupported",
-        message: `${provider} will select the account default model.`,
-      };
-}
-
 function text(events: readonly HarnessEvent[]): string {
   return events.flatMap((event) => event.payload.kind === "assistant-text" ? [event.payload.text] : []).join("");
 }
@@ -206,6 +190,21 @@ async function completedTurn(
   return events;
 }
 
+function limitSummary(discovery: HarnessDiscovery<HarnessLimitSnapshot> | undefined): unknown {
+  if (discovery?.status !== "available") return discovery ?? null;
+  return {
+    fetchedAt: discovery.fetchedAt,
+    planLabel: discovery.value.planLabel,
+    limits: discovery.value.limits.map((limit) => ({
+      id: limit.id,
+      label: limit.label,
+      usedPercent: limit.usedPercent,
+      remaining: limit.remaining,
+      resetsAt: limit.resetsAt,
+    })),
+  };
+}
+
 interface LiveAdapterState {
   stderrBytes: number;
   checkpoints: number;
@@ -220,10 +219,20 @@ interface AdapterSetup {
 
 async function claudeAdapter(workspace: string, state: LiveAdapterState): Promise<AdapterSetup> {
   const configDirectory = process.env.FOLD_HARNESS_LIVE_CLAUDE_CONFIG_DIR;
+  const environment = {
+    ...safeEnvironment(),
+    HOME: homedir(),
+    ...(configDirectory ? { CLAUDE_CONFIG_DIR: configDirectory } : {}),
+    NO_COLOR: "1",
+  };
+  const discovery = createClaudeAgentSdkDiscovery({
+    configure: () => ({ cwd: workspace, env: environment }),
+  });
   const adapter = createClaudeAgentSdkAdapter({
     id: "native-live:claude",
     profile: profile("claude"),
-    models: models("claude"),
+    models: discovery.models,
+    limits: discovery.limits,
     authorizeTool(request) {
       if (state.interactions > 0) return { behavior: "allow", updatedInput: request.input };
       state.interactions += 1;
@@ -249,12 +258,7 @@ async function claudeAdapter(workspace: string, state: LiveAdapterState): Promis
       onStderr(chunk) { state.stderrBytes += Buffer.byteLength(chunk); },
       configure: () => ({
         cwd: workspace,
-        env: {
-          ...safeEnvironment(),
-          HOME: homedir(),
-          ...(configDirectory ? { CLAUDE_CONFIG_DIR: configDirectory } : {}),
-          NO_COLOR: "1",
-        },
+        env: environment,
         tools: [],
         skills: [],
         settingSources: [],
@@ -300,11 +304,14 @@ async function codexAdapter(root: string, workspace: string, state: LiveAdapterS
     },
     onStderr(chunk) { state.stderrBytes += chunk.byteLength; },
   });
+  const clientInfo = { name: "fold-harness-live-smoke", title: "Fold Harness live smoke", version: "1" };
+  const discovery = createCodexAppServerDiscovery({ clientInfo, connect: connector });
   const adapter = createCodexAppServerAdapter({
     id: "native-live:codex",
-    clientInfo: { name: "fold-harness-live-smoke", title: "Fold Harness live smoke", version: "1" },
+    clientInfo,
     profile: profile("codex"),
-    models: models("codex"),
+    models: discovery.models,
+    limits: discovery.limits,
     thread: (request) => ({
       cwd: workspace,
       sandbox: "read-only",
@@ -394,6 +401,7 @@ try {
     throw new SmokeFailure("STEERING_NOT_DISCOVERED");
   }
   if (discoveredProfile?.status !== "available") throw new SmokeFailure("PROFILE_NOT_AVAILABLE");
+  if (discoveredModels?.status !== "available") throw new SmokeFailure("MODELS_NOT_AVAILABLE");
 
   runtime = createHarness({ adapters: [setup.adapter], persistence, tools });
   const base = {
@@ -470,9 +478,17 @@ try {
     status: "passed",
     discovery: {
       profile: discoveredProfile.status,
-      models: discoveredModels?.status ?? "missing",
+      models: discoveredModels.status,
       limitsBeforeRun: discoveredLimits?.status ?? "missing",
       limitsAfterRun: limitStatus,
+      defaultModelId: discoveredModels.value.defaultModelId,
+      modelCatalog: discoveredModels.value.models.map((model) => ({
+        id: model.id,
+        label: model.label,
+        effort: model.effort?.options.map((option) => option.id) ?? [],
+      })),
+      limitSnapshotBeforeRun: limitSummary(discoveredLimits),
+      limitSnapshotAfterRun: limitSummary(finalLimits),
     },
     matrix: {
       fresh: true,

@@ -9,7 +9,9 @@ FOLD_HARNESS_LIVE=1 bun run smoke:native -- --provider codex
 ```
 
 The test covers a fresh turn, application tools, resume after host restart,
-same-turn steering, cancellation, checkpoints, and separate limit discovery.
+same-turn steering, cancellation, checkpoints, and live model and limit
+discovery. The summary prints the discovered model catalog and the limit
+snapshot before and after the turns.
 The Claude run also covers a permission interaction. The Codex run also uses
 the Fast control.
 
