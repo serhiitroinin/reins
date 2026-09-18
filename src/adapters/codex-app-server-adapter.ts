@@ -30,6 +30,7 @@ import type { HarnessToolContent, HarnessToolResult } from "../tools.js";
 import {
   codexDynamicTools,
   codexInitializeParams,
+  codexModelCatalog,
   codexThreadResumeParams,
   codexThreadStartParams,
   codexTurnSettingOverrides,
@@ -41,6 +42,7 @@ import {
   type CodexThreadOptions,
 } from "./codex-app-server.js";
 import {
+  codexAccountLimitSnapshot,
   createCodexAppServerEventConsumer,
   type CodexAppServerEventConsumerOptions,
   type CodexAppServerTurnOutcome,
@@ -657,5 +659,179 @@ export function createCodexAppServerAdapter(options: CodexAppServerAdapterOption
       };
       return adapterSession;
     },
+  };
+}
+
+export const CODEX_APP_SERVER_DISCOVERY_ERRORS = {
+  failed: "CODEX_DISCOVERY_FAILED",
+} as const;
+
+export interface CodexAppServerDiscoveryConnectRequest {
+  accountId?: string;
+  /** Aborts when the probe has its answers or its time is up. */
+  signal: AbortSignal;
+}
+
+export interface CodexAppServerDiscoveryOptions {
+  clientInfo: CodexAppServerClientInfo;
+  initialize?: Omit<CodexInitializeOptions, "clientInfo">;
+  /** The host creates one short-lived provider connection for a probe. */
+  connect(
+    request: CodexAppServerDiscoveryConnectRequest,
+  ): Promise<CodexAppServerConnection> | CodexAppServerConnection;
+  /** How long a model catalog is served from cache. Defaults to ten minutes. */
+  modelsTtlMs?: number;
+  /** How long a limit snapshot is served from cache. Defaults to one minute. */
+  limitsTtlMs?: number;
+  /** Bound one probe, including process start. Defaults to fifteen seconds. */
+  timeoutMs?: number;
+  now?: () => Date;
+}
+
+export interface CodexAppServerDiscovery {
+  models(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>>;
+  limits(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessLimitSnapshot>>;
+}
+
+interface CodexDiscoveryProbe {
+  at: number;
+  models: HarnessDiscovery<HarnessModelCatalog>;
+  limits: HarnessDiscovery<HarnessLimitSnapshot>;
+}
+
+const MODEL_LIST_PAGES = 20;
+
+function discoveryDuration(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isFinite(resolved) || resolved < 0) throw new Error(`${name} must not be negative`);
+  return resolved;
+}
+
+/**
+ * Live model and limit sources for `createCodexAppServerAdapter`.
+ *
+ * One short-lived App Server connection answers `model/list` and
+ * `account/rateLimits/read`, then closes. No thread or turn is started.
+ */
+export function createCodexAppServerDiscovery(
+  options: CodexAppServerDiscoveryOptions,
+): CodexAppServerDiscovery {
+  const modelsTtlMs = discoveryDuration(options.modelsTtlMs, 600_000, "modelsTtlMs");
+  const limitsTtlMs = discoveryDuration(options.limitsTtlMs, 60_000, "limitsTtlMs");
+  const timeoutMs = discoveryDuration(options.timeoutMs, 15_000, "timeoutMs");
+  const now = options.now ?? (() => new Date());
+  const cache = new Map<string, CodexDiscoveryProbe>();
+  const pending = new Map<string, Promise<CodexDiscoveryProbe>>();
+
+  const failure = (message: string): CodexDiscoveryProbe => {
+    const result = {
+      status: "unavailable" as const,
+      message,
+      code: CODEX_APP_SERVER_DISCOVERY_ERRORS.failed,
+      retryable: true,
+    };
+    return { at: Number.NEGATIVE_INFINITY, models: result, limits: result };
+  };
+
+  const probe = async (request: HarnessDiscoveryRequest): Promise<CodexDiscoveryProbe> => {
+    const abort = new AbortController();
+    let connection: CodexAppServerConnection | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      });
+      const answered = (async () => {
+        connection = await options.connect({
+          ...(request.accountId ? { accountId: request.accountId } : {}),
+          signal: abort.signal,
+        });
+        const open = connection;
+        if (abort.signal.aborted) {
+          await Promise.resolve(open.close()).catch(() => undefined);
+          throw new Error("timeout");
+        }
+        const client = createCodexAppServerClient({
+          write: (line) => open.write(line),
+          hooks: { notification() {} },
+        });
+        const decoder = new TextDecoder();
+        const reading = (async () => {
+          try {
+            for await (const chunk of open.output) {
+              client.text(typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true }));
+            }
+          } catch {}
+          client.end("the discovery connection closed");
+        })();
+        void reading;
+        await client.initialize(codexInitializeParams({
+          ...(options.initialize ?? {}),
+          clientInfo: options.clientInfo,
+        }));
+        client.initialized();
+        const rows: unknown[] = [];
+        let cursor: unknown;
+        for (let page = 0; page < MODEL_LIST_PAGES; page += 1) {
+          const listed = await client.request("model/list", cursor ? { cursor } : {});
+          const data = listed.data ?? listed.models;
+          if (Array.isArray(data)) rows.push(...data);
+          cursor = listed.nextCursor ?? listed.next_cursor;
+          if (typeof cursor !== "string" || cursor === "") break;
+        }
+        const limits = await client.request("account/rateLimits/read").then(
+          codexAccountLimitSnapshot,
+          () => null,
+        );
+        return { models: codexModelCatalog({ data: rows }), limits };
+      })();
+      answered.catch(() => undefined);
+      const { models, limits } = await Promise.race([answered, expired]);
+      if (models.models.length === 0) return failure("Codex listed no models.");
+      const at = now();
+      return {
+        at: at.getTime(),
+        models: {
+          status: "available",
+          value: { selection: "optional", ...models },
+          fetchedAt: at.toISOString(),
+        },
+        limits: limits
+          ? {
+              status: "available",
+              value: limits,
+              fetchedAt: at.toISOString(),
+              expiresAt: new Date(at.getTime() + limitsTtlMs).toISOString(),
+            }
+          : { status: "unsupported", message: "This Codex account reports no limits." },
+      };
+    } catch {
+      return failure("Codex did not answer discovery. Check that it is installed and signed in.");
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      abort.abort();
+      await Promise.resolve(connection?.close()).catch(() => undefined);
+    }
+  };
+
+  const resolve = async (request: HarnessDiscoveryRequest, ttlMs: number): Promise<CodexDiscoveryProbe> => {
+    const key = request.accountId ?? "";
+    const cached = cache.get(key);
+    if (cached && now().getTime() - cached.at < ttlMs) return cached;
+    let running = pending.get(key);
+    if (!running) {
+      running = probe(request).then((result) => {
+        if (result.models.status === "available") cache.set(key, result);
+        else cache.delete(key);
+        return result;
+      }).finally(() => pending.delete(key));
+      pending.set(key, running);
+    }
+    return running;
+  };
+
+  return {
+    models: async (request) => (await resolve(request, modelsTtlMs)).models,
+    limits: async (request) => (await resolve(request, limitsTtlMs)).limits,
   };
 }

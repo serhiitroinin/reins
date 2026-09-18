@@ -401,4 +401,93 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
   };
 }
 
+export interface CodexAppServerDiscoveryFixture {
+  state: CodexAppServerFixtureState;
+  /** Responses are read on each probe, so a test may replace them. */
+  responses: { modelPages: readonly Record<string, unknown>[]; rateLimits: unknown };
+  /** "missing" throws at connect. "silent" accepts requests and never answers. */
+  behavior: "answer" | "missing" | "silent";
+  connect(): CodexAppServerConnection;
+}
+
+/** A fake App Server that answers only the discovery requests. */
+export function createCodexAppServerDiscoveryFixture(): CodexAppServerDiscoveryFixture {
+  const fixture: CodexAppServerDiscoveryFixture = {
+    state: { connections: 0, requests: [], interruptions: 0, toolResponses: [], closes: 0 },
+    behavior: "answer",
+    responses: {
+      modelPages: [
+        {
+          data: [{
+            id: "gpt-test",
+            displayName: "GPT Test",
+            isDefault: true,
+            defaultReasoningEffort: "medium",
+            supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "medium" }],
+          }],
+          nextCursor: "page-2",
+        },
+        { data: [{ id: "gpt-test-mini", displayName: "GPT Test Mini" }] },
+      ],
+      rateLimits: {
+        rateLimits: {
+          limitId: "codex",
+          planType: "pro",
+          primary: { usedPercent: 70, windowDurationMins: 10_080, resetsAt: 1_789_820_312 },
+        },
+        rateLimitsByLimitId: {
+          codex: {
+            limitId: "codex",
+            planType: "pro",
+            primary: { usedPercent: 70, windowDurationMins: 10_080, resetsAt: 1_789_820_312 },
+            secondary: { usedPercent: 5, windowDurationMins: 300 },
+          },
+        },
+      },
+    },
+    connect() {
+      if (fixture.behavior === "missing") throw new Error(CONFORMANCE.unsafeSecret);
+      fixture.state.connections += 1;
+      const output = createPushableAsyncIterable<Uint8Array | string>();
+      const answer = (id: string | number, result: unknown): void => {
+        output.push(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+      };
+      const reader = createNdjsonReader((value) => {
+        const message = value as RpcMessage;
+        if (message.method === undefined || message.id === undefined) return;
+        const params = object(message.params);
+        fixture.state.requests.push({ method: message.method, params });
+        if (fixture.behavior === "silent") return;
+        if (message.method === "initialize") return answer(message.id, {});
+        if (message.method === "model/list") {
+          const pages = fixture.responses.modelPages;
+          const at = pages.findIndex((page, index) => index > 0 && pages[index - 1]?.nextCursor === params.cursor);
+          return answer(message.id, pages[params.cursor === undefined ? 0 : at] ?? { data: [] });
+        }
+        if (message.method === "account/rateLimits/read" && fixture.responses.rateLimits !== undefined) {
+          return answer(message.id, fixture.responses.rateLimits);
+        }
+        output.push(`${JSON.stringify({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "unsupported fake method" },
+        })}\n`);
+      });
+      let closed = false;
+      return {
+        write: (line) => reader.text(line),
+        output,
+        close() {
+          if (closed) return;
+          closed = true;
+          fixture.state.closes += 1;
+          reader.end();
+          output.close();
+        },
+      };
+    },
+  };
+  return fixture;
+}
+
 export { CODEX_SERVICE_TIER_CONTROL_ID };

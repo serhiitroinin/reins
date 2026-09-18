@@ -138,7 +138,7 @@ function timeout(milliseconds: number): Promise<"timeout"> {
 
 function connectionFor(
   child: CodexAppServerProcessChild,
-  request: CodexAppServerConnectRequest,
+  request: Pick<CodexAppServerConnectRequest, "signal">,
   limits: ProcessLimits,
   onStderr: CodexAppServerProcessOptions["onStderr"],
 ): CodexAppServerConnection {
@@ -339,14 +339,15 @@ function connectionFor(
 }
 
 /**
- * Build the `connect` callback consumed by `createCodexAppServerAdapter`.
+ * Build the `connect` callback consumed by `createCodexAppServerAdapter` and
+ * `createCodexAppServerDiscovery`. Only the request's abort signal is read.
  *
  * This helper deliberately does not add argv, inherit environment variables,
  * discover credentials, select a cwd, or make sandbox/approval claims.
  */
 export function createCodexAppServerProcessConnector(
   options: CodexAppServerProcessOptions,
-): (request: CodexAppServerConnectRequest) => Promise<CodexAppServerConnection> {
+): (request: Pick<CodexAppServerConnectRequest, "signal">) => Promise<CodexAppServerConnection> {
   const validated = validateOptions(options);
   const spawn = options.spawn ?? ((command, args, spawnOptions) => nodeSpawn(command, [...args], spawnOptions));
   return async (request) => {

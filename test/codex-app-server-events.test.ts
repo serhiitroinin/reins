@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  codexAccountLimitSnapshot,
   codexLimitSnapshot,
   createCodexAppServerEventConsumer,
   type CodexAppServerEventConsumerOptions,
@@ -491,5 +492,29 @@ describe("Codex App Server event consumer", () => {
     expect(() => fixture({ assistantTextChunkChars: 1 })).toThrow("assistantTextChunkChars");
     expect(() => fixture({ eventContentChunkChars: 1 })).toThrow("eventContentChunkChars");
     expect(() => fixture({ toolOutputMaxChars: 1 })).toThrow("toolOutputMaxChars");
+  });
+
+  test("converts a rate limit read response across both bucket views", () => {
+    expect(codexAccountLimitSnapshot({
+      rateLimits: {
+        limitId: "codex",
+        planType: "pro",
+        primary: { usedPercent: 70, windowDurationMins: 10_080 },
+        credits: { balance: "4", hasCredits: true, unlimited: false },
+      },
+      rateLimitsByLimitId: {
+        codex: { limitId: "codex", primary: { usedPercent: 71, windowDurationMins: 10_080 } },
+        codex_other: { limitId: "codex_other", limitName: "Other", secondary: { usedPercent: 3 } },
+      },
+    })).toMatchObject({
+      planLabel: "Pro",
+      limits: [
+        { id: "codex:primary", label: "Weekly", usedPercent: 71 },
+        { id: "codex_other:secondary", label: "Other", usedPercent: 3 },
+        { id: "codex:credits", remaining: 4 },
+      ],
+    });
+    expect(codexAccountLimitSnapshot({ rateLimits: {} })).toBeNull();
+    expect(codexAccountLimitSnapshot(null)).toBeNull();
   });
 });

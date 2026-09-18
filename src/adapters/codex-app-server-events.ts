@@ -231,6 +231,26 @@ export function codexLimitSnapshot(value: unknown): HarnessLimitSnapshot | null 
   };
 }
 
+/**
+ * Convert one `account/rateLimits/read` response. The multi-bucket view is
+ * preferred; the single-bucket view fills in any limit it does not name.
+ */
+export function codexAccountLimitSnapshot(response: unknown): HarnessLimitSnapshot | null {
+  const envelope = record(response);
+  if (envelope === null) return null;
+  const buckets = record(field(envelope, "rateLimitsByLimitId", "rate_limits_by_limit_id")) ?? {};
+  const snapshots = [...Object.values(buckets), field(envelope, "rateLimits", "rate_limits")]
+    .map(codexLimitSnapshot)
+    .filter((snapshot): snapshot is HarnessLimitSnapshot => snapshot !== null);
+  if (snapshots.length === 0) return null;
+  const limits = new Map<string, HarnessLimit>();
+  for (const snapshot of snapshots) {
+    for (const limit of snapshot.limits) if (!limits.has(limit.id)) limits.set(limit.id, limit);
+  }
+  const planLabel = snapshots.find((snapshot) => snapshot.planLabel)?.planLabel;
+  return { ...(planLabel ? { planLabel } : {}), limits: [...limits.values()] };
+}
+
 function toolInput(value: unknown): CodexToolInput | null {
   const item = record(value);
   if (item === null) return null;

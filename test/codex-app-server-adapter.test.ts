@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { createHarness } from "../src/runtime.ts";
-import { createCodexAppServerAdapter } from "../src/adapters/codex-app-server-adapter.ts";
+import {
+  CODEX_APP_SERVER_DISCOVERY_ERRORS,
+  createCodexAppServerAdapter,
+  createCodexAppServerDiscovery,
+} from "../src/adapters/codex-app-server-adapter.ts";
 import { createMemoryPersistence } from "../src/stores.ts";
 import { createToolHost } from "../src/tools.ts";
 import { createPushableAsyncIterable } from "../src/transports/async-iterable.ts";
 import {
   CODEX_SERVICE_TIER_CONTROL_ID,
   createCodexAppServerConformanceFixture,
+  createCodexAppServerDiscoveryFixture,
   runAdapterConformance,
 } from "../src/testing/index.ts";
 
@@ -648,5 +653,107 @@ describe("Codex App Server adapter", () => {
     });
     expect(await runtime.limits(adapter.id, { accountId: "account-b" })).toEqual({ status: "unsupported" });
     await runtime.close();
+  });
+
+  test("reads models and limits from one turnless connection and merges stream updates", async () => {
+    const fixture = createCodexAppServerDiscoveryFixture();
+    let clock = Date.parse("2026-09-18T11:00:00.000Z");
+    const discovery = createCodexAppServerDiscovery({
+      clientInfo: { name: "discovery-test", version: "1" },
+      connect: () => fixture.connect(),
+      now: () => new Date(clock),
+    });
+    const adapter = createCodexAppServerAdapter({
+      clientInfo: { name: "discovery-test", version: "1" },
+      models: discovery.models,
+      limits: discovery.limits,
+      now: () => new Date(clock),
+      thread: () => ({ cwd: "/work", sandbox: "read-only", approvalPolicy: "never" }),
+      connect: () => checkpointConnection([], false, {
+        limitId: "codex",
+        primary: { usedPercent: 74, windowDurationMins: 10_080 },
+      }),
+    });
+
+    const [models, limits] = await Promise.all([adapter.models?.({}), adapter.limits?.({})]);
+    expect(models).toMatchObject({
+      status: "available",
+      fetchedAt: "2026-09-18T11:00:00.000Z",
+      value: {
+        selection: "optional",
+        defaultModelId: "gpt-test",
+        models: [{ id: "gpt-test", label: "GPT Test" }, { id: "gpt-test-mini" }],
+      },
+    });
+    expect(limits).toMatchObject({
+      status: "available",
+      fetchedAt: "2026-09-18T11:00:00.000Z",
+      expiresAt: "2026-09-18T11:01:00.000Z",
+      value: {
+        planLabel: "Pro",
+        limits: [{ id: "codex:primary", usedPercent: 70 }, { id: "codex:secondary", usedPercent: 5 }],
+      },
+    });
+    expect(fixture.state.connections).toBe(1);
+    expect(fixture.state.closes).toBe(1);
+    expect(fixture.state.requests.map((request) => request.method)).toEqual([
+      "initialize",
+      "model/list",
+      "model/list",
+      "account/rateLimits/read",
+    ]);
+
+    clock += 5_000;
+    const runtime = createHarness({ adapters: [adapter], persistence: createMemoryPersistence() });
+    const run = runtime.start({
+      session: { tenantId: "tenant", actorId: "actor", threadId: "discovery" },
+      adapterId: adapter.id,
+      input: [{ type: "text", text: "hello" }],
+    });
+    await collect(run.events);
+    expect(await runtime.limits(adapter.id)).toMatchObject({
+      fetchedAt: "2026-09-18T11:00:05.000Z",
+      value: {
+        planLabel: "Pro",
+        limits: [{ id: "codex:primary", usedPercent: 74 }, { id: "codex:secondary", usedPercent: 5 }],
+      },
+    });
+    expect(fixture.state.connections).toBe(1);
+
+    clock += 61_000;
+    expect(await runtime.limits(adapter.id)).toMatchObject({
+      value: { limits: [{ id: "codex:primary", usedPercent: 70 }, { id: "codex:secondary" }] },
+    });
+    expect(fixture.state.connections).toBe(2);
+    await runtime.close();
+  });
+
+  test("degrades discovery to safe unavailable results", async () => {
+    const fixture = createCodexAppServerDiscoveryFixture();
+    const discovery = createCodexAppServerDiscovery({
+      clientInfo: { name: "discovery-test", version: "1" },
+      connect: () => fixture.connect(),
+      timeoutMs: 20,
+    });
+    const unavailable = {
+      status: "unavailable",
+      code: CODEX_APP_SERVER_DISCOVERY_ERRORS.failed,
+      message: "Codex did not answer discovery. Check that it is installed and signed in.",
+      retryable: true,
+    };
+
+    fixture.behavior = "missing";
+    expect(await discovery.models({})).toEqual(unavailable);
+    fixture.behavior = "silent";
+    expect(await discovery.limits({})).toEqual(unavailable);
+    expect(fixture.state.closes).toBe(1);
+
+    fixture.behavior = "answer";
+    fixture.responses.rateLimits = undefined;
+    expect(await discovery.models({})).toMatchObject({ status: "available" });
+    expect(await discovery.limits({})).toEqual({
+      status: "unsupported",
+      message: "This Codex account reports no limits.",
+    });
   });
 });
