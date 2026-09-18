@@ -4,7 +4,9 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   CLAUDE_AGENT_SDK_CONNECTOR_ERRORS,
+  CLAUDE_AGENT_SDK_DISCOVERY_ERRORS,
   createClaudeAgentSdkConnector,
+  createClaudeAgentSdkDiscovery,
   defaultClaudeAgentSdkInput,
   type ClaudeAgentSdkQueryLike,
   type ClaudeAgentSdkQueryRequest,
@@ -13,6 +15,7 @@ import type {
   ClaudeAgentSdkConnectRequest,
   ClaudeAgentSdkToolDecision,
 } from "../src/adapters/claude-agent-sdk-adapter.ts";
+import { createClaudeAgentSdkDiscoveryFixture } from "../src/testing/index.ts";
 import { createPushableAsyncIterable } from "../src/transports/async-iterable.ts";
 
 class FakeQuery implements ClaudeAgentSdkQueryLike {
@@ -341,5 +344,96 @@ describe("Claude Agent SDK connector", () => {
     await expect(effort(request({ effort: "turbo" }))).rejects.toMatchObject({
       code: CLAUDE_AGENT_SDK_CONNECTOR_ERRORS.unsupportedEffort,
     });
+  });
+
+  test("discovers models and limits from one turnless probe and caches them", async () => {
+    const fixture = createClaudeAgentSdkDiscoveryFixture();
+    let clock = Date.parse("2026-09-18T11:00:00.000Z");
+    const discovery = createClaudeAgentSdkDiscovery({
+      configure: () => ({ cwd: "/probe", env: { PATH: "/bin" }, extensions: { pathToClaudeCodeExecutable: "/bin/claude" } }),
+      now: () => new Date(clock),
+      createQuery: fixture.createQuery,
+    });
+
+    const [models, limits] = await Promise.all([discovery.models({}), discovery.limits({})]);
+    expect(models).toMatchObject({
+      status: "available",
+      fetchedAt: "2026-09-18T11:00:00.000Z",
+      value: { defaultModelId: "default", models: [{ id: "default" }, { id: "sonnet" }, { id: "haiku" }] },
+    });
+    expect(limits).toMatchObject({
+      status: "available",
+      fetchedAt: "2026-09-18T11:00:00.000Z",
+      expiresAt: "2026-09-18T11:01:00.000Z",
+      value: { planLabel: "Max", limits: [{ id: "five_hour" }, { id: "seven_day" }, { id: "seven_day_model:fable" }] },
+    });
+    expect(fixture.state.queries).toHaveLength(1);
+    expect(fixture.state.closes).toBe(1);
+
+    const launch = fixture.state.queries[0]!.options;
+    expect(launch).toMatchObject({
+      cwd: "/probe",
+      env: { PATH: "/bin" },
+      tools: [],
+      skills: [],
+      settingSources: [],
+      strictMcpConfig: true,
+      mcpServers: {},
+      persistSession: false,
+      pathToClaudeCodeExecutable: "/bin/claude",
+    });
+    const prompt = fixture.state.queries[0]!.prompt[Symbol.asyncIterator]();
+    expect(await prompt.next()).toEqual({ done: true, value: undefined });
+
+    clock += 61_000;
+    await discovery.models({});
+    expect(fixture.state.queries).toHaveLength(1);
+    await discovery.limits({});
+    expect(fixture.state.queries).toHaveLength(2);
+    clock += 600_000;
+    await discovery.models({ accountId: "other" });
+    await discovery.models({});
+    expect(fixture.state.queries).toHaveLength(4);
+  });
+
+  test("degrades discovery to safe unavailable results and retries", async () => {
+    const fixture = createClaudeAgentSdkDiscoveryFixture();
+    const discovery = createClaudeAgentSdkDiscovery({
+      configure: () => ({ cwd: "/probe", env: {} }),
+      timeoutMs: 20,
+      createQuery: fixture.createQuery,
+    });
+
+    fixture.behavior = "missing";
+    const missing = await discovery.models({});
+    expect(missing).toEqual({
+      status: "unavailable",
+      code: CLAUDE_AGENT_SDK_DISCOVERY_ERRORS.failed,
+      message: "Claude Code did not answer discovery. Check that it is installed and signed in.",
+      retryable: true,
+    });
+    expect(JSON.stringify(missing)).not.toContain("secret");
+
+    fixture.behavior = "silent";
+    expect(await discovery.limits({})).toMatchObject({ status: "unavailable", code: CLAUDE_AGENT_SDK_DISCOVERY_ERRORS.failed });
+    expect(fixture.state.closes).toBe(1);
+
+    fixture.behavior = "answer";
+    fixture.responses.account = { tokenSource: "none", apiProvider: "firstParty" };
+    expect(await discovery.models({})).toEqual({
+      status: "unavailable",
+      code: CLAUDE_AGENT_SDK_DISCOVERY_ERRORS.signedOut,
+      message: "Claude Code is not signed in.",
+      retryable: true,
+    });
+
+    fixture.responses.account = { apiKeySource: "ANTHROPIC_API_KEY", tokenSource: "none" };
+    fixture.responses.usage = { subscription_type: null, rate_limits_available: false, rate_limits: null };
+    expect(await discovery.models({})).toMatchObject({ status: "available" });
+    expect(await discovery.limits({})).toEqual({
+      status: "unsupported",
+      message: "This Claude account reports no plan limits.",
+    });
+    expect(fixture.state.queries).toHaveLength(4);
   });
 });

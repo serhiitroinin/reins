@@ -25,6 +25,12 @@ import {
   HarnessAdapterError,
   HarnessAdapterInterruptedError,
 } from "../runtime.js";
+import type {
+  HarnessDiscovery,
+  HarnessDiscoveryRequest,
+  HarnessLimitSnapshot,
+  HarnessModelCatalog,
+} from "../profile.js";
 import type { HarnessInput, HarnessInlineContext } from "../protocol.js";
 import type { HarnessToolContent, HarnessToolResult } from "../tools.js";
 import { createPushableAsyncIterable } from "../transports/async-iterable.js";
@@ -33,6 +39,10 @@ import type {
   ClaudeAgentSdkConnection,
   ClaudeAgentSdkTurnInput,
 } from "./claude-agent-sdk-adapter.js";
+import {
+  claudeAgentSdkModelCatalog,
+  claudeAgentSdkUsageLimitSnapshot,
+} from "./claude-agent-sdk-events.js";
 
 export const CLAUDE_AGENT_SDK_TOOL_SERVER = "fold-harness";
 
@@ -600,5 +610,197 @@ export function createClaudeAgentSdkConnector(
         await applicationTools.close().catch(() => undefined);
       },
     };
+  };
+}
+
+export const CLAUDE_AGENT_SDK_DISCOVERY_ERRORS = {
+  failed: "CLAUDE_DISCOVERY_FAILED",
+  signedOut: "CLAUDE_DISCOVERY_SIGNED_OUT",
+} as const;
+
+/** Process placement for a discovery probe. It grants no tools or settings. */
+export interface ClaudeAgentSdkDiscoveryConfiguration {
+  cwd: string;
+  /** Exact subprocess environment. It is never merged with `process.env`. */
+  env: Readonly<Record<string, string>>;
+  /** Provider launch options such as `pathToClaudeCodeExecutable`. */
+  extensions?: Readonly<Record<string, unknown>>;
+}
+
+export interface ClaudeAgentSdkDiscoveryQueryLike {
+  supportedModels(): Promise<unknown>;
+  accountInfo?(): Promise<unknown>;
+  /** The Agent SDK marks its usage request experimental. It may be absent. */
+  usage?(): Promise<unknown>;
+  close(): void;
+}
+
+export interface ClaudeAgentSdkDiscoveryOptions {
+  configure(
+    request: HarnessDiscoveryRequest,
+  ): Promise<ClaudeAgentSdkDiscoveryConfiguration> | ClaudeAgentSdkDiscoveryConfiguration;
+  /** How long a model catalog is served from cache. Defaults to ten minutes. */
+  modelsTtlMs?: number;
+  /** How long a limit snapshot is served from cache. Defaults to one minute. */
+  limitsTtlMs?: number;
+  /** Bound one probe, including process start. Defaults to fifteen seconds. */
+  timeoutMs?: number;
+  now?: () => Date;
+  /** Receives private SDK stderr. */
+  onStderr?(chunk: string): void;
+  /** Deterministic injection seam. Production callers should omit it. */
+  createQuery?(request: ClaudeAgentSdkQueryRequest): ClaudeAgentSdkDiscoveryQueryLike;
+}
+
+export interface ClaudeAgentSdkDiscovery {
+  models(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessModelCatalog>>;
+  limits(request: HarnessDiscoveryRequest): Promise<HarnessDiscovery<HarnessLimitSnapshot>>;
+}
+
+interface DiscoveryProbe {
+  at: number;
+  models: HarnessDiscovery<HarnessModelCatalog>;
+  limits: HarnessDiscovery<HarnessLimitSnapshot>;
+}
+
+function sdkDiscoveryQuery(request: ClaudeAgentSdkQueryRequest): ClaudeAgentSdkDiscoveryQueryLike {
+  const sdk = query({
+    prompt: request.prompt as AsyncIterable<SDKUserMessage>,
+    options: request.options as Options,
+  });
+  return {
+    supportedModels: () => sdk.supportedModels(),
+    accountInfo: () => sdk.accountInfo(),
+    usage: () => sdk.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+    close: () => sdk.close(),
+  };
+}
+
+function signedOut(account: unknown): boolean {
+  if (typeof account !== "object" || account === null) return false;
+  const info = account as Record<string, unknown>;
+  const provider = info.apiProvider ?? "firstParty";
+  return provider === "firstParty" && info.tokenSource === "none" && !info.apiKeySource;
+}
+
+function duration(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isFinite(resolved) || resolved < 0) throw new Error(`${name} must not be negative`);
+  return resolved;
+}
+
+/**
+ * Live model and limit sources for `createClaudeAgentSdkAdapter`.
+ *
+ * One short-lived SDK process answers control requests and is closed. Its
+ * input stream never yields, so no turn starts and no session is persisted.
+ */
+export function createClaudeAgentSdkDiscovery(
+  options: ClaudeAgentSdkDiscoveryOptions,
+): ClaudeAgentSdkDiscovery {
+  const modelsTtlMs = duration(options.modelsTtlMs, 600_000, "modelsTtlMs");
+  const limitsTtlMs = duration(options.limitsTtlMs, 60_000, "limitsTtlMs");
+  const timeoutMs = duration(options.timeoutMs, 15_000, "timeoutMs");
+  const now = options.now ?? (() => new Date());
+  const createQuery = options.createQuery ?? sdkDiscoveryQuery;
+  const cache = new Map<string, DiscoveryProbe>();
+  const pending = new Map<string, Promise<DiscoveryProbe>>();
+
+  const failure = (code: string, message: string): DiscoveryProbe => {
+    const result = { status: "unavailable" as const, message, code, retryable: true };
+    return { at: Number.NEGATIVE_INFINITY, models: result, limits: result };
+  };
+
+  const probe = async (request: HarnessDiscoveryRequest): Promise<DiscoveryProbe> => {
+    const prompt = createPushableAsyncIterable<unknown>();
+    const abortController = new AbortController();
+    let sdk: ClaudeAgentSdkDiscoveryQueryLike | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const configured = await options.configure(request);
+      sdk = createQuery({
+        prompt,
+        options: {
+          ...(configured.extensions ?? {}),
+          abortController,
+          cwd: configured.cwd,
+          env: { ...configured.env },
+          tools: [],
+          skills: [],
+          settingSources: [],
+          strictMcpConfig: true,
+          mcpServers: {},
+          permissionMode: "default",
+          systemPrompt: "",
+          persistSession: false,
+          stderr: (chunk: string) => options.onStderr?.(chunk),
+        },
+      });
+      const running = sdk;
+      const answered = (async () => {
+        const models = claudeAgentSdkModelCatalog(await running.supportedModels());
+        const account = await running.accountInfo?.().catch(() => undefined);
+        const usage = signedOut(account) ? undefined : await running.usage?.().catch(() => undefined);
+        return { models, account, usage };
+      })();
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      });
+      answered.catch(() => undefined);
+      const { models, account, usage } = await Promise.race([answered, expired]);
+      if (signedOut(account)) {
+        return failure(CLAUDE_AGENT_SDK_DISCOVERY_ERRORS.signedOut, "Claude Code is not signed in.");
+      }
+      if (models.models.length === 0) {
+        return failure(CLAUDE_AGENT_SDK_DISCOVERY_ERRORS.failed, "Claude Code listed no models.");
+      }
+      const at = now();
+      const limits = claudeAgentSdkUsageLimitSnapshot(usage);
+      return {
+        at: at.getTime(),
+        models: { status: "available", value: models, fetchedAt: at.toISOString() },
+        limits: limits
+          ? {
+              status: "available",
+              value: limits,
+              fetchedAt: at.toISOString(),
+              expiresAt: new Date(at.getTime() + limitsTtlMs).toISOString(),
+            }
+          : { status: "unsupported", message: "This Claude account reports no plan limits." },
+      };
+    } catch {
+      return failure(
+        CLAUDE_AGENT_SDK_DISCOVERY_ERRORS.failed,
+        "Claude Code did not answer discovery. Check that it is installed and signed in.",
+      );
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      prompt.close();
+      abortController.abort();
+      try {
+        sdk?.close();
+      } catch {}
+    }
+  };
+
+  const resolve = async (request: HarnessDiscoveryRequest, ttlMs: number): Promise<DiscoveryProbe> => {
+    const key = request.accountId ?? "";
+    const cached = cache.get(key);
+    if (cached && now().getTime() - cached.at < ttlMs) return cached;
+    let running = pending.get(key);
+    if (!running) {
+      running = probe(request).then((result) => {
+        if (result.models.status === "available") cache.set(key, result);
+        else cache.delete(key);
+        return result;
+      }).finally(() => pending.delete(key));
+      pending.set(key, running);
+    }
+    return running;
+  };
+
+  return {
+    models: async (request) => (await resolve(request, modelsTtlMs)).models,
+    limits: async (request) => (await resolve(request, limitsTtlMs)).limits,
   };
 }

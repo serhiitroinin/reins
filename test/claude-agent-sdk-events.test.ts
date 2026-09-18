@@ -3,9 +3,12 @@ import type { HarnessAdapterEvent } from "../src/runtime.ts";
 import {
   CLAUDE_AGENT_SDK_NAMESPACE,
   claudeAgentSdkLimitSnapshot,
+  claudeAgentSdkModelCatalog,
+  claudeAgentSdkUsageLimitSnapshot,
   createClaudeAgentSdkEventConsumer,
   type ClaudeAgentSdkTurnOutcome,
 } from "../src/adapters/claude-agent-sdk-events.ts";
+import { createClaudeAgentSdkDiscoveryFixture } from "../src/testing/index.ts";
 
 describe("Claude Agent SDK event consumer", () => {
   test("normalizes a complete turn without retaining SDK types", () => {
@@ -457,5 +460,97 @@ describe("Claude Agent SDK event consumer", () => {
       unifiedWindows: { seven_day: { utilization: 0.9 } },
     })).toMatchObject({ limits: [{ id: "seven_day", usedPercent: 91 }] });
     expect(claudeAgentSdkLimitSnapshot({ status: "allowed", rateLimitType: "five_hour" })).toBeNull();
+  });
+
+  test("converts the usage response and skips accounts without plan limits", () => {
+    const fixture = createClaudeAgentSdkDiscoveryFixture();
+    expect(claudeAgentSdkUsageLimitSnapshot(fixture.responses.usage)).toEqual({
+      planLabel: "Max",
+      limits: [
+        {
+          id: "five_hour",
+          label: "5-hour",
+          kind: "rate",
+          scope: "account",
+          unit: "%",
+          usedPercent: 12,
+          resetsAt: "2026-09-18T16:00:00.000Z",
+          windowDurationMs: 18_000_000,
+        },
+        {
+          id: "seven_day",
+          label: "Weekly",
+          kind: "rate",
+          scope: "account",
+          unit: "%",
+          usedPercent: 68,
+          resetsAt: "2026-09-20T06:00:00.000Z",
+          windowDurationMs: 604_800_000,
+        },
+        {
+          id: "seven_day_model:fable",
+          label: "Weekly · Fable",
+          kind: "rate",
+          scope: "model",
+          unit: "%",
+          usedPercent: 100,
+          windowDurationMs: 604_800_000,
+        },
+      ],
+    });
+    expect(claudeAgentSdkUsageLimitSnapshot({
+      subscription_type: null,
+      rate_limits_available: false,
+      rate_limits: null,
+    })).toBeNull();
+    expect(claudeAgentSdkUsageLimitSnapshot(undefined)).toBeNull();
+  });
+
+  test("converts supported models with labels, effort, and a default", () => {
+    const fixture = createClaudeAgentSdkDiscoveryFixture();
+    expect(claudeAgentSdkModelCatalog(fixture.responses.models)).toEqual({
+      selection: "optional",
+      defaultModelId: "default",
+      models: [
+        {
+          id: "default",
+          label: "Default (recommended)",
+          description: "Opus 5 with 1M context",
+          effort: {
+            options: [
+              { id: "low", label: "Low" },
+              { id: "medium", label: "Medium" },
+              { id: "high", label: "High" },
+              { id: "xhigh", label: "Extra high" },
+              { id: "max", label: "Max" },
+            ],
+          },
+          extensions: {
+            [CLAUDE_AGENT_SDK_NAMESPACE]: {
+              resolvedModel: "claude-opus-5[1m]",
+              adaptiveThinking: true,
+              fastMode: true,
+            },
+          },
+        },
+        {
+          id: "sonnet",
+          label: "Sonnet",
+          description: "Sonnet 5",
+          effort: {
+            options: [
+              { id: "low", label: "Low" },
+              { id: "medium", label: "Medium" },
+              { id: "high", label: "High" },
+            ],
+          },
+          extensions: { [CLAUDE_AGENT_SDK_NAMESPACE]: { resolvedModel: "claude-sonnet-5" } },
+        },
+        { id: "haiku", label: "Haiku", description: "Haiku 4.5" },
+      ],
+    });
+    expect(claudeAgentSdkModelCatalog([{ value: "sonnet" }, { value: "sonnet" }, { displayName: "Nameless" }]))
+      .toEqual({ selection: "optional", defaultModelId: "sonnet", models: [{ id: "sonnet", label: "Sonnet" }] });
+    expect(claudeAgentSdkModelCatalog(null)).toEqual({ selection: "optional", models: [] });
   });
 });

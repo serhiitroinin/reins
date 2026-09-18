@@ -6,7 +6,7 @@
  * into a presentation or redaction callback.
  */
 
-import type { HarnessLimit, HarnessLimitSnapshot } from "../profile.js";
+import type { HarnessLimit, HarnessLimitSnapshot, HarnessModel, HarnessModelCatalog } from "../profile.js";
 import type { HarnessToolStatus, HarnessTurnStatus, HarnessUsage } from "../protocol.js";
 import type { HarnessAdapterEvent } from "../runtime.js";
 
@@ -200,6 +200,14 @@ const LIMIT_LABELS: Readonly<Record<string, string>> = {
   overage: "Overage",
 };
 
+const EFFORT_LABELS: Readonly<Record<string, string>> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
 function title(value: string): string {
   return value
     .split(/[-_]/g)
@@ -241,6 +249,11 @@ function isoFromSeconds(value: unknown): string | undefined {
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 }
 
+function isoFromText(value: unknown): string | undefined {
+  const parsed = Date.parse(text(value));
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
 /**
  * Convert one Agent SDK push update without retaining its wire type.
  *
@@ -264,6 +277,78 @@ export function claudeAgentSdkLimitSnapshot(value: unknown): HarnessLimitSnapsho
     limits.set(id, rateLimit(id, usedPercent, isoFromSeconds(info.resetsAt ?? info.resets_at)));
   }
   return limits.size > 0 ? { limits: [...limits.values()] } : null;
+}
+
+const USAGE_WINDOWS = [
+  "five_hour",
+  "seven_day",
+  "seven_day_opus",
+  "seven_day_sonnet",
+  "seven_day_oauth_apps",
+] as const;
+
+/**
+ * Convert the Agent SDK usage response, which reports whole percentages.
+ * Returns null when plan limits do not apply, for example with an API key.
+ */
+export function claudeAgentSdkUsageLimitSnapshot(value: unknown): HarnessLimitSnapshot | null {
+  const usage = record(value);
+  const windows = record(usage?.rate_limits);
+  if (usage === null || windows === null || usage.rate_limits_available === false) return null;
+  const limits: HarnessLimit[] = [];
+  for (const id of USAGE_WINDOWS) {
+    const window = record(windows[id]);
+    const usedPercent = finite(window?.utilization);
+    if (window === null || usedPercent === undefined) continue;
+    limits.push(rateLimit(id, usedPercent, isoFromText(window.resets_at)));
+  }
+  for (const entry of Array.isArray(windows.model_scoped) ? windows.model_scoped : []) {
+    const window = record(entry);
+    const name = text(window?.display_name);
+    const usedPercent = finite(window?.utilization);
+    if (window === null || name === "" || usedPercent === undefined) continue;
+    const id = `seven_day_model:${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    limits.push({
+      ...rateLimit(id, usedPercent, isoFromText(window.resets_at), `Weekly · ${name}`),
+      scope: "model",
+    });
+  }
+  const plan = text(usage.subscription_type);
+  return { ...(plan ? { planLabel: title(plan) } : {}), limits };
+}
+
+/** Convert an Agent SDK `supportedModels()` response into the neutral catalog. */
+export function claudeAgentSdkModelCatalog(value: unknown): HarnessModelCatalog {
+  const models: HarnessModel[] = [];
+  for (const entry of Array.isArray(value) ? value : []) {
+    const row = record(entry);
+    const id = text(row?.value);
+    if (row === null || id === "" || models.some((model) => model.id === id)) continue;
+    const efforts = row.supportsEffort === false || !Array.isArray(row.supportedEffortLevels)
+      ? []
+      : row.supportedEffortLevels.filter((level): level is string => typeof level === "string" && level !== "");
+    const details = {
+      ...(text(row.resolvedModel) ? { resolvedModel: text(row.resolvedModel) } : {}),
+      ...(typeof row.supportsAdaptiveThinking === "boolean" ? { adaptiveThinking: row.supportsAdaptiveThinking } : {}),
+      ...(typeof row.supportsFastMode === "boolean" ? { fastMode: row.supportsFastMode } : {}),
+      ...(typeof row.supportsAutoMode === "boolean" ? { autoMode: row.supportsAutoMode } : {}),
+    };
+    models.push({
+      id,
+      label: text(row.displayName) || title(id),
+      ...(text(row.description) ? { description: text(row.description) } : {}),
+      ...(efforts.length > 0
+        ? { effort: { options: efforts.map((level) => ({ id: level, label: EFFORT_LABELS[level] ?? title(level) })) } }
+        : {}),
+      ...(Object.keys(details).length > 0 ? { extensions: { [CLAUDE_AGENT_SDK_NAMESPACE]: details } } : {}),
+    });
+  }
+  const preferred = models.find((model) => model.id === "default") ?? models[0];
+  return {
+    models,
+    selection: "optional",
+    ...(preferred ? { defaultModelId: preferred.id } : {}),
+  };
 }
 
 interface OpenTool {

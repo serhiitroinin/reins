@@ -7,6 +7,10 @@ import {
   type ClaudeAgentSdkConnection,
   type ClaudeAgentSdkTurnInput,
 } from "../adapters/claude-agent-sdk-adapter.js";
+import type {
+  ClaudeAgentSdkDiscoveryQueryLike,
+  ClaudeAgentSdkQueryRequest,
+} from "../adapters/claude-agent-sdk-connector.js";
 import { createPushableAsyncIterable } from "../transports/async-iterable.js";
 import type { AdapterConformanceFixture, AdapterConformanceScenario } from "./conformance.js";
 import { CONFORMANCE, conformanceSafeError } from "./conformance.js";
@@ -280,4 +284,76 @@ export function createClaudeAgentSdkConformanceFixture(): AdapterConformanceFixt
       scenario = value;
     },
   };
+}
+
+export interface ClaudeAgentSdkDiscoveryFixtureState {
+  queries: ClaudeAgentSdkQueryRequest[];
+  closes: number;
+}
+
+export interface ClaudeAgentSdkDiscoveryFixture {
+  state: ClaudeAgentSdkDiscoveryFixtureState;
+  /** Responses are read on each probe, so a test may replace them. */
+  responses: { models: unknown; account: unknown; usage: unknown };
+  /** "missing" throws at start. "silent" never answers. */
+  behavior: "answer" | "missing" | "silent";
+  createQuery(request: ClaudeAgentSdkQueryRequest): ClaudeAgentSdkDiscoveryQueryLike;
+}
+
+/** A fake Agent SDK control channel shaped like the live responses. */
+export function createClaudeAgentSdkDiscoveryFixture(): ClaudeAgentSdkDiscoveryFixture {
+  const fixture: ClaudeAgentSdkDiscoveryFixture = {
+    state: { queries: [], closes: 0 },
+    behavior: "answer",
+    responses: {
+      models: [
+        {
+          value: "default",
+          resolvedModel: "claude-opus-5[1m]",
+          displayName: "Default (recommended)",
+          description: "Opus 5 with 1M context",
+          supportsEffort: true,
+          supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+          supportsAdaptiveThinking: true,
+          supportsFastMode: true,
+        },
+        {
+          value: "sonnet",
+          resolvedModel: "claude-sonnet-5",
+          displayName: "Sonnet",
+          description: "Sonnet 5",
+          supportsEffort: true,
+          supportedEffortLevels: ["low", "medium", "high"],
+        },
+        { value: "haiku", displayName: "Haiku", description: "Haiku 4.5" },
+      ],
+      account: { subscriptionType: "Claude Max", apiProvider: "firstParty" },
+      usage: {
+        subscription_type: "max",
+        rate_limits_available: true,
+        rate_limits: {
+          five_hour: { utilization: 12, resets_at: "2026-09-18T16:00:00.000+00:00" },
+          seven_day: { utilization: 68, resets_at: "2026-09-20T06:00:00.000+00:00" },
+          seven_day_opus: null,
+          model_scoped: [{ display_name: "Fable", utilization: 100, resets_at: null }],
+        },
+      },
+    },
+    createQuery(request) {
+      fixture.state.queries.push(request);
+      if (fixture.behavior === "missing") throw new Error(CONFORMANCE.unsafeSecret);
+      const answer = <T>(value: T): Promise<T> => fixture.behavior === "silent"
+        ? new Promise<T>(() => undefined)
+        : Promise.resolve(value);
+      return {
+        supportedModels: () => answer(fixture.responses.models),
+        accountInfo: () => answer(fixture.responses.account),
+        usage: () => answer(fixture.responses.usage),
+        close() {
+          fixture.state.closes += 1;
+        },
+      };
+    },
+  };
+  return fixture;
 }
