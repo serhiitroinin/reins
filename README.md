@@ -1,7 +1,14 @@
+<!-- logo -->
+
 # Reins
 
-Reins is a provider-neutral runtime for products built on Claude Code
-and Codex. It gives each product one interface for sessions, streaming, tools,
+[![npm version](https://img.shields.io/npm/v/reins.svg)](https://www.npmjs.com/package/reins)
+[![CI](https://github.com/serhiitroinin/reins/actions/workflows/ci.yml/badge.svg)](https://github.com/serhiitroinin/reins/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/npm/l/reins.svg)](LICENSE)
+
+Reins is a provider-neutral runtime for products that embed coding agents:
+Claude Code, Codex, and ACP agents. It is the agent harness layer between your
+product and the provider. It gives each product one interface for sessions, streaming, tools,
 human interactions, model discovery, controls, limits, steering, cancellation,
 replay, and resume.
 
@@ -153,10 +160,19 @@ The npm tarball contains every guide. After installation, open
 
 ## Development
 
+Development needs [Bun](https://bun.sh) 1.2 or newer and Node.js 20 or newer.
+Consumers of the npm package need only Node.js.
+
 ```sh
 bun install
 bun run check
 bun run smoke:consumer
+```
+
+The binding tests are optional. They need a Rust toolchain and a Swift 5.9
+toolchain (macOS or Linux). CI runs both.
+
+```sh
 cargo test --locked --manifest-path bindings/rust/Cargo.toml
 swift test --package-path bindings/swift
 ```
@@ -164,7 +180,9 @@ swift test --package-path bindings/swift
 Live Claude Code and Codex tests are opt-in because they use local provider
 accounts. See `docs/getting-started/live-tests.md`.
 
-Read `docs/RELEASING.md` before a release.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request and
+[SECURITY.md](SECURITY.md) before you report a vulnerability. Maintainers read
+[the release procedure](docs/RELEASING.md) before a release.
 
 ## Status
 
