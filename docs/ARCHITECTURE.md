@@ -1,624 +1,177 @@
 # Architecture
 
-Reins separates the concerns a product owns from the wire protocol an
-agent provider owns.
+Reins separates two concerns. Your host owns the product. An engine owns the
+agent behavior. The runtime is the contract between them.
 
-```text
-product UI and API
-        │
-        ▼
-host context, tools, policy, persistence
-        │
-        ▼
-Reins runtime and event protocol
-        │
-        ▼
-provider adapter
-        │
-        ▼
-ACP agent, native SDK, app server, or direct model loop
+Read [the glossary](GLOSSARY.md) first. This page uses those terms exactly.
+
+## The pieces
+
+| Piece | What it does | Who writes it |
+| --- | --- | --- |
+| Host | Renders the product, holds credentials, and owns domain data. | You |
+| Runtime | Assigns run and turn identity. Appends events. Owns terminal events. | Reins |
+| Adapter | Translates one engine into the runtime contract. | Reins or you |
+| Engine | Produces the agent behavior. Claude Code, Codex, or an ACP agent. | The engine vendor |
+| Sidecar | Exposes the runtime over JSON-RPC 2.0 to a host outside Node.js. | Reins |
+| Persistence | Stores events and sessions. | You |
+
+## How the pieces connect
+
+```mermaid
+flowchart TB
+    UI["Host UI and API"]
+    HOST["Host boundary<br/>credentials, tools, policy, persistence"]
+    RT["Reins runtime<br/>identity, admission, events"]
+    AD["Adapter<br/>Claude Code, Codex, or ACP"]
+    EN["Engine process or SDK"]
+
+    UI --> HOST
+    HOST -->|"run request"| RT
+    RT -->|"open, prompt, cancel"| AD
+    AD -->|"engine protocol"| EN
+    EN -->|"engine messages"| AD
+    AD -->|"adapter events"| RT
+    RT -->|"durable events"| HOST
+    AD -->|"tool call"| HOST
 ```
 
-## Stack-agnostic command boundary
+The runtime never talks to an engine. The adapter never assigns identity. The
+host never sees an engine SDK type.
 
-`createHarnessSidecar` wraps the same runtime in a versioned JSON-RPC command
-surface. It is not a second runtime and does not reinterpret provider events.
-It performs discovery-driven admission, calls `HarnessRuntime`, streams the
-exact persisted `HarnessEvent` values, and delegates application tools back to
-the host over a bidirectional request.
+## The sidecar path
 
-```text
-native, Rust, Swift, web daemon, or other product
-        │ JSON-RPC commands / event notifications
-        │ host/tool/call requests
-        ▼
-Reins sidecar server
-        │
-        ├── discovery + admission
-        ├── runtime + persistence interfaces
-        └── Claude/Codex/ACP adapters
+A host that does not run JavaScript uses the sidecar. The runtime, the
+adapters, and the ownership rules stay the same.
+
+```mermaid
+flowchart LR
+    APP["Non-JavaScript host<br/>Swift, Rust, native shell, service"]
+    SC["reins-sidecar<br/>JSON-RPC 2.0 over stdio"]
+    HM["Host module<br/>adapters, credentials, context sources"]
+    RT["Reins runtime"]
+    ST["Private file store"]
+    EN["Engine"]
+
+    APP -->|"commands"| SC
+    SC -->|"event notifications"| APP
+    SC -->|"host/tool/call requests"| APP
+    SC --> RT
+    SC --> HM
+    RT --> ST
+    HM --> EN
 ```
 
-Model, effort, account, permission, and generic control changes are ordinary
-new-turn selections. During an active turn they require replacement steering:
-the sidecar resolves a complete new execution snapshot and admission before
-the runtime prepares context or cancels the current provider turn. Same-turn
-steering never changes the frozen execution snapshot.
-
-The native host may supply a JSON-safe prepared context that keeps trusted
-instructions separate from untrusted content. Application-only state remains
-outside the sidecar and can be recovered by run/turn identity when the sidecar
-requests a tool. Credentials, subprocess launch, filesystem/network policy,
-and the durable store implementation remain deployment concerns rather than
-command fields.
-
-The sidecar protocol is specified in `docs/SIDECAR_V1.md` and
-`schema/v1/sidecar.schema.json`. The in-process server accepts arbitrary text
-chunks and a synchronous whole-frame writer, so stdio, sockets, native IPC,
-and test transports share the same semantics. The packaged Node executable is
-one deployment above that boundary: it loads an explicit adapter host module,
-binds bounded stdin/stdout, and supplies the private file persistence below.
-It adds no protocol methods and accepts no credential or provider option over
-the wire.
-
-The file store is deliberately deployment-specific rather than a new core
-assumption. One process serializes operations per logical session. Event files
-are append-only and sequences resume after reopen; checkpoints use write,
-fsync, and same-directory rename. Logical identities are hashed into filenames,
-directories/files are private, symlinks and non-regular paths are refused, and
-only a torn final event frame is repairable. Middle corruption fails closed.
-No cross-process locking, cloud sync, database migration, or retention policy
-is implied. A product needing those supplies another `HarnessPersistence`.
-
-The Node Codex process connector is one such deployment primitive. It turns an
-explicit executable, complete argv, exact environment, and optional cwd into
-the byte connection consumed by the native Codex adapter. It adds no command
-flags and never inherits the parent environment. Bounded stdout, stderr, and
-pending stdin protect the host process; cancellation owns graceful and forced
-child termination. Choosing a private provider home, credentials, sandbox,
-approval policy, MCP mounts, features, and filesystem/network posture remains
-the product's responsibility.
-
-The Node Claude connector is the corresponding Agent SDK deployment primitive.
-It owns the streaming `query`, input queue, interrupt and subagent controls,
-the compaction callback, and an in-process MCP server backed by the active
-`HarnessTurnTools`. That MCP server lists each host JSON Schema unchanged and
-delegates calls to the turn-scoped tool host; it does not move credentials or
-domain implementations into the package. The connector requires an exact
-environment, closed built-in tool and native-skill lists, explicit settings
-sources and permission mode, a system prompt, and `strictMcpConfig: true`.
-Additional SDK options use an explicit escape hatch whose connector-owned keys
-cannot be replaced.
-
-The connector does not turn the SDK permission callback into a security claim.
-Claude may execute calls its effective policy already allows without invoking
-that callback. A product promising approval must install and independently
-verify the corresponding policy ask/deny rules after administrator policy is
-resolved. Likewise, `cwd` places relative paths but confines nothing. The host
-still owns its private Claude home, account environment, sandbox, built-in tool
-surface, policy proof, plugins, external MCP servers, and public redaction.
-
-## Protocol
-
-Events are append-only envelopes. The store assigns a sequence across the
-logical session; the runtime assigns run and turn identity. The runtime owns
-`turn-started` and `turn-completed`, and seals the stream after the terminal
-event. Adapters emit the content between them.
-
-Adapter-owned extension data is projected before the append boundary. A
-top-level extension payload or tool extension map is not durable merely
-because an adapter emitted it: the adapter must explicitly select its safe
-representation, after which the runtime accepts only detached JSON inside
-fixed UTF-8 byte, depth, string, and collection limits. An unapproved or unsafe
-top-level payload becomes a fixed redaction marker with no retained prefix; an
-unsafe tool extension map is removed. Invalid extension envelopes are ignored.
-Each outcome produces only a sanitized process-local diagnostic.
-
-The runtime still appends before it publishes. The public async stream receives
-the event returned by the store, so live state and replay cannot disagree about
-redaction or truncation. Direct use of a host's event-store implementation is
-not a runtime operation and does not inherit this projection.
-
-Provider identifiers are strings. Optional behavior is expressed through
-capability data, not `if provider === ...` branches. Provider-only information
-uses namespaced extension events.
-
-## Engine profiles and discovery
-
-The runtime exposes engine profiles, model catalogs, and account limits as
-three independent discovery calls. Their availability can differ and their
-refresh cadence usually does too. Discovery failures use explicit safe
-messages; raw provider errors are not returned to a product.
-
-Available results may include fetch and expiry timestamps, which the shared
-freshness helper classifies without exposing cache implementation details.
-Unavailable results may include a safe adapter error code for diagnostics.
-Observed native limit snapshots are timestamped and account-scoped so one
-login can never inherit another login's quota display. A request that names no
-account reads the account that reported last.
-
-The native adapters ship live discovery sources. `createClaudeAgentSdkDiscovery`
-reads the Agent SDK control channel, and `createCodexAppServerDiscovery` reads
-`model/list` and `account/rateLimits/read`. Each probe is one short process
-with no turn, no tools, and only the host's exact environment. Results are
-cached with `fetchedAt`. Limits that a provider streams during a turn are
-merged over the probe result by limit id when they are newer.
-
-An engine profile owns its permission vocabulary. The core does not pretend a
-Claude approval policy and a Codex sandbox mode mean the same thing. Permission
-modes can require a versioned consent; a stored grant whose version no longer
-matches resolves to the safe default. This lets an adapter change the meaning
-of an elevated mode without silently reusing old consent.
-
-Common settings are adapter-declared toggle, select, or number controls with
-open identifiers and turn, session, or account scope. Models can override the
-engine controls where available values differ. Effort remains a first-class
-model attribute because its options and default are model-specific, but effort
-option ids are still open strings. A shared resolver accepts only advertised
-values and an advertised default. Model lifecycle metadata is additive:
-availability and legacy status do not turn provider identifiers into a closed
-core enum.
-
-Limits are snapshots, separate from per-turn token and cost usage events. A
-snapshot can represent rolling rate windows, credits, spend, context, or an
-unknown future kind without embedding a provider response type.
-
-`discoverHarnessAdmission()` is the executable bridge from discovery to the
-runtime. It reads the engine profile and account-scoped model catalog
-concurrently, resolves only advertised model and effort defaults, validates
-permission consent plus generic controls, merges input policy, and validates
-the actual typed input. Success returns both the normalized
-`HarnessRunRequest` and the exact `HarnessAdmission` that pins it. Failure
-returns safe typed issues and no admission, so a stale picker cannot reach an
-adapter. A pure `resolveHarnessAdmission()` variant accepts an already-fetched
-snapshot for hosts whose UI owns discovery caching.
-
-The resolver treats account ids and session bindings as opaque host-owned
-identities and validates only that supplied values are non-empty. Credential
-lookup, authorization, and the contents of the non-secret binding fingerprint
-remain outside the package. Limit snapshots are deliberately not folded into
-admission: a usage display and a hard execution authorization are different
-contracts.
-
-Engine and model discovery may also declare input policy. The engine provides
-defaults and a selected model overrides only fields it knows. Support and
-limits are separate: an absent modality, maximum, or media-type list means
-unknown, never an inferred refusal. Modality identifiers are open so an ACP or
-future native adapter can add a shape without provider-name branches in a
-host.
-
-## Inline context
-
-`HarnessRunRequest.input` is the canonical ordered composer value. Text,
-images, resources, and `context-reference` parts can be interleaved without
-parsing Markdown or depending on a web editor. The optional versioned
-`inlineContext` table resolves each reference to an open-kind record with a
-stable id, label, and bounded JSON payload treated as untrusted provider
-content. Unknown kinds survive validation;
-malformed envelopes, duplicates, stale references, cycles, and exceeded
-bounds fail closed with explicit issues.
-
-An attachment or resource binding points to the id of an ordinary image or
-resource input. Bytes and provider resource URIs stay at that input boundary,
-not in the context record. This lets a host persist draft references and
-attachment metadata without persisting binary payloads in the record table.
-The package supplies pure resolution and policy-validation functions, while
-the product owns uploads, record lookup, authorization, freshness, storage,
-and rendering.
-
-Inline context is user input and is distinct from prepared context sources.
-Prepared sources snapshot host-owned domain state and preserve trusted
-instructions separately from untrusted content. An adapter's default input
-mapper renders a validated inline reference as untrusted provider content;
-hosts can replace that mapping when a provider supports a richer native form.
-
-## Runtime
-
-`createHarness` caches one adapter session per tenant, actor, thread, and
-adapter. One turn runs in that session at a time. A persisted resume token is
-offered when a process opens the session again only through a versioned
-checkpoint envelope whose adapter-owned format is declared compatible.
-
-The host supplies event and session stores. The in-memory implementation is a
-reference for tests and prototypes; production applications should implement
-durable, tenant-scoped stores.
-
-A product that admits and identifies work before calling the runtime can bind
-its existing run id, turn id, `AbortController`, and prepared context through
-the runtime-only start options. The supplied controller becomes owned by that
-run: runtime cancellation aborts it. The supplied context is trusted host
-state and is passed by identity to the adapter and tool boundary without being
-persisted. These values are not part of `HarnessRunRequest` or its JSON-safe
-wire representation.
-
-The same runtime-only options accept a `HarnessAdmission`: an optional,
-incrementally adoptable snapshot of the selected adapter, account, model,
-effort, resolved permission grant, exact generic controls, input policy, and
-an opaque host session-binding fingerprint. Nullable selection pins use
-`null` to distinguish an admitted absence from an unenforced field. Controls
-remain open typed identifiers, so Codex Fast/service tier and future provider
-settings need no core provider branch.
-
-The runtime copies admission synchronously and validates every supplied pin
-plus input policy before ID allocation, context preparation, event
-persistence, session reservation, or adapter opening. A non-empty session
-binding is stable for the logical runtime session and prevents a later
-admitted turn from silently changing host-owned connection authority. The
-non-secret fingerprint is stored beside a resumable checkpoint and enforced
-after restart; the underlying admitted account, settings, policy, and other
-inputs are not persisted. A start that omits admission entirely retains the
-pre-admission behavior; the legacy top-level input-policy option is folded
-into the private snapshot for compatibility.
-
-Same-turn follow-ups reuse the private admission. Replacement follow-ups
-inherit it unless the host supplies an explicit new snapshot, which replaces
-rather than merges the old one. Runtime-only `replacement.execution` can
-replace account, model, effort, settings, and provider configuration; its
-presence requires explicit readmission, and omitted execution fields are
-cleared rather than inherited. The replacement is validated before IDs,
-context preparation, or cancellation and checked again after asynchronous
-preparation. Admission never enters `HarnessRunRequest`, wire schemas, native
-bindings, adapters, or events. Apart from the opaque session-binding
-fingerprint, it does not enter persistence. The runtime never derives it from
-a provider name or lets an untrusted request select its constraints;
-credential lookup and fingerprint composition stay host responsibilities.
-Hosts may use the package admission resolver for catalog lookup, settings
-resolution, and input validation, or provide an equivalent admitted snapshot.
-
-Each resumable adapter declares one current checkpoint format and may declare
-older compatible formats. The runtime stores that open identifier with a
-schema-versioned opaque token. Unknown, malformed, or incompatible state is
-never offered to a provider. The host can call `resetSession` to close and
-forget an inactive session before intentionally starting fresh. Adapters also
-receive a runtime-owned checkpoint writer so a provider-created session is
-durable before a long turn completes or fails; late writers from a reset or
-closed adapter generation are refused.
-
-The optional diagnostic observer receives process-local, sanitized lifecycle
-failures. It has a versioned envelope, adapter/session/run identity where
-available, a phase, and the same explicitly safe error code/message boundary
-used elsewhere. It never receives raw exceptions, prompts, credentials, tool
-results, or checkpoint tokens; it is not an event store, and callback failure
-cannot change runtime behavior.
-
-The runtime also snapshots the admitted request synchronously, including
-session identity, input bytes, inline context, settings, configuration, and
-metadata. An application mutating caller-owned objects after `start` or
-`followUp` therefore cannot change the event identity or provider request that
-already crossed admission.
-
-Cancellation changes the terminal status to `interrupted` and asks the
-adapter to settle. Events the adapter yields while settling are still durable:
-partial text and terminal tool states describe work that already happened and
-must precede the runtime-owned `turn-completed` event.
-
-Cancellation has three ordered boundaries: dispatch to the adapter, drain the
-provider turn, then persist and close the runtime terminal envelope. A session
-remains reserved through all three. External aborts use the same dispatch path,
-cancellation failures do not bypass the drain, and a session that finishes
-opening after cancellation is closed without running. `HarnessAdapterOpenRequest`
-therefore carries the owning abort signal. Runtime shutdown retires a pending
-checkpoint load or provider open without waiting forever, closes already
-resolved sessions independently, and closes a session that a non-conforming
-adapter resolves after retirement. A late persistence rejection remains
-observed but cannot revive or fail the retired turn. Adapters must stop opening
-on abort and release any partially allocated provider resources before settling.
-
-## Context sources
-
-Context sources are application-owned, turn-scoped snapshots. The runtime
-prepares them before provider execution and passes the same prepared object to
-the adapter and every application tool. This lets a product expose domain
-context without putting a vault, mailbox, database, or other product concept
-in the harness contract.
-
-Each source explicitly chooses `required` or `optional`. A missing required
-source prevents provider execution. A missing optional source is recorded in
-the in-memory prepared context and the rest of the turn continues. Applications
-classify their own expected availability errors; an unclassified exception is
-still a turn failure, so the optional mode cannot silently hide programming
-errors. Raw errors can be observed by a host callback but are never persisted
-by the runtime.
-
-A normalized contribution keeps trusted, host-authored `instructions` apart
-from untrusted domain `content`. Adapters must preserve this distinction when
-building provider requests. Opaque `state` is for application tools and is
-never written to the harness event or session stores.
-
-## Follow-up coordination
-
-The optional turn queue is a framework-neutral host primitive, not a provider
-queue and not part of `HarnessRuntime.start`. It orders opaque host snapshots
-by the existing tenant, actor, thread, and adapter identity. A host chooses the
-safe dispatch boundary and supplies a unique boundary token; the queue leases
-at most one entry at that boundary. Held entries block the tail so later user
-intent cannot overtake them.
-
-An unsettled lease carries an abort signal. Holding or draining a queue bumps a
-monotonic generation, aborts the lease, and makes late completion invalid. The
-host must pass that signal through asynchronous preparation, check the lease by
-completing it, and begin irreversible dispatch in the same synchronous task.
-This closes the common race where Stop drains visible follow-ups while a
-previously taken item is still uploading.
-
-The queue is deliberately in-memory and inspects or persists none of its
-generic payload. Products decide whether an intent is a transient follow-up, a
-durable draft, or a domain record. Provider-native same-turn steering,
-replacement turns, and compaction remain separately negotiated lifecycle
-features; queueing a message never implies that an adapter can steer.
-
-`HarnessCapabilities.steering` declares `same-turn` and/or
-`replacement-turn`; it never declares waiting. `HarnessRun.followUp` requires
-the caller's expected active turn id. Same-turn steering reuses the original
-run, turn, signal, context, and tool host and sends only the new untrusted
-input. It emits no second runtime start or intermediate completion.
-Replacement steering validates the fresh input and prepares the fresh turn
-context before touching the old provider turn, rechecks active-turn admission,
-then crosses the full cancellation, drain, and terminal boundary before
-calling `start` with new run and turn ids. A
-replacement must not reuse the old run id, turn id, or abort controller. A
-failed preparation leaves the original turn alive. Follow-up and Stop
-operations are serialized per run, and unknown provider failures become safe
-runtime errors.
-
-Active subagent control follows the same boundary. `HarnessRun.stopSubagent`
-accepts a non-empty opaque adapter task id, validates the active run from
-inside the serialized control lane, enforces the declared `"stop"` control,
-and calls an optional adapter-session method. It neither exposes the provider
-session nor tracks or assigns task identity; products obtain ids from the
-provider event projection they chose to support.
-Adapters return whether they accepted the targeted stop; unsupported control,
-ended turns, and unsafe failures become stable sanitized runtime errors. The
-parent turn remains active. The adapter receives a turn-scoped abort signal.
-Turn completion, cancellation, and runtime close retire the control lane, so a
-hung provider promise cannot hold `run.cancel()` or shutdown. A late provider
-settlement is ignored, and adapters must use the signal to prevent late side
-effects.
-
-## Tools
-
-Tools use JSON Schema at the provider boundary and an application-owned
-validator before execution. Policy runs before validation and execution. Tool
-implementations receive explicit session and turn identity plus an abort
-signal.
-
-Provider permission requests and application transaction confirmation are
-different interactions. An adapter may ask whether provider execution can
-continue; a domain tool may separately hold a proposed write for product
-review.
-
-`createHarnessMcpServer` is the portable MCP projection of that boundary. It
-captures one trusted `HarnessToolContext`, publishes the host's JSON Schema
-catalog, and routes calls back through the same policy and validator. The MCP
-caller supplies only a tool name and arguments; it cannot choose the actor,
-tenant, turn, context snapshot, or policy.
-
-The server owns bounded newline JSON-RPC framing and the MCP initialize,
-ping, cursor-paginated list, concurrency-bounded call, and cancellation
-methods. It consumes and emits
-`Uint8Array`, so the product can place it behind stdio, a Unix socket, a web
-stream, a native bridge, or a remote transport. The product still owns that
-transport and all authentication, origin, confidentiality, lifecycle, and
-backpressure decisions. In particular, its injected writer must synchronously
-accept or queue the complete frame and throw if it cannot; a socket with
-partial writes needs a host-owned draining writer. The package imports no
-MCP/provider SDK and performs no process, filesystem, environment, credential,
-or network access.
-
-Tool descriptor and result metadata remain private instead of becoming MCP
-`_meta` implicitly. A product can add an explicit, reviewed projection later
-without accidentally exposing application state through a new transport.
-
-## Adapters
-
-An adapter opens or resumes a provider session and exposes an `AsyncIterable`
-of normalized events. It must state its real capabilities and must not leak
-provider SDK types into the core protocol. Opening is cancellation-aware: the
-adapter must observe `HarnessAdapterOpenRequest.signal`, reject or otherwise
-settle promptly on abort, and never publish a usable session after retirement.
-
-Codex App Server communication uses a shared newline JSON-RPC peer.
-Its model mapper exposes App Server reasoning options, modalities, and service
-tiers through the generic catalog. In particular, Fast is a model-declared
-service-tier control rather than a universal boolean. Future adapters may
-group models from multiple underlying providers or add namespaced controls
-without changing the runtime.
-The low-level module serializes initialize, thread, resume, and turn requests,
-but only from host-supplied product identity, sandbox, approval, model, effort,
-image, and generic control decisions.
-It also exposes App Server's explicit `turn/steer` request. The complete
-adapter keeps the provider turn id private and applies it as
-`expectedTurnId`, while the runtime preconditions the public harness turn id.
-Its turn-scoped event consumer translates App Server notifications into
-`HarnessAdapterEvent`, `HarnessLimitSnapshot`, and terminal turn outcomes. It
-reconciles streamed message deltas with the authoritative completed message,
-tracks cumulative token baselines per turn, and closes orphaned tool rows.
-Account limits travel through a separate callback rather than masquerading as
-turn usage. Tool presentation and output redaction are host hooks: the default
-never serializes MCP arguments, while a domain product can classify its own
-tools without teaching the package about its event schema. Provider failure
-text is redacted by default and becomes public only through an explicit host
-mapper.
-`createCodexAppServerAdapter` composes that client and consumer into the public
-runtime contract. It owns the wire lifecycle, dynamic tool round trips,
-context trust labels, cancellation, checkpoints, and transport termination.
-After App Server accepts a turn, the adapter first calls the runtime-owned
-checkpoint writer so the resumable thread id is durable before the turn
-completes or fails. Its optional `onCheckpoint` hook remains available for
-additional host observation. Neither callback is called for a refused thread
-or turn opening, and asynchronous work is awaited so a failed write cannot be
-mistaken for a durable checkpoint.
-Its connection factory is injected per turn. The process, environment,
-credentials, account selection, MCP configuration, sandbox posture, domain
-context, and persistence remain host decisions.
-
-Claude Agent SDK communication uses a host-injected, long-lived connection.
-`createClaudeAgentSdkAdapter` starts that connection lazily on its first turn,
-routes later turns over the same provider stream, and converts unknown SDK
-messages into the same `HarnessAdapterEvent` contract. The public connection,
-input, permission, and event types are package-owned structural contracts; no
-Anthropic SDK type crosses the adapter boundary.
-
-The adapter normalizes prose, thinking, plans, tool runs, usage, account-limit
-updates, compaction, and subagent activity. Claude-only activity uses the
-`anthropic:claude-agent-sdk` extension namespace. Tool input and output are
-private by default. A host must explicitly select a safe presentation,
-redacted output, subagent failure, or compaction failure before any of those
-details enter an event. A subagent's provider-owned `skip_transcript` signal is
-retained as extension metadata so a product can track the task without drawing
-it. Provider failures follow the same explicit public-error rule as Codex.
-
-The injected connection receives application tools and a provider-permission
-callback. A host can decide immediately or return a deferred interaction. The
-adapter then owns `interaction-requested`, `respond`, and
-`interaction-resolved`, while the host still defines the choices and their
-meaning. This provider execution permission remains separate from any product
-transaction confirmation performed by an application tool.
-
-Interaction durability is deliberately split from callback recovery. The
-event log can prove that a request was shown, answered, invalidated, or left
-open; it cannot recreate a provider callback after a process exits.
-`HarnessInteractionCapability.recovery` therefore declares `live-only` or
-`provider-replay`, with an omitted value interpreted as the conservative
-`live-only` behavior for older v1 documents. A resume checkpoint does not
-change that declaration.
-
-`HarnessInteractionProjector` accepts overlapping replay pages and live events,
-deduplicates their envelopes, and derives one FIFO across permission, question,
-confirmation, and future interaction kinds. It retains explicit resolved and
-invalidated outcomes. A terminal event is final for every unanswered request
-on that exact session, adapter, run, and turn, so an older replay page cannot
-resurrect a dead control. The runtime writes `interaction-invalidated` before
-its terminal seal when an adapter leaves a request open. Invalidation states a
-loss of actionability; it is never encoded as a user answer.
-
-An Agent SDK `system/init` message updates only the opaque resume checkpoint.
-The optional checkpoint hook is awaited before a turn completes. Interrupts
-wait for the provider's terminal boundary so an old result cannot settle the
-next turn. A provider that does not reach that boundary within the configured
-grace period has its connection retired rather than reused. A rejected turn
-send retires the stream immediately too, because provider work may already
-have started and its delayed output cannot be attributed to another turn.
-Same-turn follow-ups are serialized behind the initial send, contain no repeat
-of the prepared application context, and are refused while a provider
-interaction is pending.
-
-A long-lived connection is pinned to the account, model, effort, run settings,
-and provider configuration from its first turn. A later turn that changes that
-identity is refused with a public error instead of being sent through a process
-with stale authority. Hosts whose configuration contains turn-only fields can
-provide `connectionKey` to select only the connection-scoped portion; account,
-model, effort, and run settings remain pinned regardless.
-
-The injected connection remains available for custom deployments. The packaged
-Node connector is its reference implementation and owns the actual SDK query,
-stream controls, compaction hook, and in-process application MCP bridge. Every
-option that can change authority still comes from the host: explicit
-environment, account and credentials, private provider home, working
-directory, built-in tool and skill lists, settings sources, plugins, external
-MCP servers, sandbox, and approval rules. Application-only context `state` is
-removed before the connector; its default mapper keeps trusted instruction and
-untrusted content labels distinct without pretending that a user-role Agent
-SDK message is a separate provider system role.
-
-Stable ACP v1 communication uses a host-injected raw byte connection composed
-over the official protocol SDK. `createAcpV1Adapter` owns negotiation,
-new/load-session lifecycle, prompts, permission round trips, cancellation,
-checkpoints, event normalization, and reconnect after process closure. Its
-public types remain SDK-free, and the host owns the process, credentials,
-environment, roots, MCP servers, and transport implementation.
-
-ACP v1 has no portable active-prompt steer operation. Its declared strategy is
-therefore `replacement-turn`: the core runtime prepares the replacement, asks
-the adapter to cancel and settle permissions, drains the prompt, seals the old
-envelope, retires the transport, and only then reloads the session for the next
-prompt. The capability is conditional on negotiated `session/load` support,
-because ACP v1 update frames have session identity but no prompt identity. A native OpenCode, Grok, or
-future adapter may declare stronger behavior after its own conformance tests;
-the ACP label alone never implies it.
-
-Negotiated ACP modes and config options are exposed to a host controller rather
-than assigned universal meaning. A Claude mode, Codex collaboration mode, and
-OpenCode mode need not represent the same authority. Likewise, live model,
-effort, and Fast options complement rather than replace the package's independent
-profile, catalog, and account-limit discovery calls. ACP v1 has no complete
-portable representation for those product surfaces.
-
-The optional OpenCode ACP composition helper adds no lifecycle or policy layer.
-It applies only exact negotiated model, effort, and fixed host-mode selections
-over `createAcpV1Adapter`, and requires the host to inject the engine profile it
-can truthfully support. Process configuration, native-tool denial, credentials,
-discovery, capabilities, and sandbox claims remain host concerns.
-
-The generic ACP adapter deliberately does not advertise client filesystem or
-terminal capabilities. It normalizes agent-reported tool lifecycles, while
-application tool execution enters through explicit host-owned MCP servers.
-Raw tool/provider data is private unless a host presentation or public-error
-hook maps a bounded safe value.
-
-ACP prompts also have no trusted system/instruction role. The default mapper
-therefore refuses a turn with prepared application context; a host must choose
-an agent-appropriate mapping without silently erasing the trust distinction.
-See `docs/ACP_V1.md` for the measured provider matrix and native-adapter decision.
-
-This division is also the stack boundary. The protocol, discovery contracts,
-and wire formats do not assume React, Electron, HTTP, or a particular database.
-JavaScript hosts can use the runtime directly. Other language and native hosts
-can implement the same versioned protocol from the JSON Schema or generated
-Swift and Rust data bindings; they do not need to embed a JavaScript runtime.
-The schema describes values rather than selecting HTTP, SSE, WebSocket, Unix
-socket, or embedded-bridge transport. Binary images use an explicit canonical
-base64 wire representation. Executable callbacks, abort signals, provider SDK
-objects, application-only context state, and raw failures stay outside it.
-
-Schema v1 evolves only through compatible optional fields and open identifiers.
-Known event kinds retain their required shapes, while an unknown future event
-kind remains retainable or safely ignorable. An incompatible field or closed
-union change requires a new schema major. Generated bindings are conveniences,
-not validators; the JSON Schema remains authoritative at an untrusted boundary.
-
-The public testing package separates baseline adapter conformance from optional
-transport reliability conformance. The latter is used by the native Claude and
-Codex adapters with injected fake connections, so provider death, malformed
-traffic, cancellation races, and checkpoint rejection pass through the real
-adapter and runtime without credentials or process policy. Every case compares
-the live event stream with durable replay and requires safe terminal sealing.
-Real process, authentication, provider-version, and operating-system behavior
-remains an explicit live-smoke responsibility.
-
-## Reference host
-
-`examples/incident-terminal` is a standalone reference product. Its UI is
-plain terminal input/output, its domain state is an in-memory incident store,
-and its provider is a deterministic offline fixture. It consumes the same
-runtime surfaces a browser, desktop shell, server, or native bridge would:
-discovery, context sources, tools, events, interactions, checkpoints, and
-cancellation.
-
-The example keeps provider execution permission and application transaction
-confirmation separate. The adapter requests the former through a runtime
-interaction. The validated incident tool performs the latter in the host just
-before mutation. Neither decision is inferred from the other.
-
-This example does not add a terminal abstraction to the package and does not
-claim provider interoperability or sandboxing. It demonstrates that product
-state and presentation can change without changing the core runtime. The
-native Claude/Codex and ACP adapter suites remain the evidence for provider
-behavior.
-
-The current Codex App Server schema accepts dynamic tools on thread creation,
-not thread resume. The adapter enables the experimental API capability when a
-run exposes a non-empty catalog, and omits an empty catalog so ordinary turns
-stay on the stable protocol. A resumed thread therefore keeps its original
-catalog. A host must discard a stale checkpoint when its application tool
-catalog is no longer compatible.
+The sidecar is not a second runtime. It does not reinterpret engine events. It
+resolves admission, calls the runtime, and streams the exact persisted events.
+
+No command carries a credential, an engine SDK object, a database handle, or a
+callback. Those stay inside the host module.
+
+## The life of one turn
+
+Follow these steps in order. Steps 1 to 4 run before the engine starts.
+
+1. The host reads discovery data: capabilities, engine profile, model catalog,
+   and limits.
+2. The host builds a run request from the values a person selected.
+3. Admission validates every selected value against fresh discovery data. A
+   stale value fails here, not inside the engine.
+4. The runtime copies the admitted request. Later changes to the caller's
+   objects cannot affect the turn.
+5. The runtime allocates the run id and the turn id.
+6. The runtime prepares every context source for this turn.
+7. The runtime reserves the session and opens or resumes the adapter session.
+8. The runtime appends `turn-started`.
+9. The adapter sends the prompt to the engine.
+10. The adapter yields events. The runtime projects, appends, and then
+    publishes each one.
+11. The engine may call a tool. The call reaches the host through the tool
+    host, with policy and validation first.
+12. The engine may ask for permission. The adapter raises an interaction and
+    waits for `run.respond`.
+13. The adapter writes a checkpoint as soon as the engine session is
+    resumable.
+14. The turn ends, fails, or is canceled.
+15. The runtime invalidates any open interaction.
+16. The runtime appends `turn-completed` and seals the stream.
+
+A canceled turn follows the same path. The runtime dispatches the cancel,
+drains the engine turn, and then seals the terminal envelope. Events that the
+adapter yields while it settles are still durable.
+
+## What the package owns
+
+- Engine-neutral run and session identity.
+- Streamed events and one terminal result per turn.
+- Application tools and engine permission interactions.
+- Model, effort, permission, control, input, and limit discovery.
+- Codex Fast as a generic model control.
+- Steering, replacement, cancellation, replay, and resume checkpoints.
+- Trusted host instructions and untrusted host context.
+- Conformance tests for adapters and lifecycle behavior.
+- A Node.js API and a versioned sidecar protocol.
+
+## What the host owns
+
+- Credentials and engine accounts.
+- Process launch and the exact child environment.
+- Filesystem, network, shell, sandbox, and approval policy.
+- Product data, authorization, confirmation, and persistence choices.
+- Uploads, draft storage, notifications, and the user interface.
+
+## Design rules
+
+These rules explain most decisions in the reference sections.
+
+| Rule | Consequence |
+| --- | --- |
+| Engine identifiers are open strings. | The core has no `if engine === ...` branch and no closed engine enum. |
+| Optional behavior is discovery data. | A host reads a capability instead of guessing from a name. |
+| Unsupported is a value. | An absent feature returns `unsupported`. It never returns an empty or invented value. |
+| Private by default. | Engine tool input, tool output, and error text enter an event only after the host selects a safe form. |
+| Append before publish. | Live state and replay cannot disagree. |
+| The runtime is not a sandbox. | A capability describes engine behavior. It grants no authority. |
+
+## Reference sections
+
+Each page below covers one area in full detail.
+
+- [Events and the protocol](architecture/events.md) covers event envelopes,
+  sequence assignment, and extension projection.
+- [Discovery and admission](architecture/discovery-and-admission.md) covers
+  engine profiles, model catalogs, limits, inline context, and the admission
+  resolver.
+- [Runtime](architecture/runtime.md) covers session reuse, checkpoints,
+  cancellation, steering, the turn queue, and diagnostics.
+- [Tools and context](architecture/tools-and-context.md) covers the tool
+  boundary, the MCP projection, and context sources.
+- [Adapters](architecture/adapters.md) covers the adapter contract, the Claude
+  Code adapter, the Codex adapter, the ACP v1 adapter, and conformance tests.
+- [Sidecar and persistence](architecture/sidecar-and-persistence.md) covers the
+  command boundary, the file store, and the Node.js connectors.
 
 ## Security boundary
 
-The runtime is not an operating-system sandbox. A host must construct explicit
-provider environments, protect credentials, scope stores by actor and tenant,
-and decide whether tools or subprocesses may access the filesystem or network.
-Arbitrary adapter errors are redacted; only `HarnessAdapterError` carries a
-message an adapter deliberately marked safe to persist.
-Required context failures follow the same rule: only a
-`HarnessContextSourceError` can supply public failure text.
+The runtime is not an operating-system sandbox. Read [SECURITY.md](../SECURITY.md)
+before you ship.
+
+The host must do all of the following:
+
+1. Build an explicit environment for every engine process.
+2. Protect credentials and keep them out of events and diagnostics.
+3. Scope every store by tenant and actor.
+4. Decide whether a tool or a subprocess may reach the filesystem or the
+   network.
+
+The runtime redacts an arbitrary adapter error. Only a `HarnessAdapterError`
+carries a message that the adapter marked safe to persist. A required context
+failure follows the same rule: only a `HarnessContextSourceError` can supply
+public failure text.
+
+## Where to go next
+
+- Build a first turn with the [Node quickstart](getting-started/node.md).
+- Build a complete product with the
+  [build an app guide](guides/build-an-app.md).
+- Read the [FAQ](guides/faq.md) for auth, cost, and platform answers.
