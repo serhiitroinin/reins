@@ -8,7 +8,7 @@ import {
   type CodexAppServerProcessChild,
 } from "../src/index.ts";
 
-const PARENT_SECRET = "FOLD_HARNESS_CONNECTOR_PARENT_SECRET";
+const PARENT_SECRET = "REINS_CONNECTOR_PARENT_SECRET";
 
 afterEach(() => {
   delete process.env[PARENT_SECRET];

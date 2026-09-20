@@ -1,6 +1,6 @@
 /**
  * Credential-bearing native provider smoke test. It is never run by `check`.
- * Set FOLD_HARNESS_LIVE=1 to confirm that the test may use a local account.
+ * Set REINS_LIVE=1 to confirm that the test may use a local account.
  */
 
 import { execFileSync } from "node:child_process";
@@ -56,8 +56,8 @@ function selectedProvider(): Provider {
 }
 
 function requireOptIn(): void {
-  if (process.env.FOLD_HARNESS_LIVE !== "1") {
-    throw new Error("Set FOLD_HARNESS_LIVE=1 to allow local provider account use.");
+  if (process.env.REINS_LIVE !== "1") {
+    throw new Error("Set REINS_LIVE=1 to allow local provider account use.");
   }
 }
 
@@ -122,7 +122,7 @@ function profile(provider: Provider): HarnessDiscovery<HarnessEngineProfile> {
 }
 
 function selectedModel(provider: Provider): string | undefined {
-  return process.env.FOLD_HARNESS_LIVE_MODEL ?? (provider === "claude" ? "sonnet" : undefined);
+  return process.env.REINS_LIVE_MODEL ?? (provider === "claude" ? "sonnet" : undefined);
 }
 
 function text(events: readonly HarnessEvent[]): string {
@@ -218,7 +218,7 @@ interface AdapterSetup {
 }
 
 async function claudeAdapter(workspace: string, state: LiveAdapterState): Promise<AdapterSetup> {
-  const configDirectory = process.env.FOLD_HARNESS_LIVE_CLAUDE_CONFIG_DIR;
+  const configDirectory = process.env.REINS_LIVE_CLAUDE_CONFIG_DIR;
   const environment = {
     ...safeEnvironment(),
     HOME: homedir(),
@@ -274,9 +274,9 @@ async function claudeAdapter(workspace: string, state: LiveAdapterState): Promis
 }
 
 async function codexAdapter(root: string, workspace: string, state: LiveAdapterState): Promise<AdapterSetup> {
-  const command = process.env.FOLD_HARNESS_LIVE_CODEX_COMMAND
+  const command = process.env.REINS_LIVE_CODEX_COMMAND
     ?? execFileSync("which", ["codex"], { encoding: "utf8" }).trim();
-  const sourceHome = process.env.FOLD_HARNESS_LIVE_CODEX_HOME ?? join(homedir(), ".codex");
+  const sourceHome = process.env.REINS_LIVE_CODEX_HOME ?? join(homedir(), ".codex");
   const privateHome = join(root, "codex-home");
   await mkdir(privateHome, { recursive: true, mode: 0o700 });
   if (!process.env.CODEX_API_KEY && !process.env.OPENAI_API_KEY) {
@@ -506,7 +506,7 @@ try {
       lastTurnStatus,
       lastErrorCode,
       lastEventKinds,
-      ...(process.env.FOLD_HARNESS_LIVE_DEBUG === "1" ? { lastAssistantText } : {}),
+      ...(process.env.REINS_LIVE_DEBUG === "1" ? { lastAssistantText } : {}),
     },
   };
   if (state.checkpoints < 1) throw new SmokeFailure("CHECKPOINT_NOT_OBSERVED");
@@ -524,12 +524,12 @@ try {
       lastTurnStatus,
       lastErrorCode,
       lastEventKinds,
-      ...(process.env.FOLD_HARNESS_LIVE_DEBUG === "1" ? { lastAssistantText } : {}),
+      ...(process.env.REINS_LIVE_DEBUG === "1" ? { lastAssistantText } : {}),
     },
   }, null, 2));
   process.exitCode = 1;
 } finally {
   await runtime?.close().catch(() => undefined);
   await setup?.cleanup().catch(() => undefined);
-  if (!process.env.FOLD_HARNESS_LIVE_KEEP) await rm(smokeRoot, { recursive: true, force: true });
+  if (!process.env.REINS_LIVE_KEEP) await rm(smokeRoot, { recursive: true, force: true });
 }
