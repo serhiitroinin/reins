@@ -193,7 +193,7 @@ swift test --package-path bindings/swift
 ```
 
 Live Claude Code and Codex tests are opt-in, because they use a local engine
-account. See [live provider tests](docs/getting-started/live-tests.md).
+account. See [live engine tests](docs/getting-started/live-tests.md).
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. Read
 [SECURITY.md](SECURITY.md) before you report a vulnerability. Maintainers read

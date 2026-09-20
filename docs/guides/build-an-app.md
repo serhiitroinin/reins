@@ -590,7 +590,7 @@ for tests. A development flag that exposes it is acceptable. A release build
 must not offer it as an engine.
 
 Run the opt-in live tests against a real account before you ship an account
-configuration. See [live provider tests](../getting-started/live-tests.md).
+configuration. See [live engine tests](../getting-started/live-tests.md).
 
 ## Related pages
 

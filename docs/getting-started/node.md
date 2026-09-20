@@ -1,7 +1,7 @@
 # Node quickstart
 
 This guide creates one streamed turn. The turn calls an application tool.
-It runs without a provider account.
+It runs without an engine account.
 
 ## 1. Create a project
 

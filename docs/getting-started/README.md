@@ -13,7 +13,7 @@ Choose one guide:
 4. [Claude Code and Codex](native-providers.md)
 
 The first example uses a local test adapter. It needs no account or network.
-This lets you learn the runtime before you add a provider.
+This lets you learn the runtime before you add an engine.
 
 ## What the package owns
 

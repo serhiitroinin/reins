@@ -12,7 +12,7 @@ npm install reins
 ## 2. Create a host module
 
 Create `host.mjs`. This module is the trusted Node boundary. It creates your
-adapters. It also owns provider credentials and process policy.
+adapters. It also owns engine credentials and process policy.
 
 ```js
 export default {
@@ -61,7 +61,7 @@ The sidecar can call your product with `host/tool/call`. Validate the input.
 Apply your policy. Ask for product confirmation when a write needs it. Then
 return a tool result.
 
-Provider permission and product confirmation are different consent steps.
+Engine permission and product confirmation are different consent steps.
 Do not combine them.
 
 Read [sidecar protocol v1](../SIDECAR_V1.md) for every method and payload.

@@ -29,5 +29,5 @@ bindings/rust/examples/sidecar_client.rs
 Use generated types for request and response payloads. Keep JSON-RPC framing,
 child-process supervision, and application tool execution in your Rust host.
 
-Do not copy provider rules into the Rust client. The sidecar owns those rules.
+Do not copy engine rules into the Rust client. The sidecar owns those rules.
 Your Rust product still owns credentials, product policy, and user interface.

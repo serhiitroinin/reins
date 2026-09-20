@@ -26,7 +26,7 @@ cargo test --locked --manifest-path bindings/rust/Cargo.toml
 swift test --package-path bindings/swift
 ```
 
-Run the opt-in provider matrix when adapter behavior changes:
+Run the opt-in engine matrix when adapter behavior changes:
 
 ```sh
 REINS_LIVE=1 bun run smoke:native -- --provider claude
@@ -66,9 +66,12 @@ Run the `Release` workflow and give it the tag:
 gh workflow run release.yml -f tag=v<version>
 ```
 
-The workflow checks out the tag, runs `bun run check`, confirms that the tag
-matches the package version, publishes with `--provenance`, and creates the
-GitHub release. A version with a prerelease suffix is published under the
+The workflow does four things:
+
+1. Check out the tag.
+2. Run `bun run check` and confirm that the tag matches the package version.
+3. Publish with `--provenance`.
+4. Create the GitHub release. A version with a prerelease suffix is published under the
 matching dist-tag (`next` for `0.3.0-next.1`), not under `latest`.
 
 The workflow needs all of these conditions:
@@ -125,10 +128,10 @@ Versions up to 0.1.1 were published as `@serhiitroinin/fold-harness`. Version
 3. Confirm that the name is still free:
    `npm view reins` must return a 404 error.
 4. Do sections 1 to 4. `bun run version-packages` must produce version 0.2.0.
-   After it runs, move the "Versions up to 0.1.1 were published as" line in
-   `CHANGELOG.md` back to the top of the file, under the title.
+   After it runs, open `CHANGELOG.md`. Move the "Versions up to 0.1.1 were
+   published as" line back to the top of the file, under the title.
 5. Publish 0.2.0 with the manual fallback. npm can reject a new unscoped name
-   that is too similar to an existing package. When that happens, stop. Do not
+   that is too similar to an existing package. Stop when that happens. Do not
    publish under another name without a new decision.
 6. On npmjs.com, open the `reins` package settings and add the trusted
    publisher from section 5. Create the `npm` environment in the GitHub

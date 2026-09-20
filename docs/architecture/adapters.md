@@ -310,7 +310,7 @@ requires safe terminal sealing.
 
 Real process behavior, authentication, engine versions, and operating-system
 behavior stay an explicit live-smoke responsibility. See
-[live provider tests](../getting-started/live-tests.md).
+[live engine tests](../getting-started/live-tests.md).
 
 ## The reference host
 

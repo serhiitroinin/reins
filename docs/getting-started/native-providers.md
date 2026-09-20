@@ -3,7 +3,7 @@
 Version 0.1 supports native Claude Code and Codex sessions.
 
 Both adapters use the same runtime contract. They do not have the same feature
-set. Always read discovery data. Do not infer features from the provider name.
+set. Always read discovery data. Do not infer a feature from an engine name.
 
 ## Claude Code
 
@@ -38,8 +38,7 @@ value in `settings.controls`. Do not add a Codex-only field to your UI state.
 
 ## Live models and limits
 
-Do not write a model list by hand. It goes stale when the provider ships a
-model. Create one discovery source for each adapter and pass both of its
+Do not write a model list by hand. It goes stale when an engine ships a new model. Create one discovery source for each adapter and pass both of its
 functions to the adapter.
 
 ```ts
@@ -64,7 +63,7 @@ const codex = createCodexAppServerAdapter({
 });
 ```
 
-A discovery source starts one short provider process. It does not start a
+A discovery source starts one short engine process. It does not start a
 turn, a thread, or a stored session. It grants no tools. It uses only the
 environment that you pass.
 
@@ -81,7 +80,7 @@ A missing command, a timeout, or a signed-out Claude account gives an
 `unavailable` result with a safe message. An account without plan limits,
 such as an API key, gives an `unsupported` limit result.
 
-Each adapter also records the limits that a provider sends during a turn. It
+Each adapter also records the limits that an engine sends during a turn. It
 merges the newer values over the source result by limit id. Call `limits()`
 again after a turn to read them. A request without `accountId` reads the
 account that reported last. A request with `accountId` reads only that
@@ -89,13 +88,13 @@ account.
 
 Use `claudeAgentSdkModelCatalog`, `claudeAgentSdkUsageLimitSnapshot`,
 `codexModelCatalog`, and `codexAccountLimitSnapshot` when your host already
-owns the provider connection.
+owns the engine connection.
 
 ## Safe setup order
 
 For each account, use this order:
 
-1. Create an exact provider environment.
+1. Create an exact engine environment.
 2. Create the connector and the discovery source.
 3. Create the adapter.
 4. Read capabilities, profile, models, and limits.
@@ -106,4 +105,4 @@ For each account, use this order:
 9. Close the runtime during host shutdown.
 
 Use the package live test before you ship an account configuration. See
-[live provider tests](live-tests.md).
+[live engine tests](live-tests.md).

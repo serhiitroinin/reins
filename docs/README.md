@@ -11,7 +11,7 @@ Use this page to choose the smallest guide for your task.
   types.
 - [Claude Code and Codex](getting-started/native-providers.md) explains native
   engine setup.
-- [Live provider tests](getting-started/live-tests.md) verifies a real local
+- [Live engine tests](getting-started/live-tests.md) verifies a real local
   engine account before a release.
 
 ## Guides
