@@ -3,8 +3,10 @@ dist/
 coverage/
 target/
 .build/
-!scripts/
-!scripts/bindings-v1.schema.json
-!scripts/generate-bindings.ts
+Package.resolved
 *.tgz
+*.log
+.env*
+.idea/
+.vscode/
 .DS_Store
