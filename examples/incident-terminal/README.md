@@ -1,43 +1,69 @@
 # Incident terminal reference host
 
-This example is a small, standalone product built on the public harness API. It
-uses a terminal UI and an in-memory incident domain so the complete flow runs
-offline, without credentials, network access, or a provider SDK.
+This example is a small, standalone product built on the public Reins API. Its
+user interface is a terminal. Its domain is an in-memory incident store.
+
+The complete flow runs offline. It needs no credentials, no network access, and
+no engine SDK.
 
 ```bash
 bun run example:incident
 ```
 
-The deterministic demo renders generic capability, engine, model, permission,
-control, and limit discovery. It then prepares trusted instructions and
-untrusted incident context, calls validated domain tools, restarts the host to
-load an opaque checkpoint, and cancels a final turn while retaining partial
-events.
+## What the demo shows
 
-Two consent boundaries are intentionally visible:
+The deterministic demo performs these steps in order:
 
-1. The fixture adapter asks for provider execution permission through a
-   `HarnessInteraction`, which the terminal answers with `run.respond`.
-2. The `incident_acknowledge` implementation asks the application operator to
-   confirm the domain write after tool validation and policy, immediately
-   before changing the incident store.
+1. Render generic capability, engine, model, permission, control, and limit
+   discovery.
+2. Prepare trusted instructions and untrusted incident context.
+3. Call validated domain tools.
+4. Restart the host and load an opaque checkpoint.
+5. Cancel a final turn and retain the partial events.
 
-Run the same host with real terminal questions:
+## Two consent boundaries
+
+The example keeps both consent boundaries visible on purpose.
+
+| Boundary | Who asks | How the host answers |
+| --- | --- | --- |
+| Engine execution permission | The fixture adapter, through a `HarnessInteraction` | `run.respond` |
+| Domain write confirmation | The `incident_acknowledge` implementation, after validation and policy | An operator prompt, immediately before the store changes |
+
+Neither decision is inferred from the other.
+
+## Run it interactively
 
 ```bash
 bun run example:incident:interactive
 ```
 
-Useful prompts include `Inspect INC-104`, `Inspect and acknowledge INC-104`,
-`Use invalid input while inspecting INC-104`, and `Inspect INC-999`. The
-interactive host also accepts `/restart`, `/cancel-demo`, and `/quit`.
+Try these prompts:
 
-The adapter is deliberately scripted. It proves the host and UI boundary, not
-provider interoperability; native Claude/Codex and generic ACP adapters have
-their own conformance and live tests. A real product replaces the fixture
-adapter and in-memory store while keeping the same runtime, event renderer,
-context sources, tool host, and discovery-driven controls.
+- `Inspect INC-104`
+- `Inspect and acknowledge INC-104`
+- `Use invalid input while inspecting INC-104`
+- `Inspect INC-999`
 
-The runtime is not a sandbox. A real host still owns process creation,
-credentials, environment allowlists, filesystem and network policy, durable
-tenant-scoped stores, terminal safety, and every application transaction.
+The interactive host also accepts `/restart`, `/cancel-demo`, and `/quit`.
+
+## What this example does not prove
+
+The adapter is scripted on purpose. It proves the host boundary and the user
+interface boundary. It does not prove engine interoperability. The native
+Claude Code, Codex, and ACP adapters have their own conformance tests and live
+tests.
+
+A real product replaces the fixture adapter and the in-memory store. It keeps
+the same runtime, event renderer, context sources, tool host, and
+discovery-driven controls.
+
+The runtime is not a sandbox. A real host still owns all of these:
+
+- process creation and credentials;
+- environment allow-lists;
+- filesystem and network policy;
+- durable tenant-scoped stores;
+- terminal safety and every domain transaction.
+
+Read [build your own app on Reins](../../docs/guides/build-an-app.md) next.
