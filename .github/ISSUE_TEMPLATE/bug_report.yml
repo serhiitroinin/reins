@@ -1,0 +1,66 @@
+name: Bug report
+description: Report behavior that differs from the documentation.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use the process in SECURITY.md.
+        Remove credentials, prompts, and private data from logs before you paste them.
+  - type: input
+    id: version
+    attributes:
+      label: Reins version
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Node API
+        - Sidecar (reins-sidecar)
+        - Rust or Swift bindings
+        - Documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider adapter
+      options:
+        - Claude Code
+        - Codex
+        - ACP v1
+        - Scripted or custom adapter
+        - Not applicable
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node.js or Bun version, and provider CLI or SDK version.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The smallest code or command sequence that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include redacted events, diagnostics, or error output.
+    validations:
+      required: true

@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a change to the runtime, an adapter, the sidecar, or the bindings.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What does your host application need that Reins does not provide?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The API, protocol, or behavior you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: ownership
+    attributes:
+      label: Package or host
+      description: >-
+        Reins leaves credentials, process policy, product data, and the user
+        interface to the host. Explain why this belongs in the package.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
