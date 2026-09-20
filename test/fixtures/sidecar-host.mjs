@@ -7,7 +7,7 @@ function deferred() {
 }
 
 export default {
-  server: { name: "fold-harness-test-sidecar", version: "1" },
+  server: { name: "reins-test-sidecar", version: "1" },
   adapters: [{
     id: "test:sidecar",
     checkpoint: { format: "test:sidecar:v1" },

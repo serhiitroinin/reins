@@ -54,7 +54,7 @@ function conformanceAgent(
   nextSteeringPrompt: () => number,
 ): acp.AgentApp {
   const cancelled = deferred<void>();
-  return acp.agent({ name: "fold-harness-acp-conformance" })
+  return acp.agent({ name: "reins-acp-conformance" })
     .onRequest(acp.methods.agent.initialize, () => ({
       protocolVersion: 1,
       agentCapabilities: { loadSession: true },

@@ -354,7 +354,7 @@ export function createCodexAppServerConformanceFixture(): AdapterConformanceFixt
 
   const adapter = createCodexAppServerAdapter({
     id: adapterId,
-    clientInfo: { name: "fold-harness-conformance", version: "1" },
+    clientInfo: { name: "reins-conformance", version: "1" },
     capabilities,
     profile: discovery.profile,
     models: discovery.models,

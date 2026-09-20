@@ -116,7 +116,7 @@
   "toolResult": {
     "content": [
       { "type": "text", "text": "ready" },
-      { "type": "resource", "uri": "fold://orders/42", "mediaType": "application/json", "text": "{\"id\":\"42\"}" }
+      { "type": "resource", "uri": "reins://orders/42", "mediaType": "application/json", "text": "{\"id\":\"42\"}" }
     ],
     "metadata": { "cached": false }
   },

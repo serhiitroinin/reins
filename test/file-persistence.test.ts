@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 async function directory(): Promise<string> {
-  const value = await mkdtemp(join(tmpdir(), "fold-harness-file-"));
+  const value = await mkdtemp(join(tmpdir(), "reins-file-"));
   roots.push(value);
   return value;
 }

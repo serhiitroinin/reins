@@ -1101,7 +1101,7 @@ describe("harness runtime", () => {
 
     const rejectedInput = [
       [{ type: "image" as const, mediaType: "image/png", data: new Uint8Array([1]) }],
-      [{ type: "resource" as const, uri: "fold://note/1" }],
+      [{ type: "resource" as const, uri: "reins://note/1" }],
     ];
     for (const input of rejectedInput) {
       expect(() => harness.start({ ...request, input }, { inputPolicy })).toThrow("does not support");
@@ -1129,7 +1129,7 @@ describe("harness runtime", () => {
     expect(await allowed.done).toBe("completed");
     expect(observed).toEqual(imageInput);
 
-    const resourceInput = [{ type: "resource" as const, uri: "fold://note/2" }];
+    const resourceInput = [{ type: "resource" as const, uri: "reins://note/2" }];
     const backwardCompatible = harness.start({ ...request, input: resourceInput });
     await collect(backwardCompatible.events);
     expect(await backwardCompatible.done).toBe("completed");

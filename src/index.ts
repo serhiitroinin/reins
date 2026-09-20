@@ -1,4 +1,4 @@
-/** Public entry point for the Fold Harness runtime. */
+/** Public entry point for the Reins runtime. */
 export * from "./protocol.js";
 export * from "./wire.js";
 export * from "./sidecar-protocol.js";

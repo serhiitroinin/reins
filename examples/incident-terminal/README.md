@@ -1,8 +1,8 @@
 # Incident terminal reference host
 
-This example is a small, non-Fold product built on the public harness API. It
+This example is a small, standalone product built on the public harness API. It
 uses a terminal UI and an in-memory incident domain so the complete flow runs
-offline, without credentials, network access, a provider SDK, or Fold code.
+offline, without credentials, network access, or a provider SDK.
 
 ```bash
 bun run example:incident

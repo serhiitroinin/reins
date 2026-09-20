@@ -198,7 +198,7 @@ describe("Codex App Server adapter", () => {
     expect(fixture.state.requests).toContainEqual({
       method: "initialize",
       params: {
-        clientInfo: { name: "fold-harness-conformance", version: "1" },
+        clientInfo: { name: "reins-conformance", version: "1" },
         capabilities: {
           experimentalApi: true,
           requestAttestation: false,

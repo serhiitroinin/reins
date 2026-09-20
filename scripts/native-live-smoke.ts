@@ -304,7 +304,7 @@ async function codexAdapter(root: string, workspace: string, state: LiveAdapterS
     },
     onStderr(chunk) { state.stderrBytes += chunk.byteLength; },
   });
-  const clientInfo = { name: "fold-harness-live-smoke", title: "Fold Harness live smoke", version: "1" };
+  const clientInfo = { name: "reins-live-smoke", title: "Reins live smoke", version: "1" };
   const discovery = createCodexAppServerDiscovery({ clientInfo, connect: connector });
   const adapter = createCodexAppServerAdapter({
     id: "native-live:codex",
@@ -327,7 +327,7 @@ async function codexAdapter(root: string, workspace: string, state: LiveAdapterS
 
 const provider = selectedProvider();
 requireOptIn();
-const smokeRoot = await mkdtemp(join(tmpdir(), `fold-harness-native-${provider}-`));
+const smokeRoot = await mkdtemp(join(tmpdir(), `reins-native-${provider}-`));
 const workspace = join(smokeRoot, "workspace");
 await mkdir(workspace, { mode: 0o700 });
 const state: LiveAdapterState = {

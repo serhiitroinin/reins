@@ -74,7 +74,7 @@ const MODES: AcpV1SessionConfigOption = {
   currentValue: "build",
   options: [
     { value: "build", name: "Build" },
-    { value: "fold", name: "Fold" },
+    { value: "review", name: "Review" },
   ],
 };
 
@@ -95,7 +95,7 @@ const HOST_PROFILE = {
 describe("OpenCode ACP composition", () => {
   test("requires the host's policy profile and delegates lifecycle to generic ACP", async () => {
     const adapter = createOpenCodeAcpAdapter({
-      modeId: "fold",
+      modeId: "review",
       profile: HOST_PROFILE,
       session: () => ({ cwd: "/tmp/opencode-acp" }),
       connect: () => { throw new Error("not opened by discovery"); },
@@ -114,19 +114,19 @@ describe("OpenCode ACP composition", () => {
     await configureOpenCodeAcpSession(
       controller([MODELS, EFFORTS, MODES], applied),
       request("openai/gpt-5.4", "high"),
-      { modeId: "fold" },
+      { modeId: "review" },
     );
     expect(applied).toEqual([
       { id: "model", value: "openai/gpt-5.4" },
       { id: "effort", value: "high" },
-      { id: "mode", value: "fold" },
+      { id: "mode", value: "review" },
     ]);
 
     const unchanged: Array<{ id: string; value: string | boolean }> = [];
     await configureOpenCodeAcpSession(
-      controller([{ ...MODELS }, { ...EFFORTS }, { ...MODES, currentValue: "fold" }], unchanged),
+      controller([{ ...MODELS }, { ...EFFORTS }, { ...MODES, currentValue: "review" }], unchanged),
       request("anthropic/claude-sonnet-4", "medium"),
-      { modeId: "fold" },
+      { modeId: "review" },
     );
     expect(unchanged).toEqual([]);
   });
@@ -140,7 +140,7 @@ describe("OpenCode ACP composition", () => {
       [[MODELS, EFFORTS], request(), "OPENCODE_MODE_CONTROL_UNAVAILABLE"],
     ] as const) {
       try {
-        await configureOpenCodeAcpSession(controller(options, []), selected, { modeId: "fold" });
+        await configureOpenCodeAcpSession(controller(options, []), selected, { modeId: "review" });
         throw new Error("expected selection to fail");
       } catch (error) {
         expect(error).toBeInstanceOf(HarnessAdapterError);
@@ -154,11 +154,11 @@ describe("OpenCode ACP composition", () => {
     const value: AcpV1SessionController = {
       ...controller([], [], {
         currentModeId: "build",
-        availableModes: [{ id: "build", name: "Build" }, { id: "fold", name: "Fold" }],
+        availableModes: [{ id: "build", name: "Build" }, { id: "review", name: "Review" }],
       }),
       setMode: async (id) => { selected.push(id); },
     };
-    await configureOpenCodeAcpSession(value, request(), { modeId: "fold" });
-    expect(selected).toEqual(["fold"]);
+    await configureOpenCodeAcpSession(value, request(), { modeId: "review" });
+    expect(selected).toEqual(["review"]);
   });
 });

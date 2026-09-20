@@ -74,7 +74,7 @@ function basicAgent(
     onPrompt?: (context: acp.AgentRequestContext<acp.PromptRequest>) => Promise<acp.PromptResponse> | acp.PromptResponse;
   } = {},
 ): acp.AgentApp {
-  return acp.agent({ name: "fold-harness-fake" })
+  return acp.agent({ name: "reins-fake" })
     .onRequest(acp.methods.agent.initialize, ({ params }) => {
       state.initialize.push(params);
       return {

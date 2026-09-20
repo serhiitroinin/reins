@@ -38,7 +38,7 @@ function run(
   return result.stdout ?? "";
 }
 
-const temporary = await mkdtemp(join(tmpdir(), "fold-harness-consumer-"));
+const temporary = await mkdtemp(join(tmpdir(), "reins-consumer-"));
 try {
   const packDirectory = join(temporary, "pack");
   const consumer = join(temporary, "consumer");
@@ -58,7 +58,7 @@ try {
   const tarball = join(packDirectory, filename);
 
   await writeFile(join(consumer, "package.json"), JSON.stringify({
-    name: "fold-harness-clean-consumer",
+    name: "reins-clean-consumer",
     private: true,
     type: "module",
   }, null, 2));

@@ -106,7 +106,7 @@ describe("typed harness input", () => {
     const result = validateHarnessInput([
       { type: "text", text: "four" },
       { type: "image", mediaType: "image/gif", data: new Uint8Array([1, 2, 3]) },
-      { type: "resource", uri: "fold://note/1" },
+      { type: "resource", uri: "reins://note/1" },
     ], {
       maxItems: 2,
       maxTotalBytes: 4,

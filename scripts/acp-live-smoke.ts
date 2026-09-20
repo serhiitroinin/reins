@@ -184,7 +184,7 @@ function summarizeOptions(options: readonly AcpV1SessionConfigOption[]): unknown
 }
 
 const provider = selectedProvider();
-const smokeRoot = await mkdtemp(join(tmpdir(), `fold-harness-acp-${provider}-`));
+const smokeRoot = await mkdtemp(join(tmpdir(), `reins-acp-${provider}-`));
 const isolatedHome = process.env.ACP_SMOKE_HOME ?? join(smokeRoot, "home");
 const workspace = join(smokeRoot, "workspace");
 await mkdir(isolatedHome, { recursive: true, mode: 0o700 });

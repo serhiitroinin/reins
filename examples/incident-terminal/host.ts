@@ -77,7 +77,7 @@ const capabilities: HarnessCapabilities = {
 const profile: HarnessEngineProfile = {
   id: ADAPTER_ID,
   label: "Incident fixture",
-  description: "An offline adapter used to exercise a non-Fold host.",
+  description: "An offline adapter used to exercise a standalone host.",
   permissions: {
     kind: "execution-policy",
     selectable: true,
