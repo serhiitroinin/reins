@@ -1,4 +1,4 @@
-use fold_harness_schema::{
+use reins_schema::{
     Capabilities, Client, ControlValue, Event, Execution, InputClass, InputType, InputValue,
     LimitSnapshotDiscovery, ModelCatalogDiscovery, PayloadStatus, Preferred, PurpleType,
     Replacement, Response as InteractionResponse, RunRequest, Session, Settings,
@@ -243,7 +243,7 @@ impl SidecarProcess {
             SidecarInitializeParamsClass {
                 protocol_version: 1,
                 client: Client {
-                    name: "fold-harness-rust-smoke".into(),
+                    name: "reins-rust-smoke".into(),
                     version: Some(env!("CARGO_PKG_VERSION").into()),
                 },
                 tools: Some(vec![ToolDescriptorElement {

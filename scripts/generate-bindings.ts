@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const checking = process.argv.includes("--check");
-const temporary = await mkdtemp(join(tmpdir(), "fold-harness-bindings-"));
+const temporary = await mkdtemp(join(tmpdir(), "reins-bindings-"));
 
 const common = [
   "--src-lang", "schema",
@@ -21,8 +21,8 @@ const common = [
 
 const targets = [
   {
-    output: join(root, "bindings/swift/Sources/FoldHarnessV1/FoldHarnessV1.swift"),
-    temporary: join(temporary, "FoldHarnessV1.swift"),
+    output: join(root, "bindings/swift/Sources/ReinsV1/ReinsV1.swift"),
+    temporary: join(temporary, "ReinsV1.swift"),
     arguments: [
       "--lang", "swift",
       "--access-level", "public",

@@ -1,10 +1,10 @@
 [package]
-name = "fold-harness-schema"
+name = "reins-schema"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 publish = false
-description = "Generated Rust data bindings for the Fold Harness v1 JSON Schema"
+description = "Generated Rust data bindings for the Reins v1 JSON Schema"
 license = "MIT"
 
 [dependencies]

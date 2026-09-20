@@ -1,4 +1,4 @@
-use fold_harness_schema::V1;
+use reins_schema::V1;
 
 #[test]
 fn round_trips_the_cross_stack_fixture() {

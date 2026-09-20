@@ -11,7 +11,7 @@ credential lookup, tool implementation, policy, or application state.
   desktop shells.
 
 `rust/examples/sidecar_client.rs` is intentionally the one executable proof:
-it wraps the generated values in JSON-RPC envelopes, launches the Fold Harness
+it wraps the generated values in JSON-RPC envelopes, launches the Reins
 sidecar over stdio, and exercises discovery, streaming, bidirectional tools,
 interactions, same-turn steering, replacement model/settings changes,
 cancellation, replay, restart resume, session reset, and shutdown. It remains

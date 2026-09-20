@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import FoldHarnessV1
+@testable import ReinsV1
 
 final class BindingTests: XCTestCase {
     func testCrossStackFixtureRoundTrips() throws {
