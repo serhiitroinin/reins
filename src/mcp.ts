@@ -61,7 +61,7 @@ const JSON_RPC_VERSION = "2.0";
 const ID_MAX_CHARS = 256;
 const DEFAULT_MAX_CONCURRENT_CALLS = 16;
 const DEFAULT_MAX_TOOLS_PER_PAGE = 100;
-const TOOL_CURSOR_PREFIX = "fold-harness:v1:";
+const TOOL_CURSOR_PREFIX = "reins:v1:";
 
 const isRecord = (value: unknown): value is JsonRecord => (
   typeof value === "object" && value !== null && !Array.isArray(value)

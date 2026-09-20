@@ -57,14 +57,14 @@ export type HarnessExtensionRedactionReason =
 
 export interface HarnessRedactedExtensionPayload {
   readonly [key: string]: HarnessContextValue;
-  "fold-harness:redacted": true;
+  "reins:redacted": true;
   reason: HarnessExtensionRedactionReason;
 }
 
 const encoder = new TextEncoder();
 
 function redacted(reason: HarnessExtensionRedactionReason): HarnessRedactedExtensionPayload {
-  return { "fold-harness:redacted": true, reason };
+  return { "reins:redacted": true, reason };
 }
 
 function plainObject(value: object): value is Record<string, unknown> {
@@ -389,7 +389,7 @@ export function isHarnessRedactedExtensionPayload(
   return typeof value === "object"
     && value !== null
     && !Array.isArray(value)
-    && (value as Partial<HarnessRedactedExtensionPayload>)["fold-harness:redacted"] === true
+    && (value as Partial<HarnessRedactedExtensionPayload>)["reins:redacted"] === true
     && (reason === "not-approved"
       || reason === "projection-failed"
       || reason === "invalid-value"

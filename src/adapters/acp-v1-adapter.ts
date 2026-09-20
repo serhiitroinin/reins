@@ -864,7 +864,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
               throw new HarnessAdapterInterruptedError();
             }
             raw = created;
-            const app = acp.client({ name: options.clientInfo?.name ?? "fold-harness" })
+            const app = acp.client({ name: options.clientInfo?.name ?? "reins" })
               .onRequest(acp.methods.client.session.requestPermission, ({ params }) => handlePermission(params))
               .onNotification(acp.methods.client.session.update, ({ params }) => { handleUpdate(params); });
             const sdk = app.connect(acp.ndJsonStream(created.writable, created.readable));
@@ -883,7 +883,7 @@ export function createAcpV1Adapter(options: AcpV1AdapterOptions): AcpV1Adapter {
               protocolVersion: ACP_V1_PROTOCOL_VERSION,
               clientCapabilities: {},
               clientInfo: {
-                name: options.clientInfo?.name ?? "fold-harness",
+                name: options.clientInfo?.name ?? "reins",
                 version: options.clientInfo?.version ?? "0.1.0",
                 ...(options.clientInfo?.title ? { title: options.clientInfo.title } : {}),
               },

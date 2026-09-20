@@ -174,7 +174,7 @@ describe("versioned JSON Schema", () => {
   });
 
   test("validates every core event payload and additive future kinds", () => {
-    const validate = validator(protocolSchema, "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessEvent");
+    const validate = validator(protocolSchema, "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessEvent");
     for (const payload of payloads) {
       expect(validate(event(payload)), JSON.stringify(validate.errors)).toBe(true);
     }
@@ -212,10 +212,10 @@ describe("versioned JSON Schema", () => {
       })],
     ];
     for (const [root, value] of roots) {
-      const validate = validator(protocolSchema, `https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/${root}`);
+      const validate = validator(protocolSchema, `https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/${root}`);
       expect(validate(value), `${root}: ${JSON.stringify(validate.errors)}`).toBe(true);
     }
-    const validateRun = validator(protocolSchema, "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireRunRequest");
+    const validateRun = validator(protocolSchema, "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessWireRunRequest");
     expect(validateRun({ schemaVersion: 1, session: {}, adapterId: "", input: [] })).toBe(false);
     expect(validateRun({
       schemaVersion: 1,
@@ -225,7 +225,7 @@ describe("versioned JSON Schema", () => {
     })).toBe(false);
     const validateCapabilities = validator(
       protocolSchema,
-      "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessCapabilities",
+      "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessCapabilities",
     );
     expect(validateCapabilities({
       ...capabilities,
@@ -257,7 +257,7 @@ describe("versioned JSON Schema", () => {
       ["HarnessModelCatalogDiscovery", { status: "unsupported", message: "Static model." } satisfies HarnessDiscovery<HarnessModelCatalog>],
     ];
     for (const [root, value] of cases) {
-      const validate = validator(discoverySchema, `https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/${root}`);
+      const validate = validator(discoverySchema, `https://github.com/serhiitroinin/reins/schema/v1/discovery.schema.json#/$defs/${root}`);
       expect(validate(value), `${root}: ${JSON.stringify(validate.errors)}`).toBe(true);
     }
   });
@@ -265,13 +265,13 @@ describe("versioned JSON Schema", () => {
   test("rejects malformed discovery states and closed control kinds", () => {
     const validateDiscovery = validator(
       discoverySchema,
-      "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessEngineProfileDiscovery",
+      "https://github.com/serhiitroinin/reins/schema/v1/discovery.schema.json#/$defs/HarnessEngineProfileDiscovery",
     );
     expect(validateDiscovery({ status: "available" })).toBe(false);
     expect(validateDiscovery({ status: "unavailable", message: "later", value: profile })).toBe(false);
     expect(validateDiscovery({ status: "future" })).toBe(false);
 
-    const validateProfile = validator(discoverySchema, "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json#/$defs/HarnessEngineProfile");
+    const validateProfile = validator(discoverySchema, "https://github.com/serhiitroinin/reins/schema/v1/discovery.schema.json#/$defs/HarnessEngineProfile");
     expect(validateProfile({
       ...profile,
       controls: [{ id: "future", label: "Future", kind: "slider", scope: "turn" }],

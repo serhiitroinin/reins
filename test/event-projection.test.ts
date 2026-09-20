@@ -58,7 +58,7 @@ describe("durable event projection", () => {
       expect(projected.issue?.code).toBe("EXTENSION_VALUE_LIMIT_EXCEEDED");
       if (projected.payload?.kind !== "extension") throw new Error("extension was not retained");
       expect(projected.payload.payload).toEqual({
-        "fold-harness:redacted": true,
+        "reins:redacted": true,
         reason: "limit-exceeded",
       });
     }
@@ -103,7 +103,7 @@ describe("durable event projection", () => {
       expect(projected.issue?.code).toBe("EXTENSION_VALUE_INVALID");
       if (projected.payload?.kind !== "extension") throw new Error("extension was not retained");
       expect(projected.payload.payload).toEqual({
-        "fold-harness:redacted": true,
+        "reins:redacted": true,
         reason: "invalid-value",
       });
     }
@@ -120,7 +120,7 @@ describe("durable event projection", () => {
     expect(projected.issue?.code).toBe("EXTENSION_VALUE_LIMIT_EXCEEDED");
     if (projected.payload?.kind !== "extension") throw new Error("extension was not retained");
     expect(projected.payload.payload).toEqual({
-      "fold-harness:redacted": true,
+      "reins:redacted": true,
       reason: "limit-exceeded",
     });
     expect(JSON.stringify(projected.payload)).not.toContain("🙂");
@@ -133,7 +133,7 @@ describe("durable event projection", () => {
     expect(failed.issue?.code).toBe("EXTENSION_PROJECTION_FAILED");
     if (failed.payload?.kind !== "extension") throw new Error("extension was not retained");
     expect(failed.payload.payload).toEqual({
-      "fold-harness:redacted": true,
+      "reins:redacted": true,
       reason: "projection-failed",
     });
 

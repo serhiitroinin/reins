@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/serhiitroinin/fold-harness/schema/v1/discovery.schema.json",
-  "title": "Fold Harness discovery v1",
+  "$id": "https://github.com/serhiitroinin/reins/schema/v1/discovery.schema.json",
+  "title": "Reins discovery v1",
   "description": "Provider-neutral engine, model, permission, control, and limit discovery contracts.",
   "$ref": "#/$defs/HarnessEngineProfile",
   "$defs": {

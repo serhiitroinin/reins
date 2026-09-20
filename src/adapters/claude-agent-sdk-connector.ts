@@ -44,7 +44,7 @@ import {
   claudeAgentSdkUsageLimitSnapshot,
 } from "./claude-agent-sdk-events.js";
 
-export const CLAUDE_AGENT_SDK_TOOL_SERVER = "fold-harness";
+export const CLAUDE_AGENT_SDK_TOOL_SERVER = "reins";
 
 export const CLAUDE_AGENT_SDK_CONNECTOR_ERRORS = {
   invalidConfiguration: "CLAUDE_CONNECTOR_INVALID_CONFIGURATION",

@@ -923,7 +923,7 @@ export function createHarnessSidecar(options: HarnessSidecarOptions): HarnessSid
       initialized = true;
       const result: HarnessSidecarInitializeResult = {
         protocolVersion: HARNESS_SIDECAR_PROTOCOL_VERSION,
-        server: options.server ?? { name: "@serhiitroinin/fold-harness" },
+        server: options.server ?? { name: "reins" },
         adapters: adapterIds,
         methods: commands,
         hostMethods,

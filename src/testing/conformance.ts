@@ -357,7 +357,7 @@ export async function runAdapterConformance(options: AdapterConformanceOptions):
   await runCase("unknown extension persistence", async () => {
     const projected = projectHarnessEventPayloadForPersistence({
       kind: "extension",
-      namespace: "fold-harness:conformance-unknown",
+      namespace: "reins:conformance-unknown",
       name: "provider-response",
       payload: { raw: CONFORMANCE.unsafeSecret },
     }, fixture.adapter.persistence);

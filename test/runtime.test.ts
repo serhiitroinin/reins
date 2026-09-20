@@ -191,7 +191,7 @@ describe("harness runtime", () => {
       kind: "extension",
       namespace: "example:provider",
       name: "raw-response",
-      payload: { "fold-harness:redacted": true, reason: "not-approved" },
+      payload: { "reins:redacted": true, reason: "not-approved" },
     });
     expect(diagnostics).toContainEqual(expect.objectContaining({
       severity: "warning",
@@ -248,7 +248,7 @@ describe("harness runtime", () => {
       kind: "extension",
       namespace: "example:provider",
       name: "raw-response",
-      payload: { "fold-harness:redacted": true, reason: "not-approved" },
+      payload: { "reins:redacted": true, reason: "not-approved" },
     });
   });
 

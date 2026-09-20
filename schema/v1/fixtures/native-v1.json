@@ -273,7 +273,7 @@
   },
   "sidecarInitializeResult": {
     "protocolVersion": 1,
-    "server": { "name": "fold-harness", "version": "0.1.0" },
+    "server": { "name": "reins", "version": "0.1.0" },
     "adapters": ["openai:codex", "anthropic:claude-code"],
     "methods": ["harness/run/start"],
     "hostMethods": ["host/tool/call"],

@@ -170,7 +170,7 @@ describe("Claude Agent SDK connector", () => {
     }));
     const config = (captured!.options.mcpServers as Record<string, {
       instance: McpServer;
-    }>)["fold-harness"]!;
+    }>)["reins"]!;
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: "test", version: "1.0.0" });
     await Promise.all([
@@ -323,7 +323,7 @@ describe("Claude Agent SDK connector", () => {
       createClaudeAgentSdkConnector({
         configure: () => ({
           ...configuration(),
-          mcpServers: { "fold-harness": { type: "stdio", command: "other" } },
+          mcpServers: { "reins": { type: "stdio", command: "other" } },
         }),
         createQuery: () => new FakeQuery(),
       }),

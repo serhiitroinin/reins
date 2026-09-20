@@ -96,7 +96,7 @@ describe("Claude Agent SDK adapter", () => {
     }, adapter.persistence);
     expect(unknown.payload).toMatchObject({
       kind: "extension",
-      payload: { "fold-harness:redacted": true, reason: "not-approved" },
+      payload: { "reins:redacted": true, reason: "not-approved" },
     });
   });
 

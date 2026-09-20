@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/serhiitroinin/fold-harness/schema/v1/sidecar.schema.json",
-  "title": "Fold Harness sidecar protocol v1",
-  "description": "JSON-safe command, notification, and host-callback payloads for operating the Fold Harness runtime over JSON-RPC 2.0.",
+  "$id": "https://github.com/serhiitroinin/reins/schema/v1/sidecar.schema.json",
+  "title": "Reins sidecar protocol v1",
+  "description": "JSON-safe command, notification, and host-callback payloads for operating the Reins runtime over JSON-RPC 2.0.",
   "$ref": "#/$defs/HarnessSidecarInitializeParams",
   "$defs": {
     "Id": { "type": "string", "minLength": 1 },
@@ -29,7 +29,7 @@
         "client": { "$ref": "#/$defs/HarnessSidecarClientInfo" },
         "tools": {
           "type": "array",
-          "items": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" }
+          "items": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" }
         }
       },
       "required": ["protocolVersion", "client"]
@@ -57,7 +57,7 @@
         "instructions": { "type": "string" },
         "content": {
           "type": "array",
-          "items": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireInput" }
+          "items": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessWireInput" }
         }
       },
       "required": ["content"]
@@ -91,13 +91,13 @@
     "HarnessSidecarRunStartParams": {
       "type": "object",
       "properties": {
-        "request": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireRunRequest" },
+        "request": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessWireRunRequest" },
         "runId": { "$ref": "#/$defs/Id" },
         "turnId": { "$ref": "#/$defs/Id" },
         "sessionBinding": { "$ref": "#/$defs/Id" },
         "tools": {
           "type": "array",
-          "items": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" }
+          "items": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" }
         },
         "context": { "$ref": "#/$defs/HarnessSidecarPreparedContext" }
       },
@@ -117,8 +117,8 @@
         "accountId": { "$ref": "#/$defs/Id" },
         "model": { "$ref": "#/$defs/Id" },
         "effort": { "$ref": "#/$defs/Id" },
-        "settings": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireRunSettings" },
-        "configuration": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/JsonObject" }
+        "settings": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessWireRunSettings" },
+        "configuration": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/JsonObject" }
       }
     },
     "HarnessSidecarReplacementOptions": {
@@ -130,7 +130,7 @@
         "sessionBinding": { "$ref": "#/$defs/Id" },
         "tools": {
           "type": "array",
-          "items": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" }
+          "items": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessToolDescriptor" }
         },
         "context": { "$ref": "#/$defs/HarnessSidecarPreparedContext" }
       }
@@ -142,10 +142,10 @@
         "expectedTurnId": { "$ref": "#/$defs/Id" },
         "input": {
           "type": "array",
-          "items": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessWireInput" }
+          "items": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessWireInput" }
         },
-        "inlineContext": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessInlineContext" },
-        "metadata": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/JsonObject" },
+        "inlineContext": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessInlineContext" },
+        "metadata": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/JsonObject" },
         "strategy": { "enum": ["same-turn", "replacement-turn"] },
         "replacement": { "$ref": "#/$defs/HarnessSidecarReplacementOptions" }
       },
@@ -171,7 +171,7 @@
       "properties": {
         "runId": { "$ref": "#/$defs/Id" },
         "interactionId": { "$ref": "#/$defs/Id" },
-        "response": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessInteractionResponse" }
+        "response": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessInteractionResponse" }
       },
       "required": ["runId", "interactionId", "response"]
     },
@@ -187,7 +187,7 @@
     "HarnessSidecarEventsListParams": {
       "type": "object",
       "properties": {
-        "session": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
+        "session": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
         "adapterId": { "$ref": "#/$defs/Id" },
         "after": { "type": "integer", "minimum": 0 }
       },
@@ -196,7 +196,7 @@
     "HarnessSidecarSessionResetParams": {
       "type": "object",
       "properties": {
-        "session": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
+        "session": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
         "adapterId": { "$ref": "#/$defs/Id" }
       },
       "required": ["session", "adapterId"]
@@ -204,7 +204,7 @@
     "HarnessSidecarEventNotification": {
       "type": "object",
       "properties": {
-        "event": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessEvent" }
+        "event": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessEvent" }
       },
       "required": ["event"]
     },
@@ -228,7 +228,7 @@
         "code": { "$ref": "#/$defs/Id" },
         "message": { "type": "string" },
         "adapterId": { "$ref": "#/$defs/Id" },
-        "session": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
+        "session": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
         "runId": { "$ref": "#/$defs/Id" },
         "turnId": { "$ref": "#/$defs/Id" },
         "retryable": { "type": "boolean" }
@@ -245,17 +245,17 @@
       "properties": {
         "protocolVersion": { "type": "integer", "const": 1 },
         "callId": { "$ref": "#/$defs/Id" },
-        "session": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
+        "session": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessSessionKey" },
         "adapterId": { "$ref": "#/$defs/Id" },
         "runId": { "$ref": "#/$defs/Id" },
         "turnId": { "$ref": "#/$defs/Id" },
         "name": { "$ref": "#/$defs/Id" },
-        "input": { "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/JsonValue" }
+        "input": { "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/JsonValue" }
       },
       "required": ["protocolVersion", "callId", "session", "adapterId", "runId", "turnId", "name", "input"]
     },
     "HarnessSidecarToolCallResult": {
-      "$ref": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json#/$defs/HarnessToolResult"
+      "$ref": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json#/$defs/HarnessToolResult"
     },
     "HarnessSidecarToolCancelNotification": {
       "type": "object",

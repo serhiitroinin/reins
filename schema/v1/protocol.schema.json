@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/serhiitroinin/fold-harness/schema/v1/protocol.schema.json",
-  "title": "Fold Harness protocol v1",
-  "description": "Provider-neutral, JSON-safe Fold Harness protocol contracts. Runtime callbacks, provider SDK values, AbortSignal instances, and application-only context state are intentionally excluded.",
+  "$id": "https://github.com/serhiitroinin/reins/schema/v1/protocol.schema.json",
+  "title": "Reins protocol v1",
+  "description": "Provider-neutral, JSON-safe Reins protocol contracts. Runtime callbacks, provider SDK values, AbortSignal instances, and application-only context state are intentionally excluded.",
   "$ref": "#/$defs/HarnessEvent",
   "$defs": {
     "JsonValue": {
