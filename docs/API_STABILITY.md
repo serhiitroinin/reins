@@ -22,7 +22,7 @@ form and document a migration.
 
 ## Experimental API
 
-`@serhiitroinin/fold-harness/adapters/opencode-acp` is experimental. It is a
+`reins/adapters/opencode-acp` is experimental. It is a
 small ACP composition helper. Native OpenCode support is not part of version
 0.1.
 
@@ -31,7 +31,7 @@ provider-neutral when that happens.
 
 ## Test-only API
 
-`@serhiitroinin/fold-harness/testing` is test-only. It contains fixtures and
+`reins/testing` is test-only. It contains fixtures and
 conformance runners. Use it in tests and examples. Do not use it as a runtime
 provider in a product.
 

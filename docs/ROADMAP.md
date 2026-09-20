@@ -1,6 +1,6 @@
 # Roadmap
 
-Fold Harness 0.1 focuses on native Claude Code and Codex sessions. The core
+Reins 0.1 focuses on native Claude Code and Codex sessions. The core
 contracts use open provider identifiers. A future adapter can add another
 provider without changing the runtime model.
 

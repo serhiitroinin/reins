@@ -26,8 +26,8 @@ swift test --package-path bindings/swift
 Run the opt-in provider matrix when adapter behavior changes:
 
 ```sh
-FOLD_HARNESS_LIVE=1 bun run smoke:native -- --provider claude
-FOLD_HARNESS_LIVE=1 bun run smoke:native -- --provider codex
+REINS_LIVE=1 bun run smoke:native -- --provider claude
+REINS_LIVE=1 bun run smoke:native -- --provider codex
 ```
 
 Do not publish when a required local check fails.
@@ -58,7 +58,7 @@ reports the new version before you create a consumer lockfile.
 
 Use a fresh npm cache and a temporary project. Install the exact version from
 the public registry. Verify the main Node import and the installed
-`fold-harness-sidecar` command.
+`reins-sidecar` command.
 
 Confirm all of these facts:
 

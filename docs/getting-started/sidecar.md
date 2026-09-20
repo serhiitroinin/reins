@@ -6,7 +6,7 @@ JSON-RPC 2.0 over standard input and standard output.
 ## 1. Install the package
 
 ```sh
-npm install @serhiitroinin/fold-harness
+npm install reins
 ```
 
 ## 2. Create a host module
@@ -38,7 +38,7 @@ mkdir -m 700 ./harness-store
 The two paths must be absolute paths.
 
 ```sh
-./node_modules/.bin/fold-harness-sidecar \
+./node_modules/.bin/reins-sidecar \
   --host "$PWD/host.mjs" \
   --store "$PWD/harness-store"
 ```

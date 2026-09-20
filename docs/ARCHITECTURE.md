@@ -1,6 +1,6 @@
 # Architecture
 
-Fold Harness separates the concerns a product owns from the wire protocol an
+Reins separates the concerns a product owns from the wire protocol an
 agent provider owns.
 
 ```text
@@ -10,7 +10,7 @@ product UI and API
 host context, tools, policy, persistence
         │
         ▼
-Fold Harness runtime and event protocol
+Reins runtime and event protocol
         │
         ▼
 provider adapter
@@ -32,7 +32,7 @@ native, Rust, Swift, web daemon, or other product
         │ JSON-RPC commands / event notifications
         │ host/tool/call requests
         ▼
-Fold Harness sidecar server
+Reins sidecar server
         │
         ├── discovery + admission
         ├── runtime + persistence interfaces

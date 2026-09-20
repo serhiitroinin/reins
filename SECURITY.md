@@ -1,6 +1,6 @@
 # Security policy
 
-Fold Harness coordinates processes and tools but does not itself guarantee
+Reins coordinates processes and tools but does not itself guarantee
 operating-system sandboxing. Each adapter must document its filesystem,
 network, shell, authentication, and approval behavior accurately.
 

@@ -1,6 +1,6 @@
-# Fold Harness
+# Reins
 
-Fold Harness is a provider-neutral runtime for products built on Claude Code
+Reins is a provider-neutral runtime for products built on Claude Code
 and Codex. It gives each product one interface for sessions, streaming, tools,
 human interactions, model discovery, controls, limits, steering, cancellation,
 replay, and resume.
@@ -13,7 +13,7 @@ private while the extraction matures.
 Use Node.js 20 or newer.
 
 ```sh
-npm install @serhiitroinin/fold-harness
+npm install reins
 ```
 
 Use the Node API when your host runs JavaScript or TypeScript. Use the sidecar
@@ -27,10 +27,10 @@ This example needs no provider account or network access.
 import {
   createHarness,
   createMemoryPersistence,
-} from "@serhiitroinin/fold-harness";
+} from "reins";
 import {
   createScriptedAdapter,
-} from "@serhiitroinin/fold-harness/testing";
+} from "reins/testing";
 
 const { adapter } = createScriptedAdapter({
   async *script() {
@@ -65,11 +65,11 @@ Claude Code adapter, the native Codex adapter, or another conforming adapter.
 
 ## Any-stack sidecar
 
-The package installs `fold-harness-sidecar`. It provides the same runtime over
+The package installs `reins-sidecar`. It provides the same runtime over
 JSON-RPC 2.0 on standard input and standard output.
 
 ```sh
-fold-harness-sidecar \
+reins-sidecar \
   --host /absolute/path/to/harness-host.mjs \
   --store /absolute/path/to/private-store
 ```
@@ -102,7 +102,7 @@ or product policy.
 - Product data, authorization, confirmation, and persistence choices.
 - Uploads, draft storage, notifications, and the user interface.
 
-Fold Harness is not a sandbox. A capability describes provider behavior. It
+Reins is not a sandbox. A capability describes provider behavior. It
 does not grant authority.
 
 ## Provider support
@@ -151,8 +151,8 @@ Important guides:
 
 The repository is private, but the npm tarball contains every public guide.
 After installation, open
-`node_modules/@serhiitroinin/fold-harness/docs/README.md`. The
-[latest packaged docs](https://unpkg.com/@serhiitroinin/fold-harness@latest/docs/README.md)
+`node_modules/reins/docs/README.md`. The
+[latest packaged docs](https://unpkg.com/reins@latest/docs/README.md)
 are also public.
 
 ## Development

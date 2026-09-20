@@ -1,6 +1,6 @@
 # Start here
 
-Fold Harness has two ways to run.
+Reins has two ways to run.
 
 - Use the Node API when your host runs JavaScript or TypeScript.
 - Use the sidecar when your host uses another language or process.

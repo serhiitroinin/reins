@@ -8,7 +8,7 @@ The package supplies both the transport-neutral in-process server and a Node
 stdio deployment. An embedding host can feed arbitrary text chunks to
 `createHarnessSidecar().text()` and write the complete newline-delimited frames
 emitted by its `write` callback. A native or non-JavaScript product can launch
-the packaged `fold-harness-sidecar` executable instead. Both expose this exact
+the packaged `reins-sidecar` executable instead. Both expose this exact
 command contract.
 
 ## Ownership
@@ -41,7 +41,7 @@ portable values.
 The executable accepts only explicit absolute paths:
 
 ```sh
-fold-harness-sidecar --host /opt/acme/host.mjs --store /var/lib/acme-harness
+reins-sidecar --host /opt/acme/host.mjs --store /var/lib/acme-harness
 ```
 
 The JS host module exports a `HarnessSidecarHostDefinition`, or a default/
@@ -288,5 +288,5 @@ checkpoint tokens, or raw provider exceptions.
 
 The canonical schema is
 `schema/v1/sidecar.schema.json`. Method strings and TypeScript payloads are
-exported from `@serhiitroinin/fold-harness/sidecar-protocol`; the executable
-reference server is exported from `@serhiitroinin/fold-harness/sidecar`.
+exported from `reins/sidecar-protocol`; the executable
+reference server is exported from `reins/sidecar`.

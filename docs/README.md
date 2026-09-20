@@ -31,7 +31,7 @@ Use this page to choose the smallest guide for your task.
 
 The source repository is private. The public npm package contains this complete
 directory. After installation, open
-`node_modules/@serhiitroinin/fold-harness/docs/README.md`.
+`node_modules/reins/docs/README.md`.
 
 The latest packaged copy is also available through
-[unpkg](https://unpkg.com/@serhiitroinin/fold-harness@latest/docs/README.md).
+[unpkg](https://unpkg.com/reins@latest/docs/README.md).

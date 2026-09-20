@@ -1,6 +1,6 @@
 # ACP v1 compatibility
 
-Fold Harness implements the
+Reins implements the
 [stable Agent Client Protocol v1](https://agentclientprotocol.com/protocol/v1/overview)
 through `createAcpV1Adapter`. ACP supplies a useful interoperable session and
 streaming surface. It does not make provider authentication, process isolation,
@@ -24,7 +24,7 @@ The adapter owns:
 - checkpoint delivery and safe negotiated-capability projection.
 
 ACP v1 does not define a native active-prompt steer request. The adapter
-therefore advertises `replacement-turn`: Fold Harness prepares the replacement
+therefore advertises `replacement-turn`: Reins prepares the replacement
 context, cancels and drains the current ACP prompt (including pending
 permissions), seals its terminal event, retires that transport, and then
 reloads the session into a new runtime turn. This strategy therefore carries
@@ -44,7 +44,7 @@ The host owns:
 - trusted application-context mapping.
 
 The byte-stream boundary can wrap child-process pipes, Unix sockets, native FFI,
-an embedded bridge, or a remote transport. The portable Fold Harness wire schema
+an embedded bridge, or a remote transport. The portable Reins wire schema
 remains independent of that choice.
 
 ## OpenCode composition recipe
@@ -67,7 +67,7 @@ filesystem, network, native-tool, MCP, credential, and context-mapping policy.
 ## Provider differences remain explicit
 
 ACP modes describe an agent's session behavior. They are not assumed to be
-equivalent to a Fold Harness permission mode. The engine profile remains the
+equivalent to a Reins permission mode. The engine profile remains the
 place for a host to explain an actual security posture and any versioned consent.
 
 ACP config options are live session controls, not a durable model catalog. The

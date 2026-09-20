@@ -11,7 +11,7 @@ Use Node.js 20 or newer.
 mkdir harness-demo
 cd harness-demo
 npm init -y
-npm install @serhiitroinin/fold-harness
+npm install reins
 ```
 
 Add `"type": "module"` to `package.json`.
@@ -23,8 +23,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "@serhiitroinin/fold-harness";
-import { createScriptedAdapter } from "@serhiitroinin/fold-harness/testing";
+} from "reins";
+import { createScriptedAdapter } from "reins/testing";
 
 const tools = createToolHost([{
   name: "get_order",
