@@ -1,4 +1,9 @@
-<!-- logo -->
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/serhiitroinin/reins/main/docs/brand/lockup-dark.svg">
+    <img alt="Reins" src="https://raw.githubusercontent.com/serhiitroinin/reins/main/docs/brand/lockup-light.svg" width="240">
+  </picture>
+</p>
 
 # Reins
 
