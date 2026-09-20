@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const store = await mkdtemp(join(tmpdir(), "fold-harness-sidecar-smoke-"));
+const store = await mkdtemp(join(tmpdir(), "reins-sidecar-smoke-"));
 try {
   const result = Bun.spawnSync([
     "cargo",
@@ -15,7 +15,7 @@ try {
     "sidecar_client",
     "--",
     "node",
-    resolve("dist/bin/fold-harness-sidecar.js"),
+    resolve("dist/bin/reins-sidecar.js"),
     "--host",
     resolve("test/fixtures/sidecar-host.mjs"),
     "--store",

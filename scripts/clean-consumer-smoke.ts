@@ -87,8 +87,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "@serhiitroinin/fold-harness";
-import { createScriptedAdapter } from "@serhiitroinin/fold-harness/testing";
+} from "reins";
+import { createScriptedAdapter } from "reins/testing";
 
 const tools = createToolHost([{
   name: "ping",
@@ -126,8 +126,8 @@ console.log("clean Node consumer passed");
 `);
 
   await writeFile(join(consumer, "types.ts"), `
-import { createHarness, createMemoryPersistence, type HarnessEvent } from "@serhiitroinin/fold-harness";
-import type { HarnessSidecarInitializeResult } from "@serhiitroinin/fold-harness/sidecar-protocol";
+import { createHarness, createMemoryPersistence, type HarnessEvent } from "reins";
+import type { HarnessSidecarInitializeResult } from "reins/sidecar-protocol";
 const events: HarnessEvent[] = [];
 const initialize: HarnessSidecarInitializeResult | null = null;
 void events;
@@ -154,13 +154,13 @@ void createMemoryPersistence;
     consumer,
   );
 
-  const installed = join(consumer, "node_modules", "@serhiitroinin", "fold-harness");
-  const sidecar = join(installed, "dist", "bin", "fold-harness-sidecar.js");
+  const installed = join(consumer, "node_modules", "reins");
+  const sidecar = join(installed, "dist", "bin", "reins-sidecar.js");
   const sidecarBin = join(
     consumer,
     "node_modules",
     ".bin",
-    process.platform === "win32" ? "fold-harness-sidecar.cmd" : "fold-harness-sidecar",
+    process.platform === "win32" ? "reins-sidecar.cmd" : "reins-sidecar",
   );
   const reportedVersion = process.platform === "win32"
     ? run("cmd.exe", ["/d", "/s", "/c", sidecarBin, "--version"], consumer).trim()

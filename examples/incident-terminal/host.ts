@@ -21,7 +21,7 @@ import {
   type HarnessTurnStatus,
   type HarnessToolContext,
   type HarnessToolResult,
-} from "@serhiitroinin/fold-harness";
+} from "reins";
 
 export interface Incident {
   id: string;

@@ -13,7 +13,7 @@ interface CliOptions {
   maxPendingOutputBytes?: number;
 }
 
-const USAGE = `Usage: fold-harness-sidecar --host <absolute-module-path> --store <absolute-directory>
+const USAGE = `Usage: reins-sidecar --host <absolute-module-path> --store <absolute-directory>
 
 Options:
   --host <path>                       Explicit JS host module exporting adapters
@@ -94,6 +94,6 @@ async function main(): Promise<void> {
 
 void main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : "the sidecar failed";
-  process.stderr.write(`fold-harness-sidecar: ${message}\n`);
+  process.stderr.write(`reins-sidecar: ${message}\n`);
   process.exitCode = 1;
 });

@@ -1,25 +1,29 @@
 {
-  "name": "@serhiitroinin/fold-harness",
+  "name": "reins",
   "version": "0.1.1",
-  "description": "A provider-neutral runtime for building domain-specific agent harnesses.",
+  "description": "Reins is a provider-neutral runtime for products that embed coding agents such as Claude Code, Codex, and ACP agents.",
   "type": "module",
   "license": "MIT",
   "author": "Serhii Troinin",
-  "homepage": "https://github.com/serhiitroinin/fold-harness#readme",
+  "homepage": "https://github.com/serhiitroinin/reins#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/serhiitroinin/fold-harness.git"
+    "url": "git+https://github.com/serhiitroinin/reins.git"
   },
   "bugs": {
-    "url": "https://github.com/serhiitroinin/fold-harness/issues"
+    "url": "https://github.com/serhiitroinin/reins/issues"
   },
   "keywords": [
+    "agent",
     "agents",
+    "agent-harness",
     "harness",
-    "codex",
     "claude",
+    "claude-code",
+    "codex",
     "acp",
-    "mcp"
+    "mcp",
+    "sidecar"
   ],
   "files": [
     "dist",
@@ -45,7 +49,7 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "bin": {
-    "fold-harness-sidecar": "dist/bin/fold-harness-sidecar.js"
+    "reins-sidecar": "dist/bin/reins-sidecar.js"
   },
   "exports": {
     ".": {
