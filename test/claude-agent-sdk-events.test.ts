@@ -129,6 +129,34 @@ describe("Claude Agent SDK event consumer", () => {
     expect(JSON.stringify(events)).not.toContain("secret output");
   });
 
+  test("bounds the text a host redactor returns", () => {
+    const events: HarnessAdapterEvent[] = [];
+    const consumer = createClaudeAgentSdkEventConsumer({
+      emit: (event) => events.push(event),
+      toolOutputMaxChars: 6,
+      redactToolOutput: (tool, output) => `${tool.name}:${output.length}:padding`,
+    });
+    consumer.message({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tool-1", name: "Read", input: {} }] },
+    });
+    consumer.message({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "tool-1", content: "secret output" }] },
+    });
+
+    expect(events.at(-1)).toEqual({
+      kind: "tool-completed",
+      toolId: "tool-1",
+      status: "completed",
+      toolKind: "tool",
+      title: "Read",
+      outputAppend: "Read:1",
+      truncated: true,
+    });
+    expect(JSON.stringify(events)).not.toContain("secret output");
+  });
+
   test("keeps subagent errors private unless the host explicitly redacts them", () => {
     const privateEvents: HarnessAdapterEvent[] = [];
     const privateConsumer = createClaudeAgentSdkEventConsumer({ emit: (event) => privateEvents.push(event) });
