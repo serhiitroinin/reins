@@ -265,15 +265,19 @@ answer."
 
 ### Decide what tool output enters the event log
 
-The two native adapters differ. Check the default before you ship.
+Both native adapters withhold tool output by default. A tool still reports its
+status and exit code.
 
 | Adapter | Default tool output in events |
 | --- | --- |
 | Claude Code | Empty. `redactToolOutput` defaults to a function that returns `""`. |
-| Codex | The raw output passes through. `redactToolOutput` is not applied when you omit it. |
+| Codex | Empty. `redactToolOutput` defaults to a function that returns `""`. |
 
-Set `events.redactToolOutput` on both adapters. Keep the output of your own
-tools. Drop everything else. Bound the length.
+The ACP adapter has no raw path either. Output enters an event only through
+`outputAppend` in your `presentTool` result.
+
+Set `events.redactToolOutput` on both adapters to keep output. Keep the output
+of your own tools. Drop everything else. Bound the length.
 
 ```ts
 const TOOL_OUTPUT_LIMIT = 4_000;
@@ -576,7 +580,7 @@ Work through this checklist.
 | `config.toml` in the private Codex home is yours. | Section 2 |
 | `auth.json` in the private Codex home is a symlink. | Section 2 |
 | Every tool returns its error instead of throwing it. | Section 3 |
-| `redactToolOutput` is set on both adapters. | Section 3 |
+| `redactToolOutput` keeps only the output of your own tools. | Section 3 |
 | Application instructions live in a context source. | Section 4 |
 | Your code handles a new run from `followUp`. | Section 5 |
 | The picker renders all three discovery states. | Section 6 |

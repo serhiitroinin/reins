@@ -54,8 +54,11 @@ Account limits travel through a separate callback. They never masquerade as
 turn usage.
 
 Tool presentation and output redaction are host hooks. The default never
-serializes MCP arguments. A host can classify its own tools without teaching
-the package about its event schema.
+serializes MCP arguments. Tool output is withheld by default, as it is on
+Claude Code. Command output, MCP results, and dynamic tool results enter an
+event only through `redactToolOutput`, and `toolOutputMaxChars` still bounds
+the text the host returns. Status and exit code are always reported. A host can
+classify its own tools without teaching the package about its event schema.
 
 Engine failure text is redacted by default. It becomes public only through an
 explicit host mapper.
