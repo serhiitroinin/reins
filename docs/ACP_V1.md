@@ -148,7 +148,7 @@ measured locally.
 Keep the native Claude and Codex adapters. Today they expose important behavior
 outside the ACP common surface: richer account-limit data, exact provider
 security controls, Claude subagents and compaction, Codex service-tier/model
-metadata, and provider-specific lifecycle details already used by Fold.
+metadata, and provider-specific lifecycle details that host applications already use.
 
 Use ACP v1, with the thin OpenCode composition recipe where useful, as the
 generic route for OpenCode and future agents, and as an optional

@@ -1,4 +1,6 @@
-# @serhiitroinin/fold-harness
+# reins
+
+Versions up to 0.1.1 were published as `@serhiitroinin/fold-harness`.
 
 ## 0.1.1
 
@@ -48,4 +50,4 @@ This is the first stable release.
 - Add shared adapter and reliability conformance tests.
 - Add clean tarball tests for Node, TypeScript, Rust, and the sidecar.
 - Add opt-in live tests for Claude Code and Codex.
-- Dogfood the runtime in Fold.
+- Dogfood the runtime in a host application.

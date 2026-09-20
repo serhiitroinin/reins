@@ -5,8 +5,7 @@ and Codex. It gives each product one interface for sessions, streaming, tools,
 human interactions, model discovery, controls, limits, steering, cancellation,
 replay, and resume.
 
-Version 0.1 is stable. The npm package is public. The source repository remains
-private while the extraction matures.
+Version 0.1 is stable.
 
 ## Install
 
@@ -149,11 +148,8 @@ Important guides:
 - [Sidecar protocol v1](docs/SIDECAR_V1.md)
 - [Schema compatibility](docs/SCHEMA_V1.md)
 
-The repository is private, but the npm tarball contains every public guide.
-After installation, open
-`node_modules/reins/docs/README.md`. The
-[latest packaged docs](https://unpkg.com/reins@latest/docs/README.md)
-are also public.
+The npm tarball contains every guide. After installation, open
+`node_modules/reins/docs/README.md`.
 
 ## Development
 
@@ -171,10 +167,6 @@ accounts. See `docs/getting-started/live-tests.md`.
 Read `docs/RELEASING.md` before a release.
 
 ## Status
-
-Fold is the first production consumer. It uses the package for native Claude
-Code and Codex runtime behavior. Fold still owns its database, credentials,
-provider homes, sandbox rules, product tools, domain context, and interface.
 
 OpenCode and Grok provider work is paused. The extension contract remains open
 for them and for other providers.

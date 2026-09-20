@@ -15,5 +15,5 @@ swift test --package-path bindings/swift
 Commits follow Conventional Commits. Keep changes atomic and include tests for
 every public behavior change. Public API changes require a Changeset.
 
-The package must remain independent of Fold product concepts, UI frameworks,
+The package must remain independent of host product concepts, UI frameworks,
 database implementations, and provider SDK types.

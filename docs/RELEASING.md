@@ -7,8 +7,6 @@ Use this checklist for every npm release.
 1. Start from a clean branch based on the current `main` branch.
 2. Confirm that each public change has a Changeset.
 3. Confirm that documentation describes the current behavior.
-4. Keep the GitHub repository private unless the owner changes that decision.
-5. Keep the npm package public.
 
 ## 2. Validate
 
@@ -64,7 +62,6 @@ Confirm all of these facts:
 
 - `latest` points to the new stable version.
 - The npm package access is `public`.
-- The GitHub repository visibility is `private`.
 - The registry integrity matches the reviewed tarball.
 
 ## 6. Tag and integrate
@@ -72,8 +69,4 @@ Confirm all of these facts:
 1. Tag the merged `main` commit as `v<version>`.
 2. Push the tag.
 3. Create a non-draft, non-prerelease GitHub release.
-4. Update Fold to the exact released version when Fold needs the change.
-5. Run Fold's clean type check and relevant local tests.
-6. Remove only merged temporary branches and clean worktrees.
-
-Never delete an unmerged branch or a worktree with uncommitted changes.
+4. Remove merged temporary branches.

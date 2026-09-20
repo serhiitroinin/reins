@@ -1,8 +1,8 @@
 # JSON Schema protocol v1
 
 Reins publishes its provider-neutral data contracts as JSON Schema
-2020-12 so a product does not need JavaScript, TypeScript, Electron, React, or
-Fold's daemon to implement a harness UI or service.
+2020-12 so a product does not need JavaScript, TypeScript, Electron, or React
+to implement a harness UI or service.
 
 The package contains:
 

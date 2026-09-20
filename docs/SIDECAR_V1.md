@@ -1,7 +1,7 @@
 # Sidecar protocol v1
 
-The sidecar protocol lets a host written in any language operate the Fold
-Harness runtime over JSON-RPC 2.0 without reproducing provider lifecycle,
+The sidecar protocol lets a host written in any language operate the Reins
+runtime over JSON-RPC 2.0 without reproducing provider lifecycle,
 admission, streaming, steering, or replay semantics.
 
 The package supplies both the transport-neutral in-process server and a Node

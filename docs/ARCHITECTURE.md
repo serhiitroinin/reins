@@ -565,7 +565,7 @@ This division is also the stack boundary. The protocol, discovery contracts,
 and wire formats do not assume React, Electron, HTTP, or a particular database.
 JavaScript hosts can use the runtime directly. Other language and native hosts
 can implement the same versioned protocol from the JSON Schema or generated
-Swift and Rust data bindings; they do not need to embed Fold's UI or daemon.
+Swift and Rust data bindings; they do not need to embed a JavaScript runtime.
 The schema describes values rather than selecting HTTP, SSE, WebSocket, Unix
 socket, or embedded-bridge transport. Binary images use an explicit canonical
 base64 wire representation. Executable callbacks, abort signals, provider SDK
@@ -588,7 +588,7 @@ remains an explicit live-smoke responsibility.
 
 ## Reference host
 
-`examples/incident-terminal` is the first non-Fold reference product. Its UI is
+`examples/incident-terminal` is a standalone reference product. Its UI is
 plain terminal input/output, its domain state is an in-memory incident store,
 and its provider is a deterministic offline fixture. It consumes the same
 runtime surfaces a browser, desktop shell, server, or native bridge would:

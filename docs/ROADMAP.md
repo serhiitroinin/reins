@@ -20,14 +20,10 @@ The first stable release includes:
 - a JSON-RPC sidecar for hosts in any stack;
 - JSON Schema and generated Rust and Swift types;
 - memory and private file persistence examples;
-- an incident terminal example that does not use Fold;
+- a standalone incident terminal example;
 - deterministic adapter and reliability conformance tests;
 - opt-in live Claude Code and Codex release tests;
 - a clean tarball test for Node, TypeScript, Rust, and the sidecar.
-
-Fold uses the package for Claude Code and Codex runtime behavior. Fold still
-owns its database, credentials, process policy, product tools, domain context,
-and user interface.
 
 ## After version 0.1
 
@@ -37,7 +33,8 @@ We will use real host feedback to choose the next work. The likely work is:
 2. Add more small examples for common host and storage choices.
 3. Improve sidecar clients when another stack needs a missing helper.
 4. Add provider adapters only after they pass the same conformance contract.
-5. Move stable additions into Fold before we call them complete.
+5. Prove stable additions in a real host application before we call them
+   complete.
 
 OpenCode and Grok provider work is paused. The adapter contract remains open
 for them and for other future providers.

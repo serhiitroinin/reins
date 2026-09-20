@@ -27,10 +27,9 @@ Use this page to choose the smallest guide for your task.
 - [Release procedure](RELEASING.md) is the maintainer checklist.
 - [Changelog](../CHANGELOG.md) lists released changes.
 
-## Public access
+## Packaged copy
 
-The source repository is private. The public npm package contains this complete
-directory. After installation, open
+The npm package contains this complete directory. After installation, open
 `node_modules/reins/docs/README.md`.
 
 The latest packaged copy is also available through
