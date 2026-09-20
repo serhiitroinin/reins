@@ -61,7 +61,10 @@ export interface CodexAppServerEventConsumerOptions {
   onLimits?(snapshot: HarnessLimitSnapshot): void;
   /** Replace generic tool labels and redact any product-sensitive summary. */
   presentTool?(tool: CodexToolInput): CodexToolPresentation | null;
-  /** Redact or replace a tool result before it enters the harness event log. */
+  /**
+   * Raw tool output is omitted unless the host explicitly returns safe text.
+   * The result is still bounded by `toolOutputMaxChars`.
+   */
   redactToolOutput?(tool: CodexToolInput, output: string): string;
   /** Raw provider failures are hidden unless the host explicitly maps them. */
   publicError?(error: CodexPublicErrorInput): CodexPublicError;
@@ -509,6 +512,7 @@ export function createCodexAppServerEventConsumer(
     emitText(false);
   };
 
+  const safeOutput = options.redactToolOutput ?? (() => "");
   const presentationFor = (tool: CodexToolInput): CodexToolPresentation | null => {
     const value = present(tool);
     if (value === null) return null;
@@ -547,7 +551,7 @@ export function createCodexAppServerEventConsumer(
     if (presentation === null) return;
     const outcome = toolOutcome(item);
     const rawOutput = toolOutput(item, tool);
-    const redacted = options.redactToolOutput?.(tool, rawOutput) ?? rawOutput;
+    const redacted = safeOutput(tool, rawOutput);
     const truncated = redacted.length > toolOutputMaximum;
     const body = truncated ? clip(redacted, toolOutputMaximum) : redacted;
     const parts = chunks(body, contentChunkChars);

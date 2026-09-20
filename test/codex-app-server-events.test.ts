@@ -91,7 +91,10 @@ describe("Codex App Server event consumer", () => {
   });
 
   test("normalizes tool starts, bounded output, outcomes, and completion-only items", () => {
-    const fx = fixture({ toolOutputMaxChars: 10 });
+    const fx = fixture({
+      toolOutputMaxChars: 10,
+      redactToolOutput: (_tool, output) => output,
+    });
     fx.consumer.notification("item/started", {
       item: {
         type: "commandExecution",
@@ -219,6 +222,93 @@ describe("Codex App Server event consumer", () => {
     ]);
   });
 
+  test("withholds raw tool output unless the host returns safe text", () => {
+    const fx = fixture();
+    fx.consumer.notification("item/completed", {
+      item: {
+        type: "commandExecution",
+        id: "command-1",
+        command: "cat notes.md",
+        aggregatedOutput: "command-secret",
+        exitCode: 3,
+        status: "failed",
+      },
+    });
+    fx.consumer.notification("item/completed", {
+      item: {
+        type: "mcpToolCall",
+        id: "mcp-1",
+        server: "notes",
+        tool: "read",
+        status: "completed",
+        result: { content: [{ type: "text", text: "mcp-secret" }] },
+      },
+    });
+    fx.consumer.notification("item/completed", {
+      item: {
+        type: "mcpToolCall",
+        id: "mcp-2",
+        server: "notes",
+        tool: "read",
+        status: "failed",
+        error: { message: "mcp-failure-secret" },
+      },
+    });
+    fx.consumer.notification("item/completed", {
+      item: {
+        type: "dynamicToolCall",
+        id: "call-1",
+        namespace: null,
+        tool: "lookup_order",
+        arguments: {},
+        status: "completed",
+        success: true,
+        contentItems: [{ type: "inputText", text: "dynamic-secret" }],
+      },
+    });
+
+    const completed = fx.events.filter((event) => event.kind === "tool-completed");
+    expect(completed.map((event) => [event.toolId, event.status])).toEqual([
+      ["command-1", "failed"],
+      ["mcp-1", "completed"],
+      ["mcp-2", "failed"],
+      ["call-1", "completed"],
+    ]);
+    expect(completed[0]).toMatchObject({ exitCode: 3 });
+    expect(fx.events.some((event) => event.kind === "tool-updated")).toBe(false);
+    for (const event of completed) {
+      expect(event).not.toHaveProperty("outputAppend");
+      expect(event).not.toHaveProperty("truncated");
+    }
+    expect(JSON.stringify(fx.events)).not.toContain("secret");
+  });
+
+  test("bounds the text a host redactor returns", () => {
+    const fx = fixture({
+      toolOutputMaxChars: 6,
+      redactToolOutput: (tool, output) => `${tool.kind}:${output.length}:padding`,
+    });
+    fx.consumer.notification("item/completed", {
+      item: {
+        type: "commandExecution",
+        id: "command-1",
+        command: "cat notes.md",
+        aggregatedOutput: "command-secret",
+        exitCode: 0,
+        status: "completed",
+      },
+    });
+
+    expect(fx.events.at(-1)).toMatchObject({
+      kind: "tool-completed",
+      toolId: "command-1",
+      status: "completed",
+      outputAppend: "comman",
+      truncated: true,
+    });
+    expect(JSON.stringify(fx.events)).not.toContain("secret");
+  });
+
   test("normalizes client-owned dynamic tools without leaking their arguments by default", () => {
     const fx = fixture();
     fx.consumer.notification("item/started", {
@@ -257,10 +347,10 @@ describe("Codex App Server event consumer", () => {
         toolKind: "tool",
         title: "lookup_order",
         status: "completed",
-        outputAppend: "ready",
       },
     ]);
     expect(JSON.stringify(fx.events)).not.toContain("private-order");
+    expect(JSON.stringify(fx.events)).not.toContain("ready");
   });
 
   test("redacts provider failures by default and seals on the first terminal fact", () => {
