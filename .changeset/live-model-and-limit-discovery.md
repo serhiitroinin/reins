@@ -1,5 +1,5 @@
 ---
-"@serhiitroinin/fold-harness": minor
+"reins": minor
 ---
 
 Add live model and limit discovery for the native adapters.
