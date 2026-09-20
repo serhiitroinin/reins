@@ -214,7 +214,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:examples": "tsc -p examples/incident-terminal/tsconfig.json --noEmit",
     "generate:bindings": "bun run scripts/generate-bindings.ts",
