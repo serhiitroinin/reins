@@ -21,7 +21,7 @@ import {
   type HarnessTurnStatus,
   type HarnessToolContext,
   type HarnessToolResult,
-} from "reins";
+} from "@serhiitroinin/reins";
 
 export interface Incident {
   id: string;

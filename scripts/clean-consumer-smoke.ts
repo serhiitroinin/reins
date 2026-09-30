@@ -87,8 +87,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "reins";
-import { createScriptedAdapter } from "reins/testing";
+} from "@serhiitroinin/reins";
+import { createScriptedAdapter } from "@serhiitroinin/reins/testing";
 
 const tools = createToolHost([{
   name: "ping",
@@ -126,8 +126,8 @@ console.log("clean Node consumer passed");
 `);
 
   await writeFile(join(consumer, "types.ts"), `
-import { createHarness, createMemoryPersistence, type HarnessEvent } from "reins";
-import type { HarnessSidecarInitializeResult } from "reins/sidecar-protocol";
+import { createHarness, createMemoryPersistence, type HarnessEvent } from "@serhiitroinin/reins";
+import type { HarnessSidecarInitializeResult } from "@serhiitroinin/reins/sidecar-protocol";
 const events: HarnessEvent[] = [];
 const initialize: HarnessSidecarInitializeResult | null = null;
 void events;
@@ -154,7 +154,7 @@ void createMemoryPersistence;
     consumer,
   );
 
-  const installed = join(consumer, "node_modules", "reins");
+  const installed = join(consumer, "node_modules", "@serhiitroinin", "reins");
   const sidecar = join(installed, "dist", "bin", "reins-sidecar.js");
   const sidecarBin = join(
     consumer,

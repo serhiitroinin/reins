@@ -50,7 +50,7 @@ network hop.
 
 ### How do I develop without spending anything?
 
-Use the scripted adapter from `reins/testing`. It needs no account and no
+Use the scripted adapter from `@serhiitroinin/reins/testing`. It needs no account and no
 network access. It is deterministic, so it also suits tests.
 
 Keep it out of a release build. It is test-only API. See

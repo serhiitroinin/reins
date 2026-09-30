@@ -1,6 +1,6 @@
 # Release procedure
 
-Use this checklist for every npm release of `reins`.
+Use this checklist for every npm release of `@serhiitroinin/reins`.
 
 The release workflow (`.github/workflows/release.yml`) publishes from GitHub
 Actions with npm trusted publishing (OIDC) and a provenance statement. A manual
@@ -80,12 +80,12 @@ The workflow needs all of these conditions:
   repository.
 - The repository name matches `repository.url` in `package.json`
   (`serhiitroinin/reins`).
-- The `reins` package on npmjs.com has a trusted publisher: repository
+- The `@serhiitroinin/reins` package on npmjs.com has a trusted publisher: repository
   `serhiitroinin/reins`, workflow `release.yml`, environment `npm`.
 - The repository has an `npm` environment.
 
 npm can add a trusted publisher only to a package that exists. Therefore the
-first `reins` version uses the manual fallback.
+first `@serhiitroinin/reins` version uses the manual fallback.
 
 ### Manual fallback
 
@@ -109,38 +109,32 @@ the public registry. Verify the main Node import and the installed
 
 Confirm all of these facts:
 
-- `npm view reins dist-tags` shows the new version under the expected tag.
+- `npm view @serhiitroinin/reins dist-tags` shows the new version under the expected tag.
 - The registry integrity matches the reviewed tarball.
 - After a workflow publish, the npm page shows the provenance statement.
 - The GitHub release exists and is not a draft.
 
 Then remove merged temporary branches.
 
-## First release of `reins` (0.2.0)
+## First release of Reins (0.2.1)
 
-Versions up to 0.1.1 were published as `@serhiitroinin/fold-harness`. Version
-0.2.0 continues that line under the new name. Do these steps once, in order.
+Versions up to 0.1.1 were published as `@serhiitroinin/fold-harness`. The
+0.2.0 release renamed the project to Reins, but npm rejected the unscoped name
+`reins` as too similar to `redis`. Version 0.2.0 was never published. Version
+0.2.1 is the first release on npm, under the scoped name
+`@serhiitroinin/reins`. The brand, the sidecar executable `reins-sidecar`, the
+tool server name `reins`, and the `ReinsV1` bindings keep the short name.
 
-1. Merge the rename branch into `main`.
-2. Rename the GitHub repository to `reins` and make it public. GitHub
-   redirects the old URL. Update the local remote:
-   `git remote set-url origin git@github.com:serhiitroinin/reins.git`.
-3. Confirm that the name is still free:
-   `npm view reins` must return a 404 error.
-4. Do sections 1 to 4. `bun run version-packages` must produce version 0.2.0.
-   After it runs, open `CHANGELOG.md`. Move the "Versions up to 0.1.1 were
-   published as" line back to the top of the file, under the title.
-5. Publish 0.2.0 with the manual fallback. npm can reject a new unscoped name
-   that is too similar to an existing package. Stop when that happens. Do not
-   publish under another name without a new decision.
-6. On npmjs.com, open the `reins` package settings and add the trusted
-   publisher from section 5. Create the `npm` environment in the GitHub
-   repository settings. Later releases use the workflow.
-7. Do section 6.
+1. Do sections 1 to 4. `bun run version-packages` must produce version 0.2.1.
+2. Publish 0.2.1 with the manual fallback.
+3. On npmjs.com, open the `@serhiitroinin/reins` package settings and add the
+   trusted publisher from section 1. Create the `npm` environment in the
+   GitHub repository settings. Later releases use the workflow.
+4. Do section 6.
 
 ## Retire `@serhiitroinin/fold-harness`
 
-Do these steps after `reins@0.2.0` is on the registry.
+Do these steps after `@serhiitroinin/reins@0.2.1` is on the registry.
 
 1. Create a branch from the last release of the old package:
 
@@ -153,13 +147,13 @@ Do these steps after `reins@0.2.0` is on the registry.
    ```md
    # @serhiitroinin/fold-harness
 
-   This package was renamed to [`reins`](https://www.npmjs.com/package/reins).
-   Install `reins` instead:
+   This package was renamed to [`@serhiitroinin/reins`](https://www.npmjs.com/package/@serhiitroinin/reins).
+   Install `@serhiitroinin/reins` instead:
 
-       npm install reins
+       npm install @serhiitroinin/reins
 
    Version 0.1.2 contains the same code as version 0.1.1. It receives no
-   further updates. The rename changes identifiers; read the `reins` 0.2.0
+   further updates. The rename changes identifiers; read the Reins 0.2.0
    changelog before you migrate.
    ```
 

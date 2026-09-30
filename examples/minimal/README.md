@@ -25,7 +25,7 @@ needs:
 2. Replace the scripted adapter with the Claude Code or Codex adapter.
 3. Move credentials and domain state into your host.
 
-`reins/testing` is test-only API. Do not ship the scripted adapter as a
+`@serhiitroinin/reins/testing` is test-only API. Do not ship the scripted adapter as a
 selectable engine in a release build.
 
 ## Related pages

@@ -11,7 +11,7 @@ Use Node.js 20 or newer.
 mkdir harness-demo
 cd harness-demo
 npm init -y
-npm install reins
+npm install @serhiitroinin/reins
 ```
 
 Add `"type": "module"` to `package.json`.
@@ -23,8 +23,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "reins";
-import { createScriptedAdapter } from "reins/testing";
+} from "@serhiitroinin/reins";
+import { createScriptedAdapter } from "@serhiitroinin/reins/testing";
 
 const tools = createToolHost([{
   name: "get_order",
