@@ -355,8 +355,8 @@ Neither an error nor a diagnostic ever contains one of these:
 The canonical schema is `schema/v1/sidecar.schema.json`.
 
 Method strings and TypeScript payloads are exported from
-`reins/sidecar-protocol`. The reference server is exported from
-`reins/sidecar`.
+`@serhiitroinin/reins/sidecar-protocol`. The reference server is exported from
+`@serhiitroinin/reins/sidecar`.
 
 Build a first sidecar host with the
 [sidecar quickstart](getting-started/sidecar.md).

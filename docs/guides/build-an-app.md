@@ -15,8 +15,8 @@ Create the adapters first. Create the persistence next. Pass both to
 `createHarness`, together with your tools and your context sources.
 
 ```ts
-import { createHarness, createToolHost } from "reins";
-import { createFilePersistence } from "reins/persistence/file";
+import { createHarness, createToolHost } from "@serhiitroinin/reins";
+import { createFilePersistence } from "@serhiitroinin/reins/persistence/file";
 
 const runtime = createHarness({
   adapters,                                  // your engine kit, see section 2
@@ -589,7 +589,7 @@ Work through this checklist.
 | `resetSession` runs once per adapter. | Section 7 |
 | The scripted adapter is not a selectable engine in a release build. | Below |
 
-`reins/testing` is test-only. Use `createScriptedAdapter` for development and
+`@serhiitroinin/reins/testing` is test-only. Use `createScriptedAdapter` for development and
 for tests. A development flag that exposes it is acceptable. A release build
 must not offer it as an engine.
 

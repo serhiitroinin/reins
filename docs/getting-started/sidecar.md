@@ -6,7 +6,7 @@ JSON-RPC 2.0 over standard input and standard output.
 ## 1. Install the package
 
 ```sh
-npm install reins
+npm install @serhiitroinin/reins
 ```
 
 ## 2. Create a host module

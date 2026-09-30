@@ -2,8 +2,8 @@ import {
   createHarness,
   createMemoryPersistence,
   createToolHost,
-} from "reins";
-import { createScriptedAdapter } from "reins/testing";
+} from "@serhiitroinin/reins";
+import { createScriptedAdapter } from "@serhiitroinin/reins/testing";
 
 const tools = createToolHost([{
   name: "lookup_order",

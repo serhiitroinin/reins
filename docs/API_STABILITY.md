@@ -9,8 +9,8 @@ This page uses the terms in [the glossary](GLOSSARY.md).
 | Tier | Paths | Promise |
 | --- | --- | --- |
 | Stable | Every export in `package.json`, except the paths named below | Additive change only |
-| Experimental | `reins/adapters/opencode-acp` | May change in a minor release |
-| Test-only | `reins/testing` | May grow with the supported behavior matrix |
+| Experimental | `@serhiitroinin/reins/adapters/opencode-acp` | May change in a minor release |
+| Test-only | `@serhiitroinin/reins/testing` | May grow with the supported behavior matrix |
 
 ## Stable API
 
@@ -32,7 +32,7 @@ first, and we document a migration.
 
 ## Experimental API
 
-`reins/adapters/opencode-acp` is a small ACP composition helper. Native
+`@serhiitroinin/reins/adapters/opencode-acp` is a small ACP composition helper. Native
 OpenCode support is not part of version 0.1.
 
 The helper can change in a minor release. The core protocol stays
@@ -40,7 +40,7 @@ engine-neutral when that happens.
 
 ## Test-only API
 
-`reins/testing` contains fixtures and conformance runners. Use it in tests and
+`@serhiitroinin/reins/testing` contains fixtures and conformance runners. Use it in tests and
 examples.
 
 Do not use its scripted adapter as an engine in a product. A development flag

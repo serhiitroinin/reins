@@ -7,9 +7,9 @@
 
 # Reins
 
-[![npm version](https://img.shields.io/npm/v/reins.svg)](https://www.npmjs.com/package/reins)
+[![npm version](https://img.shields.io/npm/v/@serhiitroinin/reins.svg)](https://www.npmjs.com/package/@serhiitroinin/reins)
 [![CI](https://github.com/serhiitroinin/reins/actions/workflows/ci.yml/badge.svg)](https://github.com/serhiitroinin/reins/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/npm/l/reins.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/npm/l/@serhiitroinin/reins.svg)](LICENSE)
 
 Reins is a provider-neutral runtime for products that embed a coding agent.
 It is an agent harness: one interface to Claude Code, Codex, and ACP agents,
@@ -35,12 +35,12 @@ sandbox. Reins ships none of those.
 This example needs no account and no network access. Use Node.js 20 or newer.
 
 ```sh
-npm install reins
+npm install @serhiitroinin/reins
 ```
 
 ```js
-import { createHarness, createMemoryPersistence } from "reins";
-import { createScriptedAdapter } from "reins/testing";
+import { createHarness, createMemoryPersistence } from "@serhiitroinin/reins";
+import { createScriptedAdapter } from "@serhiitroinin/reins/testing";
 
 const { adapter } = createScriptedAdapter({
   async *script() {
